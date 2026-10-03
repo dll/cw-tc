@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.0** |
+| 版本 | **v1.1**（v2.5 角色补齐：新增学员侧模块 L、教师申请、管理员分级与配置） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -103,12 +103,33 @@
 |---|---|---|
 | **公开（匿名）** | 无 | `/health` · `/public/status` · `/app/latest` · `/verify/{certNo}` · `/majors` · `/courses`（仅上架课程的公开字段） |
 | **学员（需登录）** | 会话 | `/me/*` · `/orders` · `/exams` · `/ai/*` · `/notes` · `/me/certs` |
-| **教师（角色）** | 会话 + `role=teacher` | `/teacher/**`（**且必须校验资源归属：只能操作自己的课程**） |
-| **管理员（角色）** | 会话 + `role=admin` | `/admin/**` |
+| **教师（角色）** | 会话 + `role=teacher` | `/teacher/**`（**且必须校验资源归属：只能操作自己的课程**）；**响应体须过滤身份证号与手机号**（§1.9） |
+| **运营管理员** | 会话 + `role=admin_ops` | `/admin/**`（**不含** `/admin/admins` · `/admin/settings` · `/admin/exports`） |
+| **超级管理员** | 会话 + `role=admin_super` | `/admin/**` 全部 |
 | **渠道回调（匿名但有签名）** | **验签** | `/pay/wechat/notify` · `/pay/alipay/notify` |
 
 - **权限判定顺序**：① 是否登录 → ② 角色是否匹配 → ③ **资源是否属于自己**（教师必需）。
 - **前端只做菜单可见性，不作为安全边界** —— 越权必须由后端拒绝。
+
+### 1.9 教师可见字段白名单（**v2.5 新增 —— 隐私硬约束**）
+
+> 对应 PRD §7.9 J-6。**这是白名单，不是黑名单** —— 未列入的字段一律不返回。
+
+| 允许返回 | 说明 |
+|---|---|
+| 学员 `name` · `student_no` | 阅卷与答疑必需 |
+| 该学员在**本课**的学习 / 测评聚合数据 | 进度、成绩、错题分布 |
+
+| 永不返回（**任何教师接口**） | 说明 |
+|---|---|
+| `id_card_hash` · `id_card_cipher` · **脱敏身份证号** | 与教学无关 |
+| `phone` · **脱敏手机号** | 需触达学员时走站内信 / 平台转发 |
+| 订单 / 支付 / 退款字段 | 属管理员 |
+| 学员笔记 | 仅本人（PRD §7.6） |
+
+- **实现口径**：教师接口的响应**在序列化层用白名单构造 DTO**，
+  **不得**直接返回数据库实体（返回实体 = 迟早漏字段）。
+- **门禁**：遍历教师接口做正则扫描（18 位身份证号 / 11 位手机号），**必须 0 命中**。
 
 ### 1.8 限频（与 PRD §9.6 对应）
 
@@ -237,7 +258,10 @@
 | POST | `/teacher/courses/{code}/submit` | 教师+归属 | 提交审核 |
 | GET | `/teacher/reviews` | 教师 | 待阅卷列表 |
 | POST | `/teacher/reviews/{id}/score` | 教师 | 采点给分（双人阅卷） |
-| GET | `/teacher/courses/{code}/stats` | 教师+归属 | 本课学情（**聚合，无个人明细**） |
+| GET | `/teacher/courses/{code}/stats` | 教师+归属 | 本课学情（**仅聚合，字段白名单见 §1.9**） |
+| GET | `/teacher/courses/{code}/students` | 教师+归属 | 本课学员列表（**只回 `name` / `student_no` 与进度**，§1.9） |
+| POST | `/teacher/courses/{code}/requests` | 教师+归属 | **发起下架 / 内容纠错申请**（`kind=下架\|紧急纠错`，§7.9 J-8） |
+| GET | `/teacher/requests` | 教师 | 我的申请与处理状态 |
 
 ### 2.11 管理后台（模块 E）
 
@@ -256,9 +280,40 @@
 | POST | `/admin/certs/{certNo}/revoke` | 管理员 | 撤销证书（须填原因） |
 | GET | `/admin/users` · PATCH `/{id}/status` | 管理员 | 用户管理 |
 | POST | `/admin/users/teachers` | 管理员 | **开通教师账号** |
+| POST | `/admin/users/{id}/transfer-courses` | 管理员 | **教师停用前的课程移交**（`to_teacher_id`，§7.9 J-9） |
+| GET · PATCH | `/admin/settings` | **仅 super** | **系统配置**：业务参数可改；**密钥只读状态**（§7.10.6） |
+| GET · POST | `/admin/admins` | **仅 super** | 管理员列表 / **创建管理员**（分级 §7.10.5） |
+| DELETE | `/admin/admins/{id}` | **仅 super** | 停用管理员（**禁止停用最后一个超管**） |
+| POST | `/admin/batch/courses` | 管理员 | **批量上架 / 下架 / 改价 / 挂专业**（先预览，§7.10.8） |
+| GET | `/admin/batch/{batchId}` | 管理员 | 批量结果**逐条明细**（可导出） |
+| POST | `/admin/exports` | **仅 super** | **代学员导出数据**（须填事由；写审计，§7.10.9） |
+| GET | `/admin/requests` | 管理员 | 教师下架 / 纠错申请待办（§7.9 J-8） |
 | GET | `/admin/broadcasts/preview` | 管理员 | **广播预览：返回触达人数** |
 | POST | `/admin/broadcasts` | 管理员 | 发送广播 |
 | GET | `/admin/audit` | 管理员 | 审计日志 |
+
+### 2.13 学员侧「我的」模块（模块 L，**v2.5 新增**）
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/me/courses` | 学员 | 我的课程（`unlocked=true/false` + **学习进度**） |
+| GET | `/me/orders` | 学员 | 我的订单（**含"可继续支付"标记与退款进度**） |
+| POST | `/me/orders/{orderNo}/pay` | 学员 | **继续支付**（复用同一订单，不新建，§7.13 L-2） |
+| POST | `/me/orders/{orderNo}/cancel` | 学员 | 取消待支付订单 |
+| GET | `/me/scores` | 学员 | 我的成绩（**历次不覆盖**） |
+| GET | `/me/certs` | 学员 | 我的证书（含 `status`：有效 / 即将到期 / 已过期 / 已撤销） |
+| GET | `/me/certs/{certNo}/file` | 学员 | **下载 / 重新下载证书 PDF**（短时私有链接，§7.8 D-5） |
+| GET | `/me/messages` | 学员 | 消息中心（`type`：系统 / 事务 / 广播；`unread`） |
+| POST | `/me/messages/read` | 学员 | 批量标记已读 |
+| PATCH | `/me/messages/prefs` | 学员 | **广播退订**（系统消息与事务通知不可退订，§7.13 L-5） |
+| GET | `/me/devices` | 学员 | 登录设备列表（§7.13 L-6） |
+| POST | `/me/devices/{id}/revoke` | 学员 | 踢出指定设备 |
+| POST | `/me/logout-all` | 学员 | 登出全部设备 |
+| POST | `/me/export` | 学员 | **导出我的数据**（JSON + MD 摘要，脱敏，写审计，§7.13 L-8） |
+| GET | `/me/appeals` · POST | 学员 | 申诉（改姓名 / 身份证、成绩申诉）与处理状态 |
+
+> **`/me/certs/{certNo}/file` 的硬约束**：**证书已撤销时返回 404**（不是 403 ——
+> 避免暴露"这个编号曾经存在"之外的更多信息）；**重新下载必须返回与首次逐字节一致的文件**。
 
 ### 2.12 对外与运维（模块 K）
 
@@ -445,7 +500,8 @@ data: {"tokens_in":812,"tokens_out":256}
 | 2 | 各接口的**示例响应**逐一补齐（本文只详写复杂接口） | M1 实现时同步补 |
 | 3 | OpenAPI 3.1 规范文件 `docs/openapi.yaml`（由本文生成，供两端生成 SDK） | M1 末 |
 | 4 | 压测接口清单与目标 QPS | M6 前 |
+| 5 | **教师端字段白名单的落地检查脚本**（遍历教师接口，正则扫身份证号 / 手机号） | M5（v2.5 新增） |
 
 ---
 
-**（API 接口参考 v1.0 结束）**
+**（API 接口参考 v1.1 结束）**
