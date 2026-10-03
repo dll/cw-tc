@@ -19,7 +19,7 @@
 ```
 cw-tc/
 ├── docs/
-│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2（**当前权威，先读这份**）
+│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2.2（**当前权威，先读这份**）
 │   ├── 技术选型-v1.md          ← 技术栈决策 v1.1（选型依据、多端边界、风险）
 │   ├── PRD-第三课堂-v1.md      ← v1.0 立项基线（已归档，仅作对照）
 │   └── README.md               文档索引
@@ -28,11 +28,17 @@ cw-tc/
 │   ├── .env.example            环境变量模板（**真实值不入库**，服务器放 shared/.env）
 │   ├── nginx/cw-tc.conf        域名与反代配置
 │   ├── systemd/                服务单元
-│   └── scripts/                发布脚本
+│   └── scripts/                脚本（含敏感信息扫描）
 ├── packages/
 │   ├── server/                 Go 后端（Gin）· REST API + 对外静态页
+│   │   ├── cmd/server/         入口（配置校验失败即拒绝启动）
+│   │   └── internal/
+│   │       ├── api/            路由 · /health · /public/status · 访问日志脱敏
+│   │       ├── config/         配置加载与强制密钥校验
+│   │       └── redact/         身份证号 / 手机号脱敏（铁律 3 的代码落点）
 │   ├── app/                    Flutter 学生端（Android / Web，一套代码）
 │   └── admin/                  Vue 3 管理端（教师工作台 / 课程 / 订单 / 证书 / 广播）
+├── .github/workflows/ci.yml    质量门禁（Go / Flutter / Vue / 合规扫描）
 └── data/                       上游内容的本地同步产物（不入版本库）
 ```
 
@@ -50,7 +56,7 @@ cw-tc/
 ## 快速开始
 
 > ⚠️ 当前处于 **M0 · 立项与准备** 阶段（见 PRD v2 §13）。
-> 代码骨架尚未落地；技术选型已拍板，剩余待确认项见 PRD v2 §16。
+> PRD / 选型 / 仓库 / **代码骨架 / CI 门禁** 已就位；业务功能自 M1 起实现。
 > **M2（支付）前置**：支付商户号资质；**M4（AI）前置**：模型服务选型。
 
 ```bash
@@ -59,7 +65,23 @@ cat docs/PRD-第三课堂-v2.md
 
 # 2. 读技术选型（栈已定，含多端边界与风险）
 cat docs/技术选型-v1.md
+
+# 3. 后端：构建与自检
+cd packages/server
+make build        # 产出 bin/cw-tc-server
+make test         # 全量单测
+make check        # fmt + vet + test
+
+# 4. 学生端（Flutter）
+cd packages/app && flutter pub get && flutter analyze && flutter test
+
+# 5. 管理端（Vue 3）
+cd packages/admin && npm install && npm run typecheck && npm run test
 ```
+
+> **本地运行后端前**，必须先准备强制密钥（否则服务会**拒绝启动**，这是设计如此）：
+> 见 [`deploy/.env.example`](deploy/.env.example) —— `CWTC_ID_CARD_ENC_KEY`（32 字节）、
+> `CWTC_ID_CARD_HMAC_KEY`、`CWTC_SESSION_SECRET`（均 ≥32 字节）。
 
 ## 三条铁律
 

@@ -1,0 +1,15 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # 未使用局部变量在开发期很常见，作为提示而非阻断
+    unused_local_variable: warning
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+
+linter:
+  rules:
+    # 与 ccit / wxx 一致的基础约束
+    prefer_single_quotes: false
+    avoid_print: true

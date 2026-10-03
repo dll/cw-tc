@@ -1,0 +1,166 @@
+name: "CI Quality Gate"
+# 名称保持纯 ASCII —— ccit 有前车之鉴：名称里出现 ≥ / % / 全角括号
+# 会导致 GitHub 的 workflow_run 匹配器失效，进而 CD 不再被自动触发。
+
+# 注意：本 workflow 只做质量门禁，不部署。
+# 部署流水线（cd.yml）在 M6 落地，沿用 cw-vopc / ccit 的发布约定。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/server/**'
+      - 'packages/app/**'
+      - 'packages/admin/**'
+      - 'deploy/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'packages/server/**'
+      - 'packages/app/**'
+      - 'packages/admin/**'
+      - 'deploy/**'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # ------------------------------------------------------------------
+  # 后端门禁：格式 / 静态检查 / 构建 / 单测 / 覆盖率 >= 80%
+  # ------------------------------------------------------------------
+  go-quality-gate:
+    name: Go fmt/vet/build/test + coverage >= 80%
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/server
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.x'
+          cache: true
+          cache-dependency-path: packages/server/go.sum
+
+      - name: 安装 Go 依赖（GOPROXY 国内镜像）
+        run: |
+          go env -w GOPROXY="https://goproxy.cn,direct"
+          go mod download
+
+      # 只断言大版本：ccit 曾用精确版本断言（==1.26.6），
+      # 本地与 CI 的补丁号一旦不一致就会误伤，收益不抵维护成本。
+      - name: 校验 Go 大版本（须为 1.26.x）
+        run: |
+          go version
+          go version | grep -qE 'go1\.26\.' || { echo "ERROR: 需要 Go 1.26.x" >&2; exit 1; }
+
+      - name: gofmt 检查（应为 0 文件）
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未格式化:"; echo "$unformatted"; exit 1
+          fi
+          echo "gofmt: 0 文件需格式化"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test 全量
+        run: go test ./... -count=1
+
+      - name: 覆盖率门禁（低于 80% 失败）
+        run: |
+          go test ./... -count=1 -covermode=set -coverpkg=./... -coverprofile=coverage.out
+          TOTAL=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "## 后端覆盖率：${TOTAL}%（阈值 80%）" >> "$GITHUB_STEP_SUMMARY"
+          awk -v t="$TOTAL" 'BEGIN { if (t+0 < 80) { printf "覆盖率 %.1f%% 低于阈值 80%%\n", t; exit 1 } }'
+
+      - name: 上传覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: go-coverage-report
+          path: packages/server/coverage.out
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------
+  # 合规门禁（铁律 3）：身份证号 / 手机号不得明文出现在代码、日志、响应体
+  # 与 go-quality-gate 拆开，是为了让失败原因一眼可辨（是合规问题还是代码问题）。
+  # ------------------------------------------------------------------
+  compliance-gate:
+    name: Sensitive data scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          # 密钥泄漏扫描需要完整 git 历史
+          fetch-depth: 0
+
+      - name: 敏感信息扫描（ID card / phone 不得明文）
+        run: bash deploy/scripts/scan-sensitive.sh
+
+      - name: 密钥泄漏扫描（gitleaks）
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ------------------------------------------------------------------
+  # 学生端（Flutter）：静态分析 + 单测
+  # ------------------------------------------------------------------
+  app-quality-gate:
+    name: Flutter analyze + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/app
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+          cache: true
+
+      - name: 安装依赖
+        run: flutter pub get
+
+      - name: 静态分析（error/warning 阻断，info 放行）
+        run: flutter analyze --no-pub --no-fatal-infos
+
+      - name: 单元测试
+        run: flutter test --no-pub
+
+  # ------------------------------------------------------------------
+  # 管理端（Vue 3）：类型检查 + 单测
+  # ------------------------------------------------------------------
+  admin-quality-gate:
+    name: Vue typecheck + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/admin
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: packages/admin/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci || npm install
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 单元测试
+        run: npm run test

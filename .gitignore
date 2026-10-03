@@ -21,11 +21,19 @@ packages/server/tmp/
 *.test
 *.out
 
-# ---- 前端 ----
+# ---- 前端：管理端（Vue 3）----
 node_modules/
-packages/web/dist/
-packages/web/.vite/
+packages/admin/dist/
+packages/admin/.vite/
 *.local
+
+# ---- 前端：学生端（Flutter / Dart）----
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+packages/app/build/
+packages/app/.dart_tool/
+*.iml
 
 # ---- 编辑器 / 系统 ----
 .vscode/

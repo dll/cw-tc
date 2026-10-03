@@ -1,0 +1,54 @@
+name: cw_tc_app
+description: "第三课堂 — 畅网智能科技在线自主学习与能力认证平台（学生端）"
+publish_to: 'none'
+
+# 版本号由 CI 用 --build-number 覆盖（见 .github/workflows/ci.yml）
+version: 0.1.0+1
+
+environment:
+  # 与 ccit / wxx 对齐：Flutter 3.22.x 对应 Dart ^3.4.0
+  sdk: ^3.4.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # HTTP（拦截器：注入会话、统一错误处理）
+  dio: ^5.7.0
+
+  # 状态管理
+  provider: ^6.1.0
+
+  # 声明式路由
+  go_router: ^14.1.0
+
+  # 系统安全存储：会话凭据只放这里，**绝不写 localStorage / shared_preferences**
+  # （PRD v2 §9.6 第 9 条：前端不得残留敏感凭据）
+  flutter_secure_storage: ^9.2.2
+
+  # WebView：App 端渲染 HTML 课件（PRD v2 §7.2 B-4 的硬约束）
+  # 版本上限 <4.9.0 —— 4.9.0+ 要求 Dart >=3.5.0，与本项目 Dart ^3.4.0 不兼容。
+  # 该约束沿用 wxx 的实测结论（wxx/frontend/pubspec.yaml 有同样注释）。
+  webview_flutter: ">=4.4.4 <4.9.0"
+
+  # 以下依赖按里程碑加入，版本沿用 wxx 已验证的组合（此处先留说明，不提前引入）：
+  #   M1  音频播放      audioplayers: ^6.1.0
+  #   M1  Markdown 渲染 flutter_markdown_plus: ^1.0.0
+  #   M1  缓存/临时目录 path_provider: ^2.1.0
+  #   M4  笔记导出 PDF  （打印/分享能力，届时选型）
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Flutter Web 引擎默认从 fonts.gstatic.com 拉取 Roboto；该域名在部分网络下不可达，
+  # 会导致页面长时间空白（wxx 已踩过：本地打包 Roboto 后引擎不再发起外部请求）。
+  # 字体文件与 fonts 段在 M1 补入（属 §11.4 的 Web 首屏减重手段之一）。
+  assets:
+    - assets/images/
