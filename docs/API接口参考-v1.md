@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.3**（v2.7 课程生命周期：送审 / 六维审核 / 上架三联动 / 变更重审） |
+| 版本 | **v1.4**（v2.8 运营数据：统计 / 收藏 / 评论 UGC / AI 运营报告 / 改版闭环） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -189,7 +189,8 @@
 |---|---|---|---|
 | GET | `/majors` | 公开 | 专业字典（启用中，按 `sort`） |
 | GET | `/courses` | 公开 | 课程广场：`major_id` / `line`(main\|aux) / `q` / 分页；**只返回已上架** |
-| GET | `/courses/{code}` | 可选登录 | 详情（价格、三档证书、试学讲次、**我的权益状态**、**`ai_level` AI 化等级 + `quality_badge` 质检通过标**） |
+| GET | `/courses/{code}` | 可选登录 | 详情（价格、三档证书、试学讲次、**我的权益状态**、`ai_level` AI 化等级 + `quality_badge` 质检通过标、**`stats` 六项状态数 + `data_as_of` 数据截至日期**） |
+| GET | `/courses/{code}/comments` | 公开 | **课程评论列表**（**均分需满 10 条才返回**；昵称脱敏；分页） |
 | GET | `/courses/{code}/lectures` | 可选登录 | 讲次列表（未解锁时**只返回到试学讲次**） |
 | GET | `/courses/{code}/lectures/{no}` | 可选登录 | 讲详情 + 资源清单（**未解锁 → `10203`**） |
 | GET | `/me/courses` | 登录 | 我的课程（已解锁 / 未解锁） |
@@ -281,10 +282,16 @@
 | POST | `/teacher/courses/{code}/changes` | 教师+归属 | **提交变更**（已上架课程走变更草稿，§J-2.5） |
 | GET | `/teacher/reviews` | 教师 | 待阅卷列表 |
 | POST | `/teacher/reviews/{id}/score` | 教师 | 采点给分（双人阅卷） |
-| GET | `/teacher/courses/{code}/stats` | 教师+归属 | 本课学情（**仅聚合，字段白名单见 §1.9**） |
+| GET | `/teacher/courses/{code}/stats` | 教师+归属 | 本课学情（**仅聚合，字段白名单见 §1.9**）+ **六项状态数 + 漏斗 + 转化率**（`range=7d\|30d\|90d`，v2.8） |
 | GET | `/teacher/courses/{code}/students` | 教师+归属 | 本课学员列表（**只回 `name` / `student_no` 与进度**，§1.9） |
 | POST | `/teacher/courses/{code}/requests` | 教师+归属 | **发起下架 / 内容纠错申请**（`kind=下架\|紧急纠错`，§7.9 J-8） |
 | GET | `/teacher/requests` | 教师 | 我的申请与处理状态 |
+| GET | `/teacher/insights` | 教师+归属 | **AI 运营周报列表**（`course_code` + 周期） |
+| GET | `/teacher/insights/{id}` | 教师+归属 | **周报详情**（五段结构；`evidence_map` **每条建议附依据指标与评论 id**） |
+| POST | `/teacher/insights/{id}/verdict` | 教师+归属 | **采纳 / 驳回**（记意见）—— **不能编辑报告正文** |
+| GET · POST | `/teacher/revision-plans` | 教师+归属 | **改版计划列表 / 新建**（`problem` / `evidence` / `measure` / `target_metric` **必填**） |
+| PATCH | `/teacher/revision-plans/{id}` | 教师+归属 | 更新状态（`已完成` 时**关联 `course_revision`**；`已放弃` 须填原因） |
+| GET | `/teacher/revisions/{id}/compare` | 教师+归属 | **改版前后对比**（按 `content_version` 切分，窗口默认前后各 30 天） |
 
 ### 2.11 管理后台（模块 E）
 
@@ -321,6 +328,12 @@
 | GET | `/admin/batch/{batchId}` | 管理员 | 批量结果**逐条明细**（可导出） |
 | POST | `/admin/exports` | **仅 super** | **代学员导出数据**（须填事由；写审计，§7.10.9） |
 | GET | `/admin/requests` | 管理员 | 教师下架 / 纠错申请待办（§7.9 J-8） |
+| GET | `/admin/comments` | 管理员 | **评论审核待办**（机审疑似 + 被举报），可按状态筛选 |
+| POST | `/admin/comments/{id}/remove` | 管理员 | **下架评论**：**`reason_kind` 必填**（广告/辱骂/隐私/违法/无关/其他，**无"差评"选项**），写审计 + 通知评论者 |
+| POST | `/admin/comments/{id}/restore` | 管理员 | 恢复（误判纠正，写审计） |
+| GET · POST | `/admin/comments/reports/{id}` | 管理员 | 举报处理（**结果通知举报人**） |
+| GET | `/admin/insights` | 管理员 | **全平台课程运营看板**（六项状态 + 漏斗，可按专业/来源筛选） |
+| GET | `/admin/stats/{courseCode}` | 管理员 | 单课统计明细（**与教师版同一套口径**，M-0） |
 | GET · POST | `/admin/appeals` · `/{id}/handle` | 管理员 | **账号申诉待办与处理**（§7.10.10（三）） |
 | GET · POST | `/admin/deletions` · `/{id}/approve` | 管理员 | **注销审核**：前置校验 + 匿名化执行（§7.10.10（五）） |
 | GET | `/admin/broadcasts/preview` | 管理员 | **广播预览：返回触达人数** |
@@ -350,6 +363,22 @@
 
 > **`/me/certs/{certNo}/file` 的硬约束**：**证书已撤销时返回 404**（不是 403 ——
 > 避免暴露"这个编号曾经存在"之外的更多信息）；**重新下载必须返回与首次逐字节一致的文件**。
+
+### 2.14 收藏 · 评论 · 课程统计（模块 M，**v2.8 新增**）
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| POST · DELETE | `/courses/{code}/favorite` | 学员 | **收藏 / 取消收藏**（重复收藏不报错、不增计数） |
+| GET | `/me/favorites` | 学员 | 我的收藏（分页；下架课仍可见但标注"已下架"） |
+| GET | `/me/reviews` | 学员 | 我的评价（已评 / 待评列表） |
+| POST | `/courses/{code}/comments` | 学员（**已解锁**） | **发表评价**（`rating` 必填；正文含证件号/手机号 → **400 拒绝**） |
+| PATCH · DELETE | `/comments/{id}` | 作者本人 | **修改一次**（标注"已修改"）/ **删除自己的评价** |
+| POST | `/comments/{id}/report` | 登录 | **举报评论**（`reason_kind` 必选） |
+| POST | `/comments/{id}/reply` | 教师+归属 | **教师回复**（**无删除接口** —— 见 §7.14 M-3） |
+| GET | `/teacher/courses/{code}/stats` | 教师+归属 | **本课六项状态数 + 漏斗 + 转化率**（`range=7d\|30d\|90d`） |
+
+> ⚠️ **接口层就掐死"教师删评论"**：**不存在** `DELETE /comments/{id}` 的教师可用路径；
+> 教师 token 调该接口 → **403**（§9.10 验收项）。
 
 ### 2.12 对外与运维（模块 K）
 
@@ -540,7 +569,10 @@ data: {"tokens_in":812,"tokens_out":256}
 | 6 | **`/admin/users` 列表与详情的脱敏检查**（同上门禁，扩到管理员接口） | M5（v2.6 新增） |
 | 7 | **六维打分的「材料完整性」自动给分规则**（九件套齐备度 → 0–25 分的映射表） | M5（v2.7 新增） |
 | 8 | **交错序列校验规则**（`lecture.kind` 怎样算"交错"：连续理论讲数上限？） | M5（v2.7 新增） |
+| 9 | **六项统计的跑批 SQL 与幂等校验脚本**（§7.14 M-0） | M5（v2.8 新增） |
+| 10 | **AI 运营周报的 Prompt 模板与 `evidence_map` 回填规则**（保证"每条建议可溯源"） | M5（v2.8 新增） |
+| 11 | **评论内容安全接口选型**（腾讯云天御 / 其他，与 §9.10 机审对应） | M5（v2.8 新增） |
 
 ---
 
-**（API 接口参考 v1.3 结束）**
+**（API 接口参考 v1.4 结束）**
