@@ -1,0 +1,33 @@
+[Unit]
+Description=第三课堂 (cw-tc) 应用服务
+Documentation=https://cw-tc.ccit-agent.cn
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/cw-tc/current
+# 环境变量从 shared/.env 注入（含数据库口令、加密密钥，不进版本库）
+EnvironmentFile=/opt/cw-tc/shared/.env
+ExecStart=/opt/cw-tc/current/bin/cw-tc-server
+Restart=on-failure
+RestartSec=3
+# 优雅退出
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# 日志走 journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cw-tc
+
+# 安全加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
