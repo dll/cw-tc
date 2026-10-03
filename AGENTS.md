@@ -7,9 +7,11 @@
 **第三课堂**（cw-tc）：以 AI 为引擎的在线自主学习与能力认证平台。
 学生实名注册 → 自主选课学习 → 在线分级测评 → 通过后由畅网智能科技颁发证书。
 
-- `packages/server`：Go 后端（Gin），提供 API 与判分/制证引擎
-- `packages/web`：前端（选型待拍板，见 PRD §11.3）
+- `packages/server`：Go 后端（Gin），提供 REST API 与判分/制证引擎
+- `packages/app`：**Flutter 学生端**（Android / iOS / Web，一套代码，见 `docs/技术选型-v1.md`）
+- `packages/admin`：**Vue 3 管理端**（阅卷台 / 内容管理 / 证书台账，桌面优先）
 - `docs/PRD-第三课堂-v1.md`：**唯一权威需求文档**
+- `docs/技术选型-v1.md`：**技术栈决策**（选型依据、多端一致边界、风险）
 
 ## 语言规范
 
@@ -55,12 +57,19 @@ go run ./cmd/sync --check
 
 # 合规扫描（身份证号不得明文出现在代码/日志）
 bash deploy/scripts/scan-sensitive.sh
+
+# 学生端（Flutter）：静态检查 + 单测
+cd packages/app && flutter analyze && flutter test
+
+# 管理端（Vue 3）：lint + 单测
+cd packages/admin && npm run lint && npm run test
 ```
 
 ## 目录与命名约定
 
-- 后端：`cmd/`（入口）、`internal/`（业务，不可外部导入）、`migrations/`（数据库迁移）
-- 前端：`src/pages`（页面）、`src/components`（组件）、`src/api`（接口封装）
+- 后端：`packages/server/` → `cmd/`（入口）、`internal/`（业务，不可外部导入）、`migrations/`（数据库迁移）
+- 学生端（Flutter）：`packages/app/lib/` → `pages/`（页面）、`widgets/`（组件）、`api/`（接口封装）、`models/`
+- 管理端（Vue 3）：`packages/admin/src/` → `pages/`（页面）、`components/`（组件）、`api/`（接口封装）
 - 部署：`deploy/{nginx,systemd,scripts}`
 - 文档：`docs/`，命名 `主题-版本.md`
 
