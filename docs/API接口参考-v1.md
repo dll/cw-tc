@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.2**（v2.6 用户管理：三角色用户管理接口 + 申诉 + 注销审核） |
+| 版本 | **v1.3**（v2.7 课程生命周期：送审 / 六维审核 / 上架三联动 / 变更重审） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -189,7 +189,7 @@
 |---|---|---|---|
 | GET | `/majors` | 公开 | 专业字典（启用中，按 `sort`） |
 | GET | `/courses` | 公开 | 课程广场：`major_id` / `line`(main\|aux) / `q` / 分页；**只返回已上架** |
-| GET | `/courses/{code}` | 可选登录 | 详情（价格、三档证书、试学讲次、**我的权益状态**） |
+| GET | `/courses/{code}` | 可选登录 | 详情（价格、三档证书、试学讲次、**我的权益状态**、**`ai_level` AI 化等级 + `quality_badge` 质检通过标**） |
 | GET | `/courses/{code}/lectures` | 可选登录 | 讲次列表（未解锁时**只返回到试学讲次**） |
 | GET | `/courses/{code}/lectures/{no}` | 可选登录 | 讲详情 + 资源清单（**未解锁 → `10203`**） |
 | GET | `/me/courses` | 登录 | 我的课程（已解锁 / 未解锁） |
@@ -274,7 +274,11 @@
 | POST | `/teacher/courses` | 教师 | 新建课程（**自动分配课程码**） |
 | GET | `/teacher/courses/{code}` | 教师+归属 | 课程详情 |
 | PATCH | `/teacher/courses/{code}` | 教师+归属 | 编辑（**不可改价格 / 上架状态 / 课程码**） |
-| POST | `/teacher/courses/{code}/submit` | 教师+归属 | 提交审核 |
+| POST | `/teacher/courses/{code}/submit` | 教师+归属 | **送审**（**三项前置校验**；失败返回**缺项明细**，§J-2.1） |
+| POST | `/teacher/courses/{code}/withdraw` | 教师+归属 | **撤回送审**（未被受理前，回到 `building`） |
+| GET | `/teacher/courses/{code}/review` | 教师+归属 | **审核结果与历史轮次**（含**逐维问题清单**，§J-2.3） |
+| GET | `/teacher/courses/{code}/selfcheck` | 教师+归属 | **送审前自检**：九件套齐备度 + 缺项清单（**不消耗送审次数**） |
+| POST | `/teacher/courses/{code}/changes` | 教师+归属 | **提交变更**（已上架课程走变更草稿，§J-2.5） |
 | GET | `/teacher/reviews` | 教师 | 待阅卷列表 |
 | POST | `/teacher/reviews/{id}/score` | 教师 | 采点给分（双人阅卷） |
 | GET | `/teacher/courses/{code}/stats` | 教师+归属 | 本课学情（**仅聚合，字段白名单见 §1.9**） |
@@ -288,7 +292,13 @@
 |---|---|---|---|
 | GET | `/admin/courses` | 管理员 | 全部课程（含未上架 / 待审） |
 | PATCH | `/admin/courses/{code}` | 管理员 | **课程设置面板**（价格、专业、上架状态、试学讲次、AI 开关与额度…） |
-| POST | `/admin/courses/{code}/review` | 管理员 | 审核教师提交（通过 → 待上架 / 驳回） |
+| GET | `/admin/reviews` | 管理员 | **审核待办队列**（含等待天数，**超 SLA 高亮**，§J-2.2） |
+| GET | `/admin/courses/{code}/review` | 管理员 | **审核详情**：内容快照 + **六维自动初值**（材料完整性）+ 历史轮次 |
+| POST | `/admin/courses/{code}/review` | 管理员（**特色标需 super**） | **提交审核结论**：**六维打分 + 逐维评语**；`verdict=rejected` **必须带 `issue_list`**（§J-2.3） |
+| POST | `/admin/courses/{code}/publish` | 管理员 | **上架三联动**：`publish` / `notify`（广播）/ `promote`（宣传位）**三个开关独立**，§J-2.4 |
+| POST | `/admin/courses/{code}/unpublish` | 管理员 | 下架（**宣传位自动移除**；已购学员不受影响） |
+| GET · POST | `/admin/courses/{code}/quality` | 管理员 | **质量分与 AI 化等级**查询 / 核定覆写（写审计） |
+| GET | `/admin/courses/{code}/checkup` | 管理员 | **内容体检**：九件套齐备度 + 交错序列校验 + 题库一致性（§B-9 / §B-10） |
 | POST | `/admin/courses/{code}/kb/rebuild` | 管理员 | 触发知识库重建 |
 | GET | `/admin/kb/status` | 管理员 | 知识库状态（**切片数 / 向量数 / 最后构建时间**） |
 | GET | `/admin/majors` · POST · PATCH | 管理员 | 专业字典维护 |
@@ -528,7 +538,9 @@ data: {"tokens_in":812,"tokens_out":256}
 | 4 | 压测接口清单与目标 QPS | M6 前 |
 | 5 | **教师端字段白名单的落地检查脚本**（遍历教师接口，正则扫身份证号 / 手机号） | M5（v2.5 新增） |
 | 6 | **`/admin/users` 列表与详情的脱敏检查**（同上门禁，扩到管理员接口） | M5（v2.6 新增） |
+| 7 | **六维打分的「材料完整性」自动给分规则**（九件套齐备度 → 0–25 分的映射表） | M5（v2.7 新增） |
+| 8 | **交错序列校验规则**（`lecture.kind` 怎样算"交错"：连续理论讲数上限？） | M5（v2.7 新增） |
 
 ---
 
-**（API 接口参考 v1.2 结束）**
+**（API 接口参考 v1.3 结束）**
