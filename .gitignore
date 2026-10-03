@@ -34,6 +34,9 @@ packages/web/.vite/
 Thumbs.db
 *.log
 
+# ---- 本地工具状态（AI 工作记忆，不进仓库）----
+.workbuddy/
+
 # ---- 构建/运行产物 ----
 releases/
 current
