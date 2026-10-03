@@ -100,7 +100,7 @@ go run ./cmd/kbcheck
 - 后端：`packages/server/` → `cmd/`（入口）、`internal/`（业务，不可外部导入）、`migrations/`（数据库迁移）
 - 学生端（Flutter）：`packages/app/lib/` → `pages/`（页面）、`widgets/`（组件）、`api/`（接口封装）、`models/`
 - 管理端（Vue 3）：`packages/admin/src/` → `pages/`（页面）、`components/`（组件）、`api/`（接口封装）
-- 部署：`deploy/{nginx,systemd,scripts}`
+- 部署：`deploy/{nginx,systemd,scripts}`；**环境变量模板 `deploy/.env.example`**（同系列做法）
 - 文档：`docs/`，命名 `主题-版本.md`
 
 ## 分支与提交
@@ -112,5 +112,9 @@ go run ./cmd/kbcheck
 ## 部署边界
 
 - 生产部署**只生成审批请求**，不自动执行（沿用 CCIT 约定）
-- 数据卷、密钥（`.env`）**不进版本库**
+- 数据卷、密钥**不进版本库**；**只提交 `deploy/.env.example` 模板**，
+  真实值放服务器 `/opt/cw-tc/shared/.env`（`chmod 600`，systemd `EnvironmentFile` 注入）
+- **凭据涵盖五类**：数据库 / Redis · 强制密钥（身份证加密 + HMAC + 会话）·
+  短信（含防刷限额）· 支付（微信 / 支付宝）· 大模型与 Embedding
+- **强制密钥缺失则服务拒绝启动**（不得退回明文存身份证号）；其余未配置则对应功能 fail-closed
 - 已签发证书、`_ai_draft/` 原始稿**不放公开目录**

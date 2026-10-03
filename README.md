@@ -24,7 +24,8 @@ cw-tc/
 │   ├── PRD-第三课堂-v1.md      ← v1.0 立项基线（已归档，仅作对照）
 │   └── README.md               文档索引
 ├── deploy/
-│   ├── README.md               部署说明
+│   ├── README.md               部署说明（含密钥与配置约定）
+│   ├── .env.example            环境变量模板（**真实值不入库**，服务器放 shared/.env）
 │   ├── nginx/cw-tc.conf        域名与反代配置
 │   ├── systemd/                服务单元
 │   └── scripts/                发布脚本
