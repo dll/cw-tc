@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.1**（v2.5 角色补齐：新增学员侧模块 L、教师申请、管理员分级与配置） |
+| 版本 | **v1.2**（v2.6 用户管理：三角色用户管理接口 + 申诉 + 注销审核） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -105,11 +105,30 @@
 | **学员（需登录）** | 会话 | `/me/*` · `/orders` · `/exams` · `/ai/*` · `/notes` · `/me/certs` |
 | **教师（角色）** | 会话 + `role=teacher` | `/teacher/**`（**且必须校验资源归属：只能操作自己的课程**）；**响应体须过滤身份证号与手机号**（§1.9） |
 | **运营管理员** | 会话 + `role=admin_ops` | `/admin/**`（**不含** `/admin/admins` · `/admin/settings` · `/admin/exports`） |
-| **超级管理员** | 会话 + `role=admin_super` | `/admin/**` 全部 |
+| **超级管理员** | 会话 + `role=admin_super` | `/admin/**` 全部（含 `/admin/admins` · `/admin/settings` · `/admin/exports` · **`reveal` 看全号**） |
 | **渠道回调（匿名但有签名）** | **验签** | `/pay/wechat/notify` · `/pay/alipay/notify` |
 
 - **权限判定顺序**：① 是否登录 → ② 角色是否匹配 → ③ **资源是否属于自己**（教师必需）。
 - **前端只做菜单可见性，不作为安全边界** —— 越权必须由后端拒绝。
+
+### 1.10 管理员可见字段白名单（**v2.6 新增**）
+
+> 对应 PRD §7.10.10（二）。与 §1.9 同一条原则，但管理员范围更宽 —— **宽 ≠ 无痕**。
+
+| 默认返回（**脱敏**） | 看全号的条件 |
+|---|---|
+| `phone_masked`（`138****5678`） | `GET /admin/users/{id}/reveal?field=phone&reason=...` → **ops 可，写审计** |
+| `id_card_masked` | `?field=id_card&reason=...` → **仅 super，写审计** |
+| `status` · `status_reason_kind` · 订单 / 证书 / 学习记录 | 无需额外条件 |
+
+| **永不返回** | 说明 |
+|---|---|
+| `password_hash`（**任何情况**） | 重置只能"发链接"，**不得代设、不得回显** |
+| 学员**笔记**内容 | 仅本人（PRD §7.6） |
+
+- **实现口径同 §1.9**：序列化层白名单 DTO，**不得直接返回数据库实体**。
+- **搜索约束**：`GET /admin/users` **不接受 `id_card` 参数** ——
+  传了也**必须被忽略**（否则等于给身份证号开查询接口，与 §9.6 防撞库冲突）。
 
 ### 1.9 教师可见字段白名单（**v2.5 新增 —— 隐私硬约束**）
 
@@ -278,7 +297,11 @@
 | GET | `/admin/reconcile` | 管理员 | 对账结果（**差异必须为 0**） |
 | GET | `/admin/certs` | 管理员 | 证书台账 |
 | POST | `/admin/certs/{certNo}/revoke` | 管理员 | 撤销证书（须填原因） |
-| GET | `/admin/users` · PATCH `/{id}/status` | 管理员 | 用户管理 |
+| GET | `/admin/users` | 管理员 | **用户列表**（`q` 支持手机号 / 姓名 / 学号 / 账号；**`id_card` 参数被忽略**） |
+| GET | `/admin/users/{id}` | 管理员 | **用户详情**（**默认脱敏**，见 §1.10） |
+| GET | `/admin/users/{id}/reveal` | **super**（手机号 ops 可） | **查看全号**：须带 `reason`，**每次写审计**（§7.10.10（二）） |
+| PATCH | `/admin/users/{id}/status` | 管理员（永久封禁仅 super） | **封禁 / 解封**：须带 `reason_kind` + `note`（+ `until`） |
+| POST | `/admin/users/{id}/reset-password` | 管理员 | **发重置链接 / 临时密码**（**不返回密码**，首登强制改密） |
 | POST | `/admin/users/teachers` | 管理员 | **开通教师账号** |
 | POST | `/admin/users/{id}/transfer-courses` | 管理员 | **教师停用前的课程移交**（`to_teacher_id`，§7.9 J-9） |
 | GET · PATCH | `/admin/settings` | **仅 super** | **系统配置**：业务参数可改；**密钥只读状态**（§7.10.6） |
@@ -288,6 +311,8 @@
 | GET | `/admin/batch/{batchId}` | 管理员 | 批量结果**逐条明细**（可导出） |
 | POST | `/admin/exports` | **仅 super** | **代学员导出数据**（须填事由；写审计，§7.10.9） |
 | GET | `/admin/requests` | 管理员 | 教师下架 / 纠错申请待办（§7.9 J-8） |
+| GET · POST | `/admin/appeals` · `/{id}/handle` | 管理员 | **账号申诉待办与处理**（§7.10.10（三）） |
+| GET · POST | `/admin/deletions` · `/{id}/approve` | 管理员 | **注销审核**：前置校验 + 匿名化执行（§7.10.10（五）） |
 | GET | `/admin/broadcasts/preview` | 管理员 | **广播预览：返回触达人数** |
 | POST | `/admin/broadcasts` | 管理员 | 发送广播 |
 | GET | `/admin/audit` | 管理员 | 审计日志 |
@@ -311,6 +336,7 @@
 | POST | `/me/logout-all` | 学员 | 登出全部设备 |
 | POST | `/me/export` | 学员 | **导出我的数据**（JSON + MD 摘要，脱敏，写审计，§7.13 L-8） |
 | GET | `/me/appeals` · POST | 学员 | 申诉（改姓名 / 身份证、成绩申诉）与处理状态 |
+| POST | `/auth/appeal` | **匿名**（登录页） | **被封 / 登录不上的学员发起申诉**（带手机号 + 验证码，**限频同短信**，§7.10.10（三）） |
 
 > **`/me/certs/{certNo}/file` 的硬约束**：**证书已撤销时返回 404**（不是 403 ——
 > 避免暴露"这个编号曾经存在"之外的更多信息）；**重新下载必须返回与首次逐字节一致的文件**。
@@ -501,7 +527,8 @@ data: {"tokens_in":812,"tokens_out":256}
 | 3 | OpenAPI 3.1 规范文件 `docs/openapi.yaml`（由本文生成，供两端生成 SDK） | M1 末 |
 | 4 | 压测接口清单与目标 QPS | M6 前 |
 | 5 | **教师端字段白名单的落地检查脚本**（遍历教师接口，正则扫身份证号 / 手机号） | M5（v2.5 新增） |
+| 6 | **`/admin/users` 列表与详情的脱敏检查**（同上门禁，扩到管理员接口） | M5（v2.6 新增） |
 
 ---
 
-**（API 接口参考 v1.1 结束）**
+**（API 接口参考 v1.2 结束）**
