@@ -19,7 +19,7 @@
 ```
 cw-tc/
 ├── docs/
-│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2.3（**当前权威，先读这份**）
+│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2.4（**当前权威，先读这份**）
 │   ├── 技术选型-v1.md          ← 技术栈决策 v1.1（选型依据、多端边界、风险）
 │   ├── PRD-第三课堂-v1.md      ← v1.0 立项基线（已归档，仅作对照）
 │   └── README.md               文档索引
@@ -99,8 +99,9 @@ cd packages/admin && npm install && npm run typecheck && npm run test
 |---|---|
 | [`docs/PRD-第三课堂-v2.md`](docs/PRD-第三课堂-v2.md) | 产品需求文档 v2（**当前权威**） |
 | [`docs/技术选型-v1.md`](docs/技术选型-v1.md) | 技术栈决策 v1.1（**栈已定**） |
+| [`docs/API接口参考-v1.md`](docs/API接口参考-v1.md) | **接口契约 v1.0（前后端并行开工的依据）** |
+| [`docs/数据字典-v1.md`](docs/数据字典-v1.md) | **数据字典 v1.0（建表与 migration 的依据）** |
 | `docs/技术方案-v1.md` | 模块级设计（M0 末建） |
-| `docs/API接口参考-v1.md` | 接口参考（含 `public/status` 与支付回调，M1 后建） |
 | `docs/部署运维手册-v1.md` | 部署手册（M6 前建） |
 
 ## 相关项目
