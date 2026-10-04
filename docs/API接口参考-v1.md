@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.6**（v2.10 讨论区：帖子 / 回复 / 有用 / 投票 / 统一 UGC 举报 / 建议反馈） |
+| 版本 | **v1.7**（v2.11 AI 生成内容：草稿生成 / 教师一审 / 管理员二审 / 上架与下架） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -367,6 +367,28 @@
 > **`/me/certs/{certNo}/file` 的硬约束**：**证书已撤销时返回 404**（不是 403 ——
 > 避免暴露"这个编号曾经存在"之外的更多信息）；**重新下载必须返回与首次逐字节一致的文件**。
 
+### 2.16 AI 生成内容与双审（模块 P，**v2.11 新增**）
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/teacher/ai-drafts` | 教师+归属 | **草稿列表**（待我一审 / 我已审 / 已上架），可按状态筛选 |
+| POST | `/teacher/ai-drafts` | 教师+归属 | **生成草稿**（`trigger_kind` + `kind` + `source_topic_ids[]`）——<br>**无归属教师的课程返回 409**；**额度用尽返回 429**；**未带 AI 标识/依据不允许进入审核队列** |
+| GET | `/teacher/ai-drafts/{id}` | 教师+归属 | 草稿详情（**内容 + AI 标识 + 生成依据 + 触发建议原帖**） |
+| PATCH | `/teacher/ai-drafts/{id}` | 教师+归属 | **编辑草稿**（保存即更新 `reviewed_content_hash` 的依据版本） |
+| POST | `/teacher/ai-drafts/{id}/review` | 教师+归属 | **一审提交**：`verdict=approved\|rejected`；**`rejected` 必须带 `issue_list`**；<br>**即使一字未改也必须提交**（`edited_by_teacher` 如实记录，§7.16 P-3） |
+| GET | `/admin/ai-drafts` | 管理员 | **二审待办队列**（**只含已过一审的草稿**） |
+| POST | `/admin/ai-drafts/{id}/review` | 管理员 | **二审提交**：内容安全 / AI 标识 / 侵权 / **`in_exam_scope` 显式决定** / 通过或驳回（驳回必带 `issue_list`） |
+| POST | `/admin/ai-drafts/{id}/publish` | 管理员 | **上架**：**走 §7.9 J-2.5**（`content_version+1` + 原子替换）+ J-2.4 三联动；<br>**未过双审返回 409** |
+| POST | `/admin/ai-drafts/{id}/abandon` | 管理员 | 废弃草稿（**须填原因**；不计入课程版本） |
+| POST | `/admin/lectures/{id}/unpublish` | 管理员 | **下架某条增补讲次**（`origin<>upstream`）；已发证书不受影响（§7.16 P-6） |
+| GET | `/admin/lectures?origin=ai_assisted` | 管理员 | 本课 **AI 增补讲次**列表（含 `in_exam_scope` 与效果对比入口） |
+
+> ⚠️ **三条接口层硬约束**：
+> ① **单审不可上架**：`/publish` 前置校验**必须存在 `stage=teacher` 与 `stage=admin` 两条 `approved`**，
+>    否则 **409**（**跳过审核或顺序颠倒一律拒绝**）；
+> ② **`rejected` 必带 `issue_list`**，否则 **400**；
+> ③ **`ai_labeled=false` 或 `trigger_topic_ids` 为空的草稿**，**不允许进入审核队列**（400）。
+
 ### 2.15 讨论区（模块 N，**v2.10 新增**）
 
 | 方法 | 路径 | 鉴权 | 说明 |
@@ -606,4 +628,4 @@ data: {"tokens_in":812,"tokens_out":256}
 
 ---
 
-**（API 接口参考 v1.6 结束）**
+**（API 接口参考 v1.7 结束）**
