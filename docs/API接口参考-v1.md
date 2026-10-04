@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.4**（v2.8 运营数据：统计 / 收藏 / 评论 UGC / AI 运营报告 / 改版闭环） |
+| 版本 | **v1.5**（v2.9 可配置阈值：业务参数读写 + 统计/评分的展示阈值） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -321,7 +321,7 @@
 | POST | `/admin/users/{id}/reset-password` | 管理员 | **发重置链接 / 临时密码**（**不返回密码**，首登强制改密） |
 | POST | `/admin/users/teachers` | 管理员 | **开通教师账号** |
 | POST | `/admin/users/{id}/transfer-courses` | 管理员 | **教师停用前的课程移交**（`to_teacher_id`，§7.9 J-9） |
-| GET · PATCH | `/admin/settings` | **仅 super** | **系统配置**：业务参数可改；**密钥只读状态**（§7.10.6） |
+| GET · PATCH | `/admin/settings` | **仅 super** | **系统配置**：读业务参数列表（含 `min_value`/`max_value`/`description`）；写**逐个 key**（如 `stats.display_threshold`）—— **低于 `min_value` 返回 400**；**密钥只读状态**（§7.10.6） |
 | GET · POST | `/admin/admins` | **仅 super** | 管理员列表 / **创建管理员**（分级 §7.10.5） |
 | DELETE | `/admin/admins/{id}` | **仅 super** | 停用管理员（**禁止停用最后一个超管**） |
 | POST | `/admin/batch/courses` | 管理员 | **批量上架 / 下架 / 改价 / 挂专业**（先预览，§7.10.8） |
@@ -575,4 +575,4 @@ data: {"tokens_in":812,"tokens_out":256}
 
 ---
 
-**（API 接口参考 v1.4 结束）**
+**（API 接口参考 v1.5 结束）**
