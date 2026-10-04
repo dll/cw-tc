@@ -109,6 +109,9 @@ jobs:
       - name: 对外文案禁词扫描（PRD §9.12 / 广告法）
         run: bash deploy/scripts/scan-claims.sh
 
+      - name: PRD 闭环性审计（死链 / 版本同步 / 模块落点矩阵）
+        run: python3 tools/audit_prd_closure.py
+
       - name: 密钥泄漏扫描（gitleaks）
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
         env:

@@ -297,6 +297,10 @@ go test ./internal/aicontent/... -run TestAutoCheckGate
 go test ./internal/aicontent/... -run TestChapterAtomicInsert
 
 # v2.13 新增门禁
+# PRD 闭环性审计：死链 / §16-N 引用 / 文件引用 / 版本同步 / 模块落点矩阵（自查表·验收·契约·字典）
+#   ⚠️ 新增模块时**必须同时在审计脚本的 DICT_MAP / ACCEPT_KW 里登记** —— 显式登记本身就是一次人工确认
+python tools/audit_prd_closure.py
+
 # 对外文案禁词扫描（广告法）+ 对外数字与上游一致性（AUTO 区块不得手改）
 #   ⚠️ 该项目禁词扫描**不依赖上游**；数字与讲次两项校验在上游缺失时**显式跳过并说明原因**
 #      （上游是本地路径，CI 上没有）—— 不这么做会造成"CI 永远红"，那样的门禁等于没有。

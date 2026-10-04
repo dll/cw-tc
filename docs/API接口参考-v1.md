@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.10**（v2.14 M2 支付接口补齐 / 主动查单与对账明细 · M4 AI 调用留痕与公示字段） |
+| 版本 | **v1.11**（v2.15 闭环补齐：模块 Q 三个管理端接口；§2.11 与 §2.17 对齐） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -351,6 +351,9 @@
 | GET · POST | `/admin/deletions` · `/{id}/approve` | 管理员 | **注销审核**：前置校验 + 匿名化执行（§7.10.10（五）） |
 | GET | `/admin/broadcasts/preview` | 管理员 | **广播预览：返回触达人数** |
 | POST | `/admin/broadcasts` | 管理员 | 发送广播 |
+| GET·PATCH | `/admin/content` | 管理员 | **对外内容管理**（简介三档 / 六条亮点 / 声明 / AI 公示 `filing_note`）；**发布即生成版本，旧版本不删**；**`evidence_ref` 为空不允许发布**；发布与下架**二次确认** |
+| GET·PATCH | `/admin/job-map` | 管理员 | **就业直达映射**维护与发布；**`evidence_ref` 与 `lecture_refs` 缺一不得发布**；**可改不可清空** |
+| GET·PATCH | `/admin/showcase` | 管理员 | **学员成果核验与授权台账**（提交 / 授权 / 撤回时间 · 核验人）；**一键下架**；**撤回后 24h 内下架（含缓存失效）**；**只核验不存档**（不留劳动合同 / 社保 / 薪资） |
 | GET | `/admin/audit` | 管理员 | 审计日志 |
 
 ### 2.13 学员侧「我的」模块（模块 L，**v2.5 新增**）
