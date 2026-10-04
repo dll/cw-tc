@@ -201,6 +201,18 @@
      —— **"学校要求学生付费"这条不做**；进校园须走**学校 / 企业付费**（§16-58）。
      进校园还须 **教育 App 提供者备案**（前置 **ICP 备案 + 等保定级备案**，§16-59 / §16-60）。
 
+15. **测评可信度（v2.16 新增）** —— **证书的价值 = 测评的可信度**；
+    一旦"可以代考、可以刷分"，前面所有质量投入全部作废（PRD §7.7 C-7）：
+   - **单档单会话**：同档测评同时只允许一个进行中会话（**DB 部分唯一索引兜住**）；
+     换设备必须走**接管流程**并**留痕 + 标记异常**，**不得静默允许**；
+   - **断线续考**：答题状态**按题即时持久化**；断线重连**恢复当前题与剩余时间**；
+     **不因断线自动交卷**；⚠️ **剩余时间一律以服务端计算**（客户端时钟不可信）；
+   - **异常标记 ≠ 判负**：切屏 / 单题秒答 / 连击 / 设备与 IP 突变 / 无心跳 / 多会话
+     **只写 `exam_anomaly`**；⚠️ **不得凭单一信号判负**，**不得用 AI 判定作弊**
+     （AI 可辅助聚类，**判定权在人**），判定**必填理由 + 写审计 + 学员可申诉**；
+   - **重考有冷却**（可配），组卷**优先避开已做题**；
+   - **时长与冷却都存 `system_config`**，**不写死代码**（铁律 11 同一口径）。
+
 ## 质量门禁
 
 ```bash
@@ -327,6 +339,28 @@ go test ./internal/pubsite/... -run TestFilingNoteRequired
 
 # 支付：App 支付取参 + 主动查单幂等（重复查单不重复开通权益）
 go test ./internal/payment/... -run 'TestAppPrepay|TestQueryIdempotent'
+
+# v2.16 新增门禁
+# 测评可信度：同档第二个会话必须被拒（并发开考只允许一个 ongoing）
+go test ./internal/exam/... -run TestSingleSession
+
+# 断线续考：改客户端时间不影响剩余时长；重连恢复同一题与剩余时间
+go test ./internal/exam/... -run 'TestResumeState|TestServerDeadline'
+
+# 异常只标记不判定：构造切屏/秒答，成绩照常可判，anomaly 记录存在且 pending
+go test ./internal/exam/... -run TestAnomalyMarksOnly
+
+# 金额三段一致：amount = price - discount；退款按实付
+go test ./internal/payment/... -run 'TestAmountSnapshot|TestRefundUsesPaidAmount'
+
+# 优惠码三重限制：单人限用 / 总量 / 有效期
+go test ./internal/promo/... -run TestPromoLimits
+
+# 运营位：课程下架后同事务置 removed；排期到期自动下线
+go test ./internal/operations/... -run 'TestSlotRemovedOnCourseOffline|TestSlotAutoExpire'
+
+# 离线授权：退款后 grant 置 revoked
+go test ./internal/offline/... -run TestGrantRevokedOnRefund
 
 # 学员成果：客户端取不到 self_report / withdrawn；撤回后 24h 内下架（含缓存失效）
 go test ./internal/pubsite/... -run TestShowcaseVisibility
