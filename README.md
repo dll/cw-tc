@@ -19,13 +19,15 @@
 ```
 cw-tc/
 ├── docs/
-│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2.16（**当前权威，先读这份**）
+│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2.17（**当前权威，先读这份**）
 │   ├── M2-支付接入要求-v1.md   ← M2 详细要求（资质 / 渠道 / 验收 / 排期）
 │   ├── M4-模型选型与AI备案要求-v1.md ← M4 详细要求（选型 / 备案登记 / 生成内容标识）
 │   ├── 对外展示内容-v1.md      ← 官网/落地页的文案与数字 v1.0（**数字由脚本生成，勿手改**）
 │   ├── API接口参考-v1.md       ← 接口契约 v1.12（前后端并行开发的基线）
 │   ├── 数据字典-v1.md          ← 建表与迁移的唯一定义 v1.12
-│   ├── 技术选型-v1.md          ← 技术栈决策 v1.1（选型依据、多端边界、风险）
+│   ├── 技术方案-v1.md          ← **内部结构**：分层 / 事务与幂等边界 / 任务 / 开发顺序 v1.0
+│   ├── 开发准备度评估-v1.md    ← **开工前 Go / No-Go 自评**（输入清单 / 实测 / 未闭合项）v1.0
+│   ├── 技术选型-v1.md          ← 技术栈决策 v1.2（含「运行支撑栈」）
 │   ├── PRD-第三课堂-v1.md      ← v1.0 立项基线（已归档，仅作对照）
 │   └── README.md               文档索引
 ├── deploy/
@@ -37,6 +39,7 @@ cw-tc/
 ├── packages/
 │   ├── server/                 Go 后端（Gin）· REST API + 对外静态页
 │   │   ├── cmd/server/         入口（配置校验失败即拒绝启动）
+│   │   ├── migrations/        数据库迁移（0001 已落地；0002~0019 按数据字典 §8 实现）
 │   │   └── internal/
 │   │       ├── api/            路由 · /health · /public/status · 访问日志脱敏
 │   │       ├── config/         配置加载与强制密钥校验
@@ -93,10 +96,19 @@ cd packages/admin && npm install && npm run typecheck && npm run test
 ```
 
 > **本地运行后端前**，必须先准备强制密钥（否则服务会**拒绝启动**，这是设计如此）：
-> 见 [`deploy/.env.example`](deploy/.env.example) —— `CWTC_ID_CARD_ENC_KEY`（32 字节）、
-> `CWTC_ID_CARD_HMAC_KEY`、`CWTC_SESSION_SECRET`（均 ≥32 字节）。
+> 见 [`deploy/.env.example`](deploy/.env.example) —— `CWTC_ID_CARD_ENC_KEY`（**恰好 32 个字符**）、
+> `CWTC_ID_CARD_HMAC_KEY`、`CWTC_SESSION_SECRET`（均 **≥32 个字符**）。
+>
+> ```bash
+> # ⚠️ 校验的是「字符串长度」：ENC 恰好 32 个字符；HMAC / SESSION ≥32 个字符
+> export CWTC_ID_CARD_ENC_KEY=$(openssl rand -base64 24)   # 恰好 32 字符
+> export CWTC_ID_CARD_HMAC_KEY=$(openssl rand -base64 24)
+> export CWTC_SESSION_SECRET=$(openssl rand -base64 24)
+> ```
+>
+> 开工前自查清单见 [`docs/开发准备度评估-v1.md`](docs/开发准备度评估-v1.md)。
 
-## 铁律（共 8 条，详版见 [`AGENTS.md`](AGENTS.md)）
+## 铁律（**共 15 条**，下列为前 8 条概要；**详版见 [`AGENTS.md`](AGENTS.md)**）
 
 1. **事实源分两类**：`upstream` 课程以 `AI化教学创新/` 为事实源，**代码不写死内容**；
    `platform` 课程（教师建）**平台即事实源**，`sync` 必须按 `source` 过滤。
@@ -117,14 +129,15 @@ cd packages/admin && npm install && npm run typecheck && npm run test
 
 | 文档 | 说明 |
 |---|---|
-| [`docs/PRD-第三课堂-v2.md`](docs/PRD-第三课堂-v2.md) | 产品需求文档 **v2.16**（**当前权威**） |
+| [`docs/PRD-第三课堂-v2.md`](docs/PRD-第三课堂-v2.md) | 产品需求文档 **v2.17**（**当前权威**） |
 | [`docs/技术选型-v1.md`](docs/技术选型-v1.md) | 技术栈决策 **v1.2**（主栈 + **运行支撑栈**） |
 | [`docs/API接口参考-v1.md`](docs/API接口参考-v1.md) | **接口契约 v1.12（前后端并行开工的依据）** |
 | [`docs/数据字典-v1.md`](docs/数据字典-v1.md) | **数据字典 v1.12（建表与 migration 的依据）** |
 | [`docs/对外展示内容-v1.md`](docs/对外展示内容-v1.md) | 官网与落地页文案与数字 v1.0 |
 | [`docs/M2-支付接入要求-v1.md`](docs/M2-支付接入要求-v1.md) | M2 详细要求 v1.0 |
 | [`docs/M4-模型选型与AI备案要求-v1.md`](docs/M4-模型选型与AI备案要求-v1.md) | M4 详细要求 v1.0 |
-| `docs/技术方案-v1.md` | 模块级设计（M0 末建） |
+| [`docs/技术方案-v1.md`](docs/技术方案-v1.md) | **内部结构 v1.0**（分层 / 决策 / 开发顺序） |
+| [`docs/开发准备度评估-v1.md`](docs/开发准备度评估-v1.md) | **开工前 Go / No-Go 自评 v1.0** |
 | `docs/部署运维手册-v1.md` | 部署手册（M6 前建） |
 
 ## 相关项目

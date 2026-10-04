@@ -54,17 +54,44 @@ RULE_LINE='禁词|禁用|禁止|不得|不许|不可以对外讲|不允许|红�
 # 目前用于《对外展示内容》的"禁词表"本身（那几行就是禁词清单，必须写出来）。
 # 豁免必须显式标注，且标注本身就是一次人工确认。
 # ---------------------------------------------------------------------------
+# 收集待扫描文本。
+# ⚠️ 这里**故意不用 `xargs -0 cat`**：本机（Git Bash）环境下会因"环境块过大"导致
+#    xargs exec 失败，而该失败被管道吞掉 → **静默少扫整个目录**（已实测踩过）。
+#    shell 循环不 exec 外部进程，不受环境块大小影响。
 collect() {
   for f in "$@"; do
-    [[ -f "$f" ]] && cat "$f"
-    [[ -d "$f" ]] && find "$f" -type f \
-      \( -name '*.dart' -o -name '*.ts' -o -name '*.vue' -o -name '*.js' -o -name '*.json' \) -print0 \
-      | xargs -0 -r cat
+    if [[ -f "$f" ]]; then
+      cat "$f"
+    elif [[ -d "$f" ]]; then
+      find "$f" -type f \
+        \( -name '*.dart' -o -name '*.ts' -o -name '*.vue' -o -name '*.js' -o -name '*.json' \) \
+        -print0 | while IFS= read -r -d '' p; do cat "$p"; done
+    fi
   done
 }
 
+# 待扫描文件清单（供"证明扫过"用）——避免门禁在什么都没读到的情况下报"通过"。
+SCAN_FILES=$(for f in "${TARGETS[@]}"; do
+  if [[ -f "$f" ]]; then echo "$f"
+  elif [[ -d "$f" ]]; then
+    find "$f" -type f \
+      \( -name '*.dart' -o -name '*.ts' -o -name '*.vue' -o -name '*.js' -o -name '*.json' -o -name '*.md' \)
+  fi
+done)
+
 echo "==> 扫描对外宣传禁词（PRD §9.12）"
-HITS=$(collect "${TARGETS[@]}" \
+TEXT=$(collect "${TARGETS[@]}")
+echo "    扫描目标：${TARGETS[*]}"
+echo "    实际读到 ${#TEXT} 个字符（文件清单 $(printf '%s\n' "$SCAN_FILES" | grep -c . ) 个）"
+
+# 门禁必须能证明自己"扫过东西"。读到 0 字符 = 目标为空或读取失败，
+# 此时报"通过"是假通过 —— 直接判失败（这正是 xargs 那个坑的教训）。
+if [[ "${#TEXT}" -eq 0 ]]; then
+  echo "✗ 未读到任何文本：扫描目标为空或读取失败。门禁无法自证扫过，判失败。"
+  exit 1
+fi
+
+HITS=$(printf '%s' "$TEXT" \
   | awk '/CLAIMS-ALLOW:BEGIN/{skip=1;next} /CLAIMS-ALLOW:END/{skip=0;next} skip==1{next} {print}' \
   | grep -vE "$RULE_LINE" \
   | grep -nE "$PATTERN" || true)

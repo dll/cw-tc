@@ -195,12 +195,22 @@ def main():
                       ["`%s`" % v for v in sorted(uncovered)]))
 
     # ---------- 6. 版本一致性（版本号同步是项目约定，实测最常漂的就是它） ----------
+    # ⚠️ 期望值**从契约文档自身的表头推导**，不在这里硬编码 ——
+    #    硬编码的话，每次升版都要改脚本，而"要改脚本才能过"的门禁迟早被绕过。
     prd_ver = re.search(r"本 PRD 的版本\*\*：\*\*(v[\d.]+)\*\*", prd)
-    api_ver = re.search(r"\| 版本 \| \*\*(v[\d.]+)\*\*", api)
-    dic_ver = re.search(r"\| 版本 \| \*\*(v[\d.]+)\*\*", dic)
+    # ⚠️ 版本行里的加粗块后面可能还有说明（如 `**v1.2（增量修订）**`），
+    #    所以不能要求 `**` 紧跟数字，否则会"读不到版本号"→ 整个检查静默空转（已踩过）。
+    api_ver = re.search(r"\| 版本 \| \*\*(v[\d.]+)", api)
+    dic_ver = re.search(r"\| 版本 \| \*\*(v[\d.]+)", dic)
+    tech = read(os.path.join(ROOT, "docs", "技术选型-v1.md"))
+    tech_ver = re.search(r"\| 版本 \| \*\*(v[\d.]+)", tech)
+    plan = read(os.path.join(ROOT, "docs", "技术方案-v1.md"))
+    plan_ver = re.search(r"\| 版本 \| \*\*(v[\d.]+)", plan)
     peers = {"README.md": read(os.path.join(ROOT, "README.md")),
              "docs/README.md": read(os.path.join(ROOT, "docs", "README.md")),
-             "SOUL.md": read(os.path.join(ROOT, "SOUL.md"))}
+             "SOUL.md": read(os.path.join(ROOT, "SOUL.md")),
+             "docs/PRD-第三课堂-v2.md": prd,
+             "AGENTS.md": read(os.path.join(ROOT, "AGENTS.md"))}
     drift = []
     for label, m in (("PRD", prd_ver), ("API", api_ver), ("数据字典", dic_ver)):
         if not m:
@@ -216,16 +226,27 @@ def main():
     # 统一去掉前缀 v 再比较（上面正则捕到的是 `v2.15` 这种带 v 的写法）
     cur = {"PRD": prd_ver.group(1).lstrip("v") if prd_ver else None,
            "API": api_ver.group(1).lstrip("v") if api_ver else None,
-           "字典": dic_ver.group(1).lstrip("v") if dic_ver else None}
+           "字典": dic_ver.group(1).lstrip("v") if dic_ver else None,
+           "技术选型": tech_ver.group(1).lstrip("v") if tech_ver else None,
+           "技术方案": plan_ver.group(1).lstrip("v") if plan_ver else None}
+    if any(v is None for v in cur.values()):
+        problems.append(("版本号读取失败（正则与文档格式不符，检查会空转）",
+                         ["%s 读不到版本号" % k for k, v in cur.items() if v is None]))
+    # 覆盖三种写法：`PRD v2.16` · `接口契约 v1.12` · `` `docs/数据字典-v1.md`（**v1.12**） ``
     pats = [("PRD", re.compile(r"PRD v(\d+\.\d+)")),
             ("API", re.compile(r"(?:接口契约|API 参考) v(\d+\.\d+)")),
-            ("字典", re.compile(r"数据字典 v(\d+\.\d+)"))]
+            ("字典", re.compile(r"数据字典[^\n]{0,12}?v(\d+\.\d+)")),
+            ("字典", re.compile(r"数据字典-v1\.md`\*{0,2}[（(]\*{0,2}v(\d+\.\d+)")),
+            ("技术选型", re.compile(r"技术选型[^\n]{0,12}?v(\d+\.\d+)")),
+            ("技术方案", re.compile(r"技术方案[^\n]{0,12}?v(\d+\.\d+)"))]
     stale = []
-    for fn in ("README.md", "docs/README.md", "SOUL.md", "docs/PRD-第三课堂-v2.md"):
-        body = read(os.path.join(ROOT, fn.replace("/", os.sep)))
-        # PRD 的 §0 变更摘要与附录 C 版本历史里**本来就该有旧版本号**，跳过
+    for fn, body in peers.items():
+        # PRD 的 §0 变更摘要与附录 C 版本历史里**本来就该有旧版本号**，跳过。
         skip_from = body.index("## 1. 第三课堂是什么") if fn.endswith("PRD-第三课堂-v2.md") else 0
-        hist_start = body.index("版本历史") if "版本历史" in body else len(body)
+        # ⚠️ 边界**不能**用 body.index("版本历史")：该词在 §0 变更摘要（约第 80 行）里
+        #    就已经出现过，会把上界提前到文首 → 本检查对 PRD **整体空转**（已实测踩过）。
+        #    改为锚定附录 C 的标题 —— 版本历史就在那一节里。
+        hist_start = body.index("## 附录 C") if "## 附录 C" in body else len(body)
         for label, rx in pats:
             for m in rx.finditer(body):
                 if m.start() < skip_from or m.start() > hist_start:
@@ -235,6 +256,47 @@ def main():
                     stale.append("%s 里写着 %s v%s（当前 %s）：%s" % (fn, label, m.group(1), cur[label], line.strip()[:60]))
     if stale:
         problems.append(("陈旧版本号残留", stale))
+
+    # ---------- 8. 铁律条数自述一致（README 写"共 N 条"，AGENTS 实际几节） ----------
+    # 铁律一直在加，而 README 里的"共 N 条"是手写的 —— 典型的会漂的地方。
+    agents_body = peers.get("AGENTS.md", "")
+    readme_body = peers.get("README.md", "")
+    oath_sec = agents_body.split("## 铁律")[1] if "## 铁律" in agents_body else ""
+    oath_nums = [int(x) for x in re.findall(r"(?m)^(\d+)\. \*\*", oath_sec)]
+    actual_oath = max(oath_nums) if oath_nums else 0
+    m_oath = re.search(r"铁律（共\s*(\d+)\s*条", readme_body)
+    if m_oath and actual_oath and int(m_oath.group(1)) != actual_oath:
+        problems.append(("铁律条数自述不一致",
+                         ["README.md 写「共 %s 条」，AGENTS.md 实际 %d 条（铁律只会加，README 的手写数字要跟着改）"
+                          % (m_oath.group(1), actual_oath)]))
+
+    # ---------- 9. 自述数字 / 版本自洽（"数字要有出处"要能被机器验一次） ----------
+    # 文档里凡"给了派生命令的数字"，都应当与那条命令的结果一致；否则就是编数或漂了。
+    docs_readme = peers["docs/README.md"]
+    n_api = len(re.findall(r"(?m)^\|\s*(?:GET|POST|PUT|PATCH|DELETE)(?:·[A-Z]+)?\s*\|", api))
+    n_tbl = len(re.findall(r"(?m)^#### \d+\.\d+\.\d+ `|^### \d+\.\d+ `", dic))
+    selfnum = []
+    m = re.search(r"实测\s*(\d+)\s*个接口", docs_readme)
+    if m and int(m.group(1)) != n_api:
+        selfnum.append("docs/README 写「实测 %s 个接口」，按它给的那条 grep 命令实际是 %d" % (m.group(1), n_api))
+    m = re.search(r"(\d+) 个表级小节", docs_readme)
+    if m and int(m.group(1)) != n_tbl:
+        selfnum.append("docs/README 写「%s 个表级小节」，实际 %d" % (m.group(1), n_tbl))
+    # PRD 头部「版本」字段必须等于附录 C 的「本 PRD 的版本」
+    hv = re.search(r"(?m)^\|\s*版本\s*\|\s*\*\*(v[\d.]+)", prd)
+    cv = re.search(r"本 PRD 的版本\*\*：\*\*(v[\d.]+)", prd)
+    if hv and cv and hv.group(1) != cv.group(1):
+        selfnum.append("PRD 头部版本字段写 %s，附录 C 写 %s —— 两处必须一致" % (hv.group(1), cv.group(1)))
+    # §16「待确认」计数：SOUL.md 里手写的那个数必须等于现场 count（口径：总行数 − 墓碑行数）
+    s16 = prd[prd.index("## 16. 待拍板事项"):]
+    todo16 = s16[s16.index("\n### 待确认\n"):]
+    rows16 = [l for l in todo16.splitlines() if re.match(r"^\|\s*\*{0,2}\d+", l)]
+    live16 = len([l for l in rows16 if "~~" not in l])
+    m = re.search(r"待确认\s*\*{0,2}(\d+)\s*项", peers.get("SOUL.md", ""))
+    if m and int(m.group(1)) != live16:
+        selfnum.append("SOUL.md 写「待确认 %s 项」，实际 %d（§16 口径：总行数 − 墓碑行数）" % (m.group(1), live16))
+    if selfnum:
+        problems.append(("自述数字 / 版本自相矛盾", selfnum))
 
     # ---------- 输出 ----------
     if not a.quiet:
