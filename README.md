@@ -19,7 +19,10 @@
 ```
 cw-tc/
 ├── docs/
-│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2.12（**当前权威，先读这份**）
+│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2.13（**当前权威，先读这份**）
+│   ├── 对外展示内容-v1.md      ← 官网/落地页的文案与数字 v1.0（**数字由脚本生成，勿手改**）
+│   ├── API接口参考-v1.md       ← 接口契约 v1.9（前后端并行开发的基线）
+│   ├── 数据字典-v1.md          ← 建表与迁移的唯一定义 v1.9
 │   ├── 技术选型-v1.md          ← 技术栈决策 v1.1（选型依据、多端边界、风险）
 │   ├── PRD-第三课堂-v1.md      ← v1.0 立项基线（已归档，仅作对照）
 │   └── README.md               文档索引
@@ -38,7 +41,9 @@ cw-tc/
 │   │       └── redact/         身份证号 / 手机号脱敏（铁律 3 的代码落点）
 │   ├── app/                    Flutter 学生端（Android / Web，一套代码）
 │   └── admin/                  Vue 3 管理端（教师工作台 / 课程 / 订单 / 证书 / 广播）
-├── .github/workflows/ci.yml    质量门禁（Go / Flutter / Vue / 合规扫描）
+├── .github/workflows/ci.yml    质量门禁（Go / Flutter / Vue / 合规扫描 / 对外文案禁词）
+├── tools/
+│   └── gen_public_content.py   由上游 JSON 现场刷新对外数字（**数字不手改**）
 └── data/                       上游内容的本地同步产物（不入版本库）
 ```
 
@@ -48,7 +53,7 @@ cw-tc/
 |---|---|
 | **学生端（主）** | **Flutter 3.22+** —— 一套代码出 **Android / Web**（iOS / 鸿蒙不做） |
 | **管理端** | **Vue 3 + Vite + Element Plus + Pinia** —— 桌面优先（含教师工作台） |
-| **对外静态页** | **Go 模板直出**（验真 / 隐私政策 / 退款政策，保 SEO 与首屏） |
+| **对外静态页** | **Go 模板直出**（验真 / 隐私政策 / 退款政策 / **官网落地页 `/about` `/majors` `/jobs` `/showcase`**，保 SEO 与首屏） |
 | **后端** | **Go 1.26 + Gin** + PostgreSQL 15（+ **pgvector**） + Redis |
 | **支付** | 微信支付 + 支付宝（**扫码 / App 调起**，走自建网关层） |
 | **AI** | 自建 **AI 网关** + **国内合规大模型**（RAG 基于课程知识库） |
@@ -65,6 +70,10 @@ cat docs/PRD-第三课堂-v2.md
 
 # 2. 读技术选型（栈已定，含多端边界与风险）
 cat docs/技术选型-v1.md
+
+# 2.5 跑合规门禁（对外文案禁词 + 敏感信息 + 对外数字一致性）
+bash deploy/scripts/scan-claims.sh
+bash deploy/scripts/scan-sensitive.sh
 
 # 3. 后端：构建与自检
 cd packages/server

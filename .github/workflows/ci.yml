@@ -106,6 +106,9 @@ jobs:
       - name: 敏感信息扫描（ID card / phone 不得明文）
         run: bash deploy/scripts/scan-sensitive.sh
 
+      - name: 对外文案禁词扫描（PRD §9.12 / 广告法）
+        run: bash deploy/scripts/scan-claims.sh
+
       - name: 密钥泄漏扫描（gitleaks）
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
         env:

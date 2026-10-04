@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.8**（v2.12 模块 P 深挖：章 / 讲粒度 · 生成引用 · 自动体检 · 讲次级撤下） |
+| 版本 | **v1.9**（v2.13 模块 Q：对外展示内容 / 就业直达映射 / 学员成果，三个公开接口） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -101,7 +101,7 @@
 
 | 类别 | 鉴权 | 示例 |
 |---|---|---|
-| **公开（匿名）** | 无 | `/health` · `/public/status` · `/app/latest` · `/verify/{certNo}` · `/majors` · `/courses`（仅上架课程的公开字段） |
+| **公开（匿名）** | 无 | `/health` · `/public/status` · `/app/latest` · `/verify/{certNo}` · `/majors` · `/courses`（仅上架课程的公开字段） · **`/public/overview` · `/public/job-map` · `/public/showcase`（v2.13，只回已发布/已授权/已核验的内容）** |
 | **学员（需登录）** | 会话 | `/me/*` · `/orders` · `/exams` · `/ai/*` · `/notes` · `/me/certs` |
 | **教师（角色）** | 会话 + `role=teacher` | `/teacher/**`（**且必须校验资源归属：只能操作自己的课程**）；**响应体须过滤身份证号与手机号**（§1.9） |
 | **运营管理员** | 会话 + `role=admin_ops` | `/admin/**`（**不含** `/admin/admins` · `/admin/settings` · `/admin/exports`） |
@@ -157,6 +157,8 @@
 | `/auth/sms/send` | 图形验证码前置；单手机号 ≤ 10 条/日、60 s 冷却；单 IP ≤ 20 次/时 |
 | `/auth/login` | 单账号 + 单 IP 失败 5 次锁定 10 分钟 |
 | `/verify/{certNo}` | 单 IP ≤ 20 次/分 |
+| `/public/overview` · `/public/job-map` | 单 IP ≤ 120 次/分；**以 `web_content.version` 为缓存键**，发布即失效 |
+| `/public/showcase` | 单 IP ≤ 60 次/分；**学员撤回授权必须主动失效缓存**（否则“撤回了还挂着”是合规事故） |
 | `/ai/**` | 按「学员 × 课程」额度；同时限制并发 1 路/学员 |
 
 - 触发限频返回 **HTTP 429** 且 `code=10903`。
@@ -447,6 +449,22 @@
 | GET | `/public/status` | 公开 | **CCIT 官网用的聚合快照**（**不含任何个人信息**） |
 | GET | `/app/latest` | 公开 | APK 最新版本（`versionCode` / 下载地址 / **SHA-256**） |
 
+### 2.17 对外展示（模块 Q，**v2.13 新增**）
+
+> 与 §2.12 的 `/public/status` **分工不同**：**`/public/status` 答"平台活着没有"**，
+> 本节三个接口答"**官网上说什么**"（PRD §7.17）。四者共用一条原则：
+> **无需鉴权 · 可缓存 · 不含任何个人信息 · 不可用时如实返回**。
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/public/overview` | 公开 | 落地页聚合内容（简介三档 / 六条亮点 / 专业矩阵 / AI 技术 / 含金量四证 + 上游只读数字） |
+| GET | `/public/job-map` | 公开 | 就业直达映射；**只回 `status=published` 且 `evidence_ref` 与 `lecture_refs` 均非空**的条目 |
+| GET | `/public/showcase` | 公开 | 学员成果与评价；**只回 `status=verified` 且授权有效**（未撤回）的条目，分页 |
+
+- **管理端配套**（`admin_ops`，见 §2.11）：`/admin/content`（发布对外内容）·
+  `/admin/job-map`（发布就业映射）· `/admin/showcase`（核验 / 授权台账 / **一键下架**）。
+- **硬约束**：**`self_report` 与 `withdrawn` 条目在任何客户端接口都取不到**（有测试）。
+
 ---
 
 ## 3. 关键接口详述（**只详写复杂或有坑的**）
@@ -604,6 +622,91 @@ data: {"tokens_in":812,"tokens_out":256}
   **已过期绝不能返回 `valid`**（宁严勿宽）。
 - `holder_masked` **只给姓氏级信息**（如 `张*`），**不回显身份证号任何片段**。
 - `disclosure` 字段**必须原样出现在页面与 API**（平台认证口径的如实披露，PRD v2 §9.5）。
+
+---
+
+### 3.10 对外展示三接口（**v2.13，落地页与官网共用**）
+
+**（一）`GET /api/v1/public/overview`**
+
+```json
+{
+  "code": 0,
+  "data": {
+    "source": "cw-tc",
+    "contentVersion": 7,
+    "updatedAt": "<RFC3339>",
+    "intro": { "short": "...", "para": "...", "long": "..." },
+    "highlights": [
+      { "slot": 1, "title": "AI 陪学，答得出来源", "body": "...", "evidenceRef": "/learn/{code}/{n}" }
+    ],
+    "majors": [ { "id": 1, "name": "软件工程", "courseCodes": ["02-DO"] } ],
+    "aiTech": [ { "title": "统一 AI 网关", "body": "...", "evidenceRef": "PRD §11.3" } ],
+    "achievability": {
+      "issuer": "畅网智能科技",
+      "certNoRule": "CW-{课程码}-{级别位}{年份}{流水号6位}",
+      "bands": { "L1": { "pass": 60 }, "L2": { "pass": 70 }, "L3": { "pass": 80 } },
+      "stats": { "courses": 7, "lectures": 96, "questions": 1204, "statsAt": "<date>" }
+    }
+  }
+}
+```
+
+- **`evidenceRef` 一律非空** —— 后端发布时校验；**返回体里带不出"没有依据的亮点"**。
+- **`stats` 由上游只读 JSON 现场计算**，**不落人工维护的字段**；`statsAt` 标明数据截至。
+
+**（二）`GET /api/v1/public/job-map?majorId=&courseCode=`**
+
+```json
+{
+  "code": 0,
+  "data": {
+    "items": [
+      {
+        "courseCode": "05-OS",
+        "certLevel": "L3",
+        "jobDirection": "系统软件与运维方向 · 操作系统架构师",
+        "skillItems": ["能做设计", "能定责", "能跨层综合"],
+        "lectureRefs": ["05-OS/21", "05-OS/15"],
+        "evidenceRef": "证书名 + 课程大纲:64"
+      }
+    ]
+  }
+}
+```
+
+- **`lectureRefs` 为空数组的条目不会被返回**（后端过滤，不靠前端）。
+- **不得返回就业率 / 薪资字段** —— **接口层面就没有这些字段**，从根上避免被拿去做宣传。
+
+**（三）`GET /api/v1/public/showcase?kind=&page=1&pageSize=20`**
+
+```json
+{
+  "code": 0,
+  "data": {
+    "page": 1, "pageSize": 20, "total": 0,
+    "items": [
+      {
+        "kind": "cert_earned",
+        "nickname": "小舟",
+        "majorName": "软件工程",
+        "certLevel": "L2",
+        "certNoMasked": "CW-CN-M2026****37",
+        "summary": "...",
+        "verifiedAt": "<RFC3339>",
+        "companyName": null
+      }
+    ],
+    "notice": "以上为经学员授权展示的真实成果，非全部学员。"
+  }
+}
+```
+
+- **永不返回**：真名 · 身份证号（含脱敏）· 手机号（含脱敏）· 薪资 ·
+  `display_consent_at` / `consent_revoked_at` 原始值（对外只反映"是否展示"）。
+- **`companyName` 默认 `null`**，仅在学员**单独授权**企业名时返回。
+- **`notice` 字段是固定的**（防幸存者偏差，PRD §9.12（二）），**不允许被文案覆盖**。
+- **撤回后 24h 内**：该条目 `status=withdrawn`，接口立即取不到，并**主动失效 CDN / 服务端缓存**。
 
 ---
 
