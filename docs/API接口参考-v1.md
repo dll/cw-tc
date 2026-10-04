@@ -667,7 +667,7 @@ data: {"tokens_in":812,"tokens_out":256}
         "certLevel": "L3",
         "jobDirection": "系统软件与运维方向 · 操作系统架构师",
         "skillItems": ["能做设计", "能定责", "能跨层综合"],
-        "lectureRefs": ["05-OS/21", "05-OS/15"],
+        "lectureRefs": ["05-OS/17", "05-OS/21", "05-OS/22"],
         "evidenceRef": "证书名 + 课程大纲:64"
       }
     ]

@@ -43,7 +43,8 @@ cw-tc/
 │   └── admin/                  Vue 3 管理端（教师工作台 / 课程 / 订单 / 证书 / 广播）
 ├── .github/workflows/ci.yml    质量门禁（Go / Flutter / Vue / 合规扫描 / 对外文案禁词）
 ├── tools/
-│   └── gen_public_content.py   由上游 JSON 现场刷新对外数字（**数字不手改**）
+│   ├── gen_public_content.py   由上游 JSON 现场刷新对外数字（**数字不手改**）
+│   └── check_job_map_refs.py   校验就业直达的讲次引用对得上上游目录
 └── data/                       上游内容的本地同步产物（不入版本库）
 ```
 

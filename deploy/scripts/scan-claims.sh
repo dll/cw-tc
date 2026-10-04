@@ -81,16 +81,26 @@ if [[ -n "$HITS" ]]; then
 fi
 echo "✓ 未发现对外宣传禁词"
 
-echo "==> 校验对外数字是否与上游一致（数字不得手改）"
-if [[ -f tools/gen_public_content.py ]]; then
-  if command -v python3 >/dev/null 2>&1; then
-    python3 tools/gen_public_content.py --check || {
-      echo "✗ 文档里的 AUTO 数字区块落后于上游，请重跑：python3 tools/gen_public_content.py"
-      exit 1
-    }
-  else
-    echo "（本机无 python3，跳过；CI 环境会执行）"
-  fi
+echo "==> 校验对外数字与讲次引用是否与上游一致（数字 / 依据都不得手改）"
+#
+# ⚠️ 上游课程资产是**本地路径**（`AI化教学创新/`），CI 上没有。
+# 因此这两项校验**在上游缺失时跳过并说明** —— 不跳过会造成"CI 永远红"，那样的门禁等于没有。
+# 跳过是显式的、会打印原因的，不是静默放行。
+UPSTREAM="${CWTC_UPSTREAM:-E:/2026-2027/2026-2027-1/AI化教学创新/课程总览.json}"
+if [[ ! -f "$UPSTREAM" ]]; then
+  echo "（未找到上游数据源：$UPSTREAM）"
+  echo "（跳过对外数字与讲次引用校验 —— 本地 / 有上游的流水线上会执行）"
+elif ! command -v python3 >/dev/null 2>&1; then
+  echo "（本机无 python3，跳过；有 python3 的环境会执行）"
+else
+  python3 tools/gen_public_content.py --check || {
+    echo "✗ 文档里的 AUTO 数字区块落后于上游，请重跑：python3 tools/gen_public_content.py"
+    exit 1
+  }
+  python3 tools/check_job_map_refs.py || {
+    echo "✗ 就业直达的 lecture_refs 与上游讲次目录对不上（映射不许拍脑袋）"
+    exit 1
+  }
 fi
 
 echo "全部通过。"

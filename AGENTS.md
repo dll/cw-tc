@@ -273,7 +273,12 @@ go test ./internal/aicontent/... -run TestChapterAtomicInsert
 
 # v2.13 新增门禁
 # 对外文案禁词扫描（广告法）+ 对外数字与上游一致性（AUTO 区块不得手改）
+#   ⚠️ 该项目禁词扫描**不依赖上游**；数字与讲次两项校验在上游缺失时**显式跳过并说明原因**
+#      （上游是本地路径，CI 上没有）—— 不这么做会造成"CI 永远红"，那样的门禁等于没有。
 bash deploy/scripts/scan-claims.sh
+
+# 就业直达的 lecture_refs 必须对得上上游讲次目录（"点得进去"要能当场验）
+python tools/check_job_map_refs.py
 
 # 对外内容可发布门槛：evidence_ref 为空不允许发布（就业映射与亮点）
 go test ./internal/pubsite/... -run TestEvidenceRequired
