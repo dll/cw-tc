@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.5**（v2.9 可配置阈值：业务参数读写 + 统计/评分的展示阈值） |
+| 版本 | **v1.6**（v2.10 讨论区：帖子 / 回复 / 有用 / 投票 / 统一 UGC 举报 / 建议反馈） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -328,10 +328,13 @@
 | GET | `/admin/batch/{batchId}` | 管理员 | 批量结果**逐条明细**（可导出） |
 | POST | `/admin/exports` | **仅 super** | **代学员导出数据**（须填事由；写审计，§7.10.9） |
 | GET | `/admin/requests` | 管理员 | 教师下架 / 纠错申请待办（§7.9 J-8） |
-| GET | `/admin/comments` | 管理员 | **评论审核待办**（机审疑似 + 被举报），可按状态筛选 |
+| GET | `/admin/comments` | 管理员 | **UGC 统一待办**（评论 + 讨论帖 + 回复；机审疑似 + 被举报），按 `target_type` 筛选 |
 | POST | `/admin/comments/{id}/remove` | 管理员 | **下架评论**：**`reason_kind` 必填**（广告/辱骂/隐私/违法/无关/其他，**无"差评"选项**），写审计 + 通知评论者 |
 | POST | `/admin/comments/{id}/restore` | 管理员 | 恢复（误判纠正，写审计） |
 | GET · POST | `/admin/comments/reports/{id}` | 管理员 | 举报处理（**结果通知举报人**） |
+| GET | `/admin/discussions` | 管理员 | 讨论治理列表（**返回真实 `author_id`，匿名帖可见发布者**，§9.10.1） |
+| POST | `/admin/ugc/{targetType}/{id}/remove` | 管理员 | 下架评论 / 帖 / 回复：**`reason_kind` 必填**（枚举无"差评/不利"），写审计 + 通知发布者 |
+| POST | `/admin/ugc/{targetType}/{id}/restore` | 管理员 | 误判恢复（写审计） |
 | GET | `/admin/insights` | 管理员 | **全平台课程运营看板**（六项状态 + 漏斗，可按专业/来源筛选） |
 | GET | `/admin/stats/{courseCode}` | 管理员 | 单课统计明细（**与教师版同一套口径**，M-0） |
 | GET · POST | `/admin/appeals` · `/{id}/handle` | 管理员 | **账号申诉待办与处理**（§7.10.10（三）） |
@@ -363,6 +366,34 @@
 
 > **`/me/certs/{certNo}/file` 的硬约束**：**证书已撤销时返回 404**（不是 403 ——
 > 避免暴露"这个编号曾经存在"之外的更多信息）；**重新下载必须返回与首次逐字节一致的文件**。
+
+### 2.15 讨论区（模块 N，**v2.10 新增**）
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/courses/{code}/topics` | 学员（**已解锁**） | 帖子列表（`kind` / `sort=newest\|useful\|replies` 筛选；**置顶恒在首**） |
+| POST | `/courses/{code}/topics` | 学员（已解锁） | **发帖**（`kind` 五选一；`anonymous` 可选；**疑似试题/答案 → 拒**） |
+| GET · PATCH · DELETE | `/topics/{id}` | 作者本人 / 教师（**仅可置顶与标已解答**） | 详情 / 编辑 / **删除自己的帖**（**教师无删除权**） |
+| POST | `/topics/{id}/replies` | 学员（已解锁） / 教师 | **回复**（`quote_reply_id` 一层引用；教师回复带官方标识且**不可匿名**） |
+| DELETE | `/replies/{id}` | **仅作者本人** | **教师调此接口 → 403**（§7.15 N-5） |
+| POST · DELETE | `/topics/{id}/useful` · `/replies/{id}/useful` | 学员（已解锁） | 点 / 取消"有用"（**不能自投**；重复幂等） |
+| POST | `/topics/{id}/solved` | 作者 / 教师 | 标记已解答 + 指定 `solved_reply_id`（最佳回复） |
+| POST | `/topics/{id}/pin` | **教师+归属** | 置顶 / 取消置顶 |
+| GET | `/topics/{id}/poll` | 学员（已解锁） | **投票详情**：截止前**只返回 `voted_count`**；截止后返回各选项票数 |
+| POST | `/topics/{id}/poll/vote` | 学员（已解锁） | 投票（单选 / 多选；**截止后拒绝**） |
+| GET | `/teacher/discussions` | 教师+归属 | 讨论区工作台：**建议池 / 提问 / 待回复**（分 `kind` 与 `solved` 筛选） |
+| POST | `/teacher/suggestions/{topicId}/feedback` | 教师+归属 | **建议处理**：`accepted / scheduled / rejected`（**rejected 必须带 `reason`**） |
+| POST | `/teacher/suggestions/{topicId}/to-plan` | 教师+归属 | **一键转改版计划**：`problem` = 帖标题，`evidence` = **原帖链接**（§7.15 N-7） |
+| GET | `/me/discussions` | 学员 | 我的帖子与"待我查看的新回复" |
+| GET | `/me/suggestions` | 学员 | **我的建议与处理状态**（含不采纳理由与"已在 vN 改进"） |
+
+> ⚠️ **两条接口层硬约束**：
+> ① **不存在**教师可用的删帖 / 删回复路径（教师 token 调 → **403**）；
+> ② **匿名帖**：对 `/courses/{code}/topics` 返回 `author_display = "匿名学员"`、`author_id = null`；
+> 但 **`/admin/discussions` 返回真实 `author_id` 与学号**（**对同学匿名 ≠ 无痕**，§9.10.1）。
+>
+> **通知**：被回复 / @ / 被标已解答 / 建议被采纳 → **SSE 实时推送**（事件 `discussion`）；
+> 断线后由客户端轮询兜底（30 s）。
 
 ### 2.14 收藏 · 评论 · 课程统计（模块 M，**v2.8 新增**）
 
@@ -575,4 +606,4 @@ data: {"tokens_in":812,"tokens_out":256}
 
 ---
 
-**（API 接口参考 v1.5 结束）**
+**（API 接口参考 v1.6 结束）**
