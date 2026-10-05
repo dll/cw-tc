@@ -36,6 +36,36 @@ func newTestRouter(t *testing.T, publicStatus bool) *gin.Engine {
 	return New(testConfig(t, publicStatus)).Router()
 }
 
+// TestNewSetsReleaseModeInProduction 生产环境必须切 gin.ReleaseMode。
+// 否则部署后仍跑在 debug 模式（打印路由表、性能略差）—— 实测本机默认就是 debug。
+func TestNewSetsReleaseModeInProduction(t *testing.T) {
+	t.Cleanup(func() { gin.SetMode(gin.TestMode) })
+
+	env := map[string]string{
+		config.EnvIDCardEncKey:  strings.Repeat("a", config.IDCardEncKeyBytes),
+		config.EnvIDCardHMACKey: strings.Repeat("b", config.MinHMACKeyBytes),
+		config.EnvSessionSecret: strings.Repeat("c", config.MinHMACKeyBytes),
+		config.EnvDeployEnv:     "production",
+		config.EnvDBDriver:      "postgres",
+	}
+	cfg, err := config.LoadFrom(func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatalf("生产配置构造失败: %v", err)
+	}
+	gin.SetMode(gin.DebugMode)
+	New(cfg)
+	if got := gin.Mode(); got != gin.ReleaseMode {
+		t.Errorf("生产环境 gin 模式 = %q，期望 %q", got, gin.ReleaseMode)
+	}
+
+	// 开发环境不应被改（保留 debug 便于排错）
+	gin.SetMode(gin.DebugMode)
+	New(testConfig(t, true))
+	if got := gin.Mode(); got != gin.DebugMode {
+		t.Errorf("开发环境 gin 模式 = %q，期望保持 %q", got, gin.DebugMode)
+	}
+}
+
 func doGET(t *testing.T, r *gin.Engine, path string) (*httptest.ResponseRecorder, map[string]any) {
 	t.Helper()
 	w := httptest.NewRecorder()

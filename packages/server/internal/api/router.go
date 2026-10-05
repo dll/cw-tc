@@ -28,7 +28,15 @@ type Server struct {
 }
 
 // New 构造 Server。
-func New(cfg *config.Config) *Server { return &Server{cfg: cfg} }
+//
+// ⚠️ **生产必须切到 `gin.ReleaseMode`** —— 否则服务跑在 debug 模式：打印路由表、
+// 附带调试告警、性能略差（实测本机默认即为 debug）。开发环境保留 debug 便于排错。
+func New(cfg *config.Config) *Server {
+	if cfg != nil && cfg.IsProduction() {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	return &Server{cfg: cfg}
+}
 
 // envelope 为统一响应信封。
 type envelope struct {

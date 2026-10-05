@@ -23,11 +23,12 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=cw-tc
 
-# 安全加固
+# 安全加固（对照 ccit/ccit-server.service：整盘只读 + 只放行 shared 可写）
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=true
+ReadWritePaths=/opt/cw-tc/shared
 
 [Install]
 WantedBy=multi-user.target
