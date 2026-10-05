@@ -295,6 +295,17 @@ def main():
     m = re.search(r"待确认\s*\*{0,2}(\d+)\s*项", peers.get("SOUL.md", ""))
     if m and int(m.group(1)) != live16:
         selfnum.append("SOUL.md 写「待确认 %s 项」，实际 %d（§16 口径：总行数 − 墓碑行数）" % (m.group(1), live16))
+    # §13 任务计划：自述任务数 vs 任务表行数；任务编号必须唯一（全项目唯一、废弃不复用）
+    task_ids = re.findall(r"(?m)^\| (M[0-8]-\d{2}) \|", prd)
+    m = re.search(r"共\s*\*{0,2}(\d+)\s*个任务", prd)
+    if m and int(m.group(1)) != len(task_ids):
+        selfnum.append("PRD 写「共 %s 个任务」，§13 任务表实际 %d 行" % (m.group(1), len(task_ids)))
+    seen = {}
+    for tid in task_ids:
+        seen[tid] = seen.get(tid, 0) + 1
+    dup = sorted([k for k, v in seen.items() if v > 1])
+    if dup:
+        selfnum.append("§13 任务编号重复：%s" % "、".join(dup))
     if selfnum:
         problems.append(("自述数字 / 版本自相矛盾", selfnum))
 
