@@ -106,6 +106,54 @@ func TestFailClosed_OptionalCredentials(t *testing.T) {
 	}
 }
 
+// TestDatabaseBoundary 验证数据库边界（2026-10-06 明确）：
+// 开发/测试 SQLite；生产 PostgreSQL；**生产用 SQLite 一律拒绝**。
+func TestDatabaseBoundary(t *testing.T) {
+	// 默认（都没设）→ 开发环境 + sqlite
+	c, err := LoadFrom(getter(validEnv()))
+	if err != nil {
+		t.Fatalf("加载失败: %v", err)
+	}
+	if c.DeployEnv != "development" {
+		t.Errorf("默认 DeployEnv 应为 development，实际 %q", c.DeployEnv)
+	}
+	if c.DBDriver != "sqlite" {
+		t.Errorf("默认 DBDriver 应为 sqlite（开发/测试），实际 %q", c.DBDriver)
+	}
+	if c.IsProduction() {
+		t.Error("默认不应被视为生产环境")
+	}
+
+	env := validEnv()
+
+	// 生产 + sqlite → 拒绝启动
+	env[EnvDeployEnv] = "production"
+	env[EnvDBDriver] = "sqlite"
+	if _, err := LoadFrom(getter(env)); err == nil {
+		t.Fatal("生产环境使用 SQLite 时必须拒绝启动")
+	} else if !strings.Contains(err.Error(), "SQLite") {
+		t.Errorf("错误信息应说明生产不得用 SQLite，实际: %v", err)
+	}
+
+	// 生产 + 未显式指定驱动 → 默认 sqlite → 同样拒绝（不许靠"忘了设"蒙过去）
+	delete(env, EnvDBDriver)
+	if _, err := LoadFrom(getter(env)); err == nil {
+		t.Fatal("生产环境未显式指定 postgres 时应拒绝（默认 sqlite 不允许）")
+	}
+
+	// 生产 + postgres → 通过
+	env[EnvDBDriver] = "postgres"
+	if _, err := LoadFrom(getter(env)); err != nil {
+		t.Fatalf("生产 + postgres 应通过，实际: %v", err)
+	}
+
+	// 非法驱动 → 拒绝
+	env[EnvDBDriver] = "mysql"
+	if _, err := LoadFrom(getter(env)); err == nil {
+		t.Fatal("非法驱动取值应报错")
+	}
+}
+
 func TestBoolDefault(t *testing.T) {
 	cases := []struct {
 		in   string

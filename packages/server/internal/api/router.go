@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cw-tc/server/internal/platform/clock"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/cw-tc/server/internal/config"
@@ -39,6 +41,8 @@ type envelope struct {
 func (s *Server) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(requestID())
+	r.Use(withClock)
 	r.Use(s.accessLog())
 
 	v1 := r.Group("/api/v1")
@@ -58,7 +62,7 @@ func (s *Server) health(c *gin.Context) {
 		"status":     "ok",
 		"version":    Version,
 		"uptimeSec":  int64(time.Since(StartedAt).Seconds()),
-		"observedAt": time.Now().Format(time.RFC3339),
+		"observedAt": clock.From(c.Request.Context()).Now().Format(time.RFC3339),
 	}})
 }
 
@@ -75,7 +79,7 @@ func (s *Server) health(c *gin.Context) {
 func (s *Server) publicStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"source":     "cw-tc",
-		"observedAt": time.Now().Format(time.RFC3339),
+		"observedAt": clock.From(c.Request.Context()).Now().Format(time.RFC3339),
 		"status":     statusAvailable,
 		"dataSource": "not_wired", // 显式标注：计数尚未接入数据源
 		"courses": gin.H{

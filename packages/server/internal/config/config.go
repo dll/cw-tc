@@ -6,6 +6,11 @@
 //   - 其余凭据（短信 / 支付 / 大模型）未配置 —— 对应功能 fail-closed 不启用。
 //
 // 环境变量名与 deploy/.env.example 保持一一对应。
+//
+// 数据库边界（2026-10-06 明确）：
+//   - 开发与测试：SQLite（`CWTC_DB_DRIVER=sqlite`，不依赖本机 PostgreSQL / Redis）；
+//   - 生产：腾讯云 PostgreSQL（`CWTC_DB_DRIVER=postgres`，沿用 CCIT 的部署约定）；
+//   - **`DEPLOY_ENV=production` 时拒绝 SQLite** —— 拿开发库跑生产是最危险的一类配置事故。
 package config
 
 import (
@@ -35,6 +40,11 @@ const (
 	EnvWXPayAPIv3Key = "CWTC_WXPAY_API_V3_KEY"
 	EnvAlipayAppID   = "CWTC_ALIPAY_APP_ID"
 	EnvAlipayPrivKey = "CWTC_ALIPAY_PRIVATE_KEY_PATH"
+
+	// 部署环境与数据库（开发/测试 SQLite；生产 PostgreSQL）
+	EnvDeployEnv = "DEPLOY_ENV"
+	EnvDBDriver  = "CWTC_DB_DRIVER"
+	EnvDBDSN     = "CWTC_DB_DSN"
 
 	// 行为开关
 	EnvPublicStatusEnabled = "CWTC_PUBLIC_STATUS_ENABLED"
@@ -71,6 +81,11 @@ type Config struct {
 
 	PublicStatusEnabled bool
 	LogRedactEnabled    bool
+
+	// 部署环境与数据库（开发/测试 SQLite；生产 PostgreSQL）
+	DeployEnv string
+	DBDriver  string
+	DBDSN     string
 }
 
 // Getenv 抽象环境读取，便于测试注入。
@@ -103,6 +118,11 @@ func LoadFrom(get Getenv) (*Config, error) {
 		AlipayAppID:   strings.TrimSpace(get(EnvAlipayAppID)),
 		AlipayPrivKey: strings.TrimSpace(get(EnvAlipayPrivKey)),
 
+		// 部署环境与数据库（默认按开发环境；生产必须显式设 postgres）
+		DeployEnv: strings.ToLower(strings.TrimSpace(get(EnvDeployEnv))),
+		DBDriver:  strings.ToLower(strings.TrimSpace(get(EnvDBDriver))),
+		DBDSN:     strings.TrimSpace(get(EnvDBDSN)),
+
 		// 默认值：监听本机回环，避免通配绑定被公网直连伪造 XFF（对照 ccit 约定）。
 		PublicStatusEnabled: boolDefault(get(EnvPublicStatusEnabled), true),
 		LogRedactEnabled:    boolDefault(get(EnvLogRedactSensitive), true),
@@ -112,6 +132,12 @@ func LoadFrom(get Getenv) (*Config, error) {
 	}
 	if c.Port == "" {
 		c.Port = "8071"
+	}
+	if c.DeployEnv == "" {
+		c.DeployEnv = "development"
+	}
+	if c.DBDriver == "" {
+		c.DBDriver = "sqlite" // 开发/测试默认；生产必须显式设为 postgres
 	}
 
 	if err := c.Validate(); err != nil {
@@ -148,11 +174,27 @@ func (c *Config) Validate() error {
 			fmt.Sprintf("%s 过短：需 ≥ %d 字节，实际 %d 字节", EnvSessionSecret, MinHMACKeyBytes, len(c.SessionSecret)))
 	}
 
+	switch c.DBDriver {
+	case "sqlite", "postgres":
+	default:
+		problems = append(problems,
+			fmt.Sprintf("%s 取值非法：%q（允许 sqlite / postgres）", EnvDBDriver, c.DBDriver))
+	}
+	if c.IsProduction() && c.DBDriver == "sqlite" {
+		problems = append(problems, fmt.Sprintf(
+			"生产环境不得使用 SQLite（%s=production 且 %s=sqlite）："+
+				"拿开发库跑生产会造成「测试通过、线上丢数据」，请显式设为 postgres",
+			EnvDeployEnv, EnvDBDriver))
+	}
+
 	if len(problems) > 0 {
-		return fmt.Errorf("强制密钥校验失败，服务拒绝启动：\n  - %s", strings.Join(problems, "\n  - "))
+		return fmt.Errorf("配置校验失败，服务拒绝启动：\n  - %s", strings.Join(problems, "\n  - "))
 	}
 	return nil
 }
+
+// IsProduction 是否生产环境。
+func (c *Config) IsProduction() bool { return c.DeployEnv == "production" }
 
 // Addr 返回监听地址。
 func (c *Config) Addr() string { return c.Host + ":" + c.Port }

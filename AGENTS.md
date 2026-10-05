@@ -11,10 +11,10 @@
 - `packages/server`：Go 后端（Gin）· REST API + 判分/制证引擎 + **支付网关** + **AI 网关**
 - `packages/app`：**Flutter 学生端**（**Android / Web**，一套代码，见 `docs/技术选型-v1.md`）
 - `packages/admin`：**Vue 3 管理端**（教师工作台 / 课程设置 / 订单 / 证书台账 / 广播，桌面优先）
-- `docs/PRD-第三课堂-v2.md`：**唯一权威需求文档（当前版本 v2.19）**；**§13 是任务驱动的开发计划**（任务编号 `M<阶段>-<序号>` / 完成定义 DoD / 阶段闸门 / 参考工作量）
+- `docs/PRD-第三课堂-v2.md`：**唯一权威需求文档（当前版本 v2.20）**；**§13 是任务驱动的开发计划**（任务编号 `M<阶段>-<序号>` / 完成定义 DoD / 阶段闸门 / 参考工作量）
 - `docs/技术方案-v1.md`：**内部结构 v1.0**（分层 / 十条关键设计决策 / 事务与幂等边界 / 任务与调度 / 开发顺序 —— **不复述需求与契约**）
 - `docs/开发准备度评估-v1.md`：**开工前 Go / No-Go 自评 v1.0**（输入清单 / 本机实测证据 / 未闭合项 / 第一天跑起来）
-- `docs/技术选型-v1.md`：**技术栈决策 v1.2**（主栈 + 运行支撑栈）
+- `docs/技术选型-v1.md`：**技术栈决策 v1.3**（主栈 + 运行支撑栈 + **数据库边界**）
 - `docs/API接口参考-v1.md`：**接口契约 v1.12**（信封 / 错误码 / 鉴权 / 分页 / 幂等 / 限频 / 字段白名单 / 课程送审与六维审核 / 运营统计与评论 UGC / 对外展示三接口 / 支付查单与对账明细 / **测评续考与异常** / **价格试算与优惠码** / **离线下载** / **运营位与风控** / 全量接口）
 - `docs/数据字典-v1.md`：**数据字典 v1.12**（字段级定义 / 枚举 / 索引与约束 / **迁移切分 0001~0019** / 课程七态 / `course_review` / 运营数据表组 / 对外展示表组 / AI 调用留痕与标识字段 / **增长与运营表组**）
 - `docs/对外展示内容-v1.md`：**官网与落地页的文案与数字 v1.0**（数字由 `tools/gen_public_content.py` 生成，**不手改**）
@@ -373,7 +373,8 @@ go run ./cmd/publiccheck
 
 ## 目录与命名约定
 
-- 后端：`packages/server/` → `cmd/`（入口 + 门禁子命令）、`internal/`（业务，不可外部导入；**按业务模块切包**，见 `docs/技术方案-v1.md` §1）、`migrations/`（数据库迁移，**唯一定义见数据字典 §8**）
+- 后端：`packages/server/` → `cmd/`（入口 + 门禁子命令）、`internal/`（业务，不可外部导入；**按业务模块切包**，见 `docs/技术方案-v1.md` §1）、`migrations/{postgres,sqlite}/`（迁移**两套方言**：`postgres/` 为生产权威、`sqlite/` 供开发与测试；**唯一定义见数据字典 §8**，一致性由 `migrations_test.go` 门禁保证）
+- **数据库边界（2026-10-06）**：**开发/测试 = SQLite**（不依赖本机 PostgreSQL / Redis）· **生产 = 腾讯云 PostgreSQL**（沿用 CCIT 部署约定）；**`DEPLOY_ENV=production` 时选 SQLite 拒绝启动**；**不新建服务器 / 数据库 / 本机服务，不读写 CCIT 生产数据**
 - 学生端（Flutter）：`packages/app/lib/` → `pages/`（页面）、`widgets/`（组件）、`api/`（接口封装）、`models/`
 - 管理端（Vue 3）：`packages/admin/src/` → `pages/`（页面）、`components/`（组件）、`api/`（接口封装）
 - 部署：`deploy/{nginx,systemd,scripts}`；**环境变量模板 `deploy/.env.example`**（同系列做法）

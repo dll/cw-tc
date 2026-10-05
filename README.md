@@ -19,7 +19,7 @@
 ```
 cw-tc/
 ├── docs/
-│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2.19（**当前权威，先读这份**）
+│   ├── PRD-第三课堂-v2.md      ← 产品需求文档 v2.20（**当前权威，先读这份**）
 │   ├── M2-支付接入要求-v1.md   ← M2 详细要求（资质 / 渠道 / 验收 / 排期）
 │   ├── M4-模型选型与AI备案要求-v1.md ← M4 详细要求（选型 / 备案登记 / 生成内容标识）
 │   ├── 对外展示内容-v1.md      ← 官网/落地页的文案与数字 v1.0（**数字由脚本生成，勿手改**）
@@ -39,10 +39,11 @@ cw-tc/
 ├── packages/
 │   ├── server/                 Go 后端（Gin）· REST API + 对外静态页
 │   │   ├── cmd/server/         入口（配置校验失败即拒绝启动）
-│   │   ├── migrations/        数据库迁移（0001 已落地；0002~0019 按数据字典 §8 实现）
+│   │   ├── migrations/        数据库迁移（**两套方言**：postgres/ 生产权威 · sqlite/ 开发测试）
 │   │   └── internal/
-│   │       ├── api/            路由 · /health · /public/status · 访问日志脱敏
-│   │       ├── config/         配置加载与强制密钥校验
+│   │       ├── api/            路由 · /health · /public/status · 中间件链（请求ID/脱敏日志）
+│   │       ├── config/         配置加载 · 强制密钥校验 · **数据库边界（生产禁 SQLite）**
+│   │       ├── platform/       跨模块能力（db · redis · log · redact · audit · clock）
 │   │       └── redact/         身份证号 / 手机号脱敏（铁律 3 的代码落点）
 │   ├── app/                    Flutter 学生端（Android / Web，一套代码）
 │   └── admin/                  Vue 3 管理端（教师工作台 / 课程 / 订单 / 证书 / 广播）
@@ -61,7 +62,7 @@ cw-tc/
 | **学生端（主）** | **Flutter 3.22+** —— 一套代码出 **Android / Web**（iOS / 鸿蒙不做） |
 | **管理端** | **Vue 3 + Vite + Element Plus + Pinia** —— 桌面优先（含教师工作台） |
 | **对外静态页** | **Go 模板直出**（验真 / 隐私政策 / 退款政策 / **官网落地页 `/about` `/majors` `/jobs` `/showcase`**，保 SEO 与首屏） |
-| **后端** | **Go 1.26 + Gin** + PostgreSQL 15（+ **pgvector**） + Redis |
+| **后端** | **Go 1.26 + Gin** + **生产**：PostgreSQL 15（+ **pgvector**） + Redis · **开发/测试：SQLite**（**不依赖本机 PG / Redis**） |
 | **支付** | 微信支付 + 支付宝（**扫码 / App 调起**，走自建网关层） |
 | **AI** | 自建 **AI 网关** + **国内合规大模型**（RAG 基于课程知识库） |
 
@@ -129,7 +130,7 @@ cd packages/admin && npm install && npm run typecheck && npm run test
 
 | 文档 | 说明 |
 |---|---|
-| [`docs/PRD-第三课堂-v2.md`](docs/PRD-第三课堂-v2.md) | 产品需求文档 **v2.19**（**当前权威**，含 **§13 任务驱动开发计划**） |
+| [`docs/PRD-第三课堂-v2.md`](docs/PRD-第三课堂-v2.md) | 产品需求文档 **v2.20**（**当前权威**，含 **§13 任务驱动开发计划**） |
 | [`docs/技术选型-v1.md`](docs/技术选型-v1.md) | 技术栈决策 **v1.2**（主栈 + **运行支撑栈**） |
 | [`docs/API接口参考-v1.md`](docs/API接口参考-v1.md) | **接口契约 v1.12（前后端并行开工的依据）** |
 | [`docs/数据字典-v1.md`](docs/数据字典-v1.md) | **数据字典 v1.12（建表与 migration 的依据）** |
