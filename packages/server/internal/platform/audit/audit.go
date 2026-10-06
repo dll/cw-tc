@@ -2,8 +2,11 @@ package audit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
+
+	"github.com/cw-tc/server/internal/redact"
 )
 
 type Entry struct {
@@ -44,8 +47,40 @@ func (m *Memory) Write(_ context.Context, e Entry) error {
 	if m.err != nil {
 		return m.err
 	}
+	e.Before = redactAuditPayload(e.Before)
+	e.After = redactAuditPayload(e.After)
 	m.entries = append(m.entries, e)
 	return nil
+}
+
+func redactAuditPayload(payload []byte) []byte {
+	if len(payload) == 0 {
+		return nil
+	}
+	var value any
+	if json.Unmarshal(payload, &value) == nil {
+		redacted, _ := json.Marshal(redactAuditValue(value))
+		return redacted
+	}
+	return []byte(redact.String(string(payload)))
+}
+
+func redactAuditValue(value any) any {
+	switch item := value.(type) {
+	case map[string]any:
+		for key, nested := range item {
+			if key == "id_card" || key == "idCard" || key == "phone" || key == "mobile" {
+				item[key] = "[REDACTED]"
+				continue
+			}
+			item[key] = redactAuditValue(nested)
+		}
+	case []any:
+		for index, nested := range item {
+			item[index] = redactAuditValue(nested)
+		}
+	}
+	return value
 }
 
 func (m *Memory) Entries() []Entry {
