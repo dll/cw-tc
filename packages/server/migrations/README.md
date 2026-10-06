@@ -44,15 +44,31 @@ migrations/
 
 > **门禁必须自己验证一次**：把 `sqlite/0002` 的某个列改名 → 门禁 3 会**准确报出是哪张表哪一列**（已实测）。
 
+## 与数据字典的对齐（**v2.25 重建**）
+
+> **字典是建表唯一依据。** 重建后，**`0002~0005` 的表与列逐字段对齐字典 §2~§5**。
+>
+> ⚠️ **但字典写的是"终态"**（含 `0010/0011/0015/0018/0019` 才新增的列）——
+> 所以**不能把终态列一次性塞进早期迁移**（那会让后续迁移的 `ALTER` 全部撞车）。
+> 做法：**本批次只建基列**，后续迁移新增的列在迁移文件里**显式登记**：
+
+```sql
+-- @deferred student: status_reason_kind@0010 status_note@0010 status_until@0010 status_by@0010
+-- @note student: 0010：`student.phone` 的普通唯一索引改为部分唯一
+```
+
+**门禁**（`tools/audit_prd_closure.py`）：**「本批次基列 ∪ `@deferred` 登记的列」== 字典列，不多不少**。
+→ 所以**改表必须同时改这三处之一**：字典 · 迁移 · `@deferred`（漏一处门禁就红）。
+
 ## 类型映射（`postgres/` → `sqlite/`，机械翻译，不可手改）
 
 | PostgreSQL | SQLite |
 |---|---|
-| `BIGSERIAL PRIMARY KEY` | `INTEGER PRIMARY KEY AUTOINCREMENT` |
+| `BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`（字典口径） | `INTEGER PRIMARY KEY AUTOINCREMENT` |
 | `TIMESTAMPTZ` | `TEXT`（ISO-8601 文本） |
 | `BYTEA` | `BLOB` |
 | `JSONB` / `'{}'::jsonb` | `TEXT` / `'{}'` |
-| `DATE` | `TEXT` |
+| `DATE` / `INET` | `TEXT` |
 | `DEFAULT now()` | `DEFAULT CURRENT_TIMESTAMP` |
 
 部分唯一索引（`... WHERE ...`）**SQLite 原生支持**，故 `uq_exam_ongoing` / `uq_certificate_active` 等两套一致。

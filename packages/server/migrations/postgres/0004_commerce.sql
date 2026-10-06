@@ -1,92 +1,110 @@
--- 0004_commerce.sql
--- 第三课堂 · 交易与权益迁移（数据字典 §4）
---
--- ⚠️ v2.23 修订：本文件此前与数据字典 §4.1 不一致（`entitlement` 少了
---    `source` / `order_id` / `granted_at` / `revoke_reason`，还多了字典里没有的 `status`）。
---    数据字典是**建表唯一依据**，故此处以字典为准补齐，并新增 G-7 需要的
---    `granted_by` / `grant_reason`。
---    可直接修订的理由：**本迁移尚未在任何持久环境执行过**（生产未部署；dev/test 每次从空库重建），
---    不存在"改了不会重跑、环境之间产生看不见差异"的风险。**若已执行过，则必须新增编号而非修改**。
---
--- 顺序说明：`entitlement` 引用 `orders`，故 `orders` 必须**先建**（PostgreSQL 要求 FK 目标表已存在）。
+-- 0004_commerce（PostgreSQL 方言）
+-- 第三课堂 · 权益、订单与资金（数据字典 §4）
+-- ⚠️ 本文件由数据字典重建（v2.25）：表与列**逐字段对齐字典 §2~§5**。
+-- ⚠️ 字典是**终态**；**本批次只建基列**，后续迁移新增的列见每个表下的 `@deferred` 行
+--    （`tools/audit_prd_closure.py` 会校验：**基列 ∪ deferred == 字典列**，不多不少）。
+-- ⚠️ 可直接重建的理由：**这些迁移尚未在任何持久环境执行过**（生产未部署；dev/test 每次从空库重建）。
 
 CREATE TABLE IF NOT EXISTS orders (
-    id BIGSERIAL PRIMARY KEY,
-    order_no TEXT NOT NULL UNIQUE,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_no TEXT NOT NULL,
     student_id BIGINT NOT NULL REFERENCES student(id),
     course_id BIGINT NOT NULL REFERENCES course(id),
-    status TEXT NOT NULL DEFAULT 'pending',
-    price_snapshot_cents BIGINT NOT NULL CHECK (price_snapshot_cents >= 0),
-    amount_cents BIGINT NOT NULL CHECK (amount_cents >= 0),
-    discount_cents BIGINT NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
-    request_id TEXT NOT NULL UNIQUE,
+    course_name_snapshot TEXT NOT NULL,
+    price_snapshot_cents BIGINT NOT NULL,
+    amount_cents BIGINT NOT NULL,
+    status TEXT NOT NULL,
+    channel TEXT,
+    request_id TEXT,
+    expired_at TIMESTAMPTZ NOT NULL,
+    paid_at TIMESTAMPTZ,
+    closed_at TIMESTAMPTZ,
+    refunded_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK (amount_cents = price_snapshot_cents - discount_cents)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (price_snapshot_cents >= 0),
+    CHECK (amount_cents >= 0),
+    CHECK (channel IS NULL OR channel IN ('wechat','alipay'))
 );
-
+CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_order_no ON orders(order_no);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_pending_order ON orders(student_id, course_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_orders_student ON orders(student_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_channel_paid ON orders(channel, paid_at);
+-- @deferred orders: discount_cents@0019 list_amount_cents@0019 promo_code@0019
+-- @note orders: 0019：补 `CHECK (amount_cents = price_snapshot_cents - discount_cents)`（依赖 discount_cents，必须同批加）
+-- @note orders: ⚠️ 字典里表名写作 `order`（**PG 保留字**，直接建表会失败）→ 本文件用 `orders`，字典已同步改名
 
--- 学习权益：三种来源 —— 付费（order）/ 免费课（free）/ 管理员授予（grant，PRD §7.3 G-7）
 CREATE TABLE IF NOT EXISTS entitlement (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     student_id BIGINT NOT NULL REFERENCES student(id),
     course_id BIGINT NOT NULL REFERENCES course(id),
-    source TEXT NOT NULL CHECK (source IN ('order','free','grant')),
+    source TEXT NOT NULL,
     order_id BIGINT REFERENCES orders(id),
     granted_by BIGINT REFERENCES staff(id),
     grant_reason TEXT,
     granted_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ,
-    revoke_reason TEXT CHECK (revoke_reason IS NULL OR revoke_reason IN ('order_refunded','admin')),
-    -- 付费权益必须挂订单；管理员授予必须留"谁授的 + 为什么"（不得留空，否则等同无痕）
+    revoke_reason TEXT,
+    CHECK (source IN ('order','free','grant')),
+    CHECK (revoke_reason IS NULL OR revoke_reason IN ('order_refunded','admin')),
     CHECK (source <> 'order' OR order_id IS NOT NULL),
     CHECK (source <> 'grant' OR (granted_by IS NOT NULL AND grant_reason IS NOT NULL))
 );
-
--- "当前有效权益唯一"：一门课同一时刻只能有一条未撤销的权益（先授权后付费也必须复用同一条）
 CREATE UNIQUE INDEX IF NOT EXISTS uq_entitlement_active ON entitlement(student_id, course_id) WHERE revoked_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS payment_txn (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     order_id BIGINT NOT NULL REFERENCES orders(id),
     channel TEXT NOT NULL,
-    channel_txn_no TEXT NOT NULL,
+    channel_txn_id TEXT NOT NULL,
     amount_cents BIGINT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(channel, channel_txn_no)
+    raw_status TEXT,
+    idempotency_key TEXT NOT NULL,
+    callback_payload JSONB NOT NULL,
+    verified_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_txn_channel ON payment_txn(channel, channel_txn_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_txn_idem ON payment_txn(idempotency_key);
 
--- 退款：**两类必须显式区分**（PRD §7.3 G-4 / G-7）——
---   `normal`：普通退款 → **撤权益 + 连带撤销证书**；
---   `reward`：**奖励性退款**（按学习成绩或优惠活动打折 / 全退）→ **保留权益与已发证书**，
---             即「**先买后退**」构成的**免费学习**。
 CREATE TABLE IF NOT EXISTS refund (
-    id BIGSERIAL PRIMARY KEY,
-    refund_no TEXT NOT NULL UNIQUE,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    refund_no TEXT NOT NULL,
     order_id BIGINT NOT NULL REFERENCES orders(id),
-    kind TEXT NOT NULL CHECK (kind IN ('normal','reward')),
-    basis TEXT CHECK (basis IS NULL OR basis IN ('score','campaign','other')),
+    kind TEXT NOT NULL,
+    basis TEXT,
     basis_ref TEXT,
-    amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),
+    amount_cents BIGINT NOT NULL,
     reason TEXT NOT NULL,
-    initiator TEXT NOT NULL CHECK (initiator IN ('student','admin')),
+    initiator TEXT NOT NULL,
     operator_id BIGINT REFERENCES staff(id),
     channel_refund_id TEXT,
-    status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing','success','failed')),
+    status TEXT NOT NULL DEFAULT 'processing',
     fail_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     finished_at TIMESTAMPTZ,
-    -- 奖励性退款必须留「依据类别 + 依据编号」，否则等于「随便给钱」
+    CHECK (kind IN ('normal','reward')),
+    CHECK (basis IS NULL OR basis IN ('score','campaign','other')),
+    CHECK (amount_cents > 0),
+    CHECK (initiator IN ('student','admin')),
+    CHECK (status IN ('processing','success','failed')),
     CHECK (kind <> 'reward' OR (basis IS NOT NULL AND basis_ref IS NOT NULL)),
-    -- 管理员发起的必须记操作人（不得无痕）
     CHECK (initiator <> 'admin' OR operator_id IS NOT NULL)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_refund_no ON refund(refund_no);
 
 CREATE TABLE IF NOT EXISTS reconcile_record (
-    id BIGSERIAL PRIMARY KEY,
-    reconcile_date DATE NOT NULL,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    biz_date DATE NOT NULL,
     channel TEXT NOT NULL,
-    difference_cents BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(reconcile_date, channel)
+    channel_count INT NOT NULL,
+    channel_amount_cents BIGINT NOT NULL,
+    local_count INT NOT NULL,
+    local_amount_cents BIGINT NOT NULL,
+    diff_count INT NOT NULL,
+    diff_amount_cents BIGINT NOT NULL,
+    detail JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_reconcile_biz_date ON reconcile_record(biz_date, channel);

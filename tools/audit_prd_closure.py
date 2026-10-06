@@ -415,33 +415,41 @@ def main():
         if cols:
             dic_tables[m.group(1)] = cols
 
+    # @deferred 登记：迁移文件里 `-- @deferred <table>: col@0010 col@0011 ...`
+    # 表示"这一列**属于该表**，但由后续迁移新增" —— 重建后（v2.25）用它把
+    # 「本批次基列」与「字典终态列」之间的缺口**显式**表达出来。
+    deferred = {}
+    for fn in sorted(os.listdir(mig_dir)) if os.path.isdir(mig_dir) else []:
+        if not fn.endswith(".sql"):
+            continue
+        body = io.open(os.path.join(mig_dir, fn), encoding="utf-8").read()
+        for line in re.findall(r"(?m)^--\s*@deferred\s+(\w+):\s*(.+)$", body):
+            tbl, items = line
+            for it in items.split():
+                if "@" in it:
+                    col, mig = it.rsplit("@", 1)
+                    deferred.setdefault(tbl, {})[col] = mig
+
     mig_problems = []
+    checked = 0
     if not mig_tables:
         mig_problems.append("没解析到任何迁移表（migrations/postgres/ 路径或写法变了？否则本检查会空转）")
     for tbl, (fn, cols) in sorted(mig_tables.items()):
         if tbl not in dic_tables:
-            continue
-        dcols = dic_tables[tbl]
-        only_mig = [c for c in cols if c not in dcols]
-        only_dic = [c for c in dcols if c not in cols]
+            continue          # 字典没有该表的小节 → 由"模块闭环"那节管
+        checked += 1
+        dcols = set(dic_tables[tbl])
+        have = set(cols) | set(deferred.get(tbl, {}))
+        only_mig = sorted(have - dcols)          # 凭空多出来的列
+        only_dic = sorted(dcols - have)          # 字典有、迁移与本批次都没覆盖
         if only_mig or only_dic:
-            mig_problems.append("%s（%s）：迁移多了 %s / 字典多了 %s"
+            mig_problems.append("%s（%s）：多出 %s / 缺 %s"
                                 % (tbl, fn, only_mig or "—", only_dic or "—"))
-    # ⚠️ **提示级**（不判失败）：批次 0 的迁移被明确定义为"**骨架**"，而数据字典是**全量目标**
-    # （0006~0019 才逐批补齐）。此刻判失败＝把正常进度误判成错误（假警报）。
-    # 但**"迁移多了字典没有的列"最可疑** —— 那意味着迁移凭空造了列（可能与字典的设计不一致）。
-    only_mig_tables = []
-    for tbl, (fn, cols) in sorted(mig_tables.items()):
-        if tbl not in dic_tables:
-            continue
-        only_mig = [c for c in cols if c not in dic_tables[tbl]]
-        if only_mig:
-            only_mig_tables.append("%s（%s）：迁移多了 %s" % (tbl, fn, only_mig))
     if mig_problems:
-        notes.append(("迁移与数据字典的列差异（**提示级**：骨架 vs 全量目标，0006~0019 才补齐）", mig_problems))
-    if only_mig_tables:
-        notes.append(("⚠️ 上面这类里最可疑的一组：**迁移建了数据字典没有的列**（字典是建表唯一依据，凭空造列＝分叉）",
-                      only_mig_tables))
+        problems.append((
+            "迁移与数据字典不一致（**字典是建表唯一依据**）："
+            "「本批次基列 ∪ `@deferred` 登记的后续列」必须**恰好等于**字典列，不多不少",
+            mig_problems))
 
     # ---------- 输出 ----------
     if not a.quiet:

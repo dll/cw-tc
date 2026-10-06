@@ -51,10 +51,14 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (Student, e
 		return Student{}, fmt.Errorf("保护身份证号失败: %w", err)
 	}
 	studentNo := fmt.Sprintf("S%08d", checksumStudentNo(input.Phone, input.IDCard))
+	// 注册必须记录"同意的协议版本"：数据字典 §2.1 的 `agreement_versions` 是 **NOT NULL**，
+	// 且合规上要有据可查（铁律 3）。空值或空数组都不行 —— 那等于"同意过什么"查不到。
+	// TODO(M1-04)：版本号应取自 `/public/site` 当前生效版本，**不要长期写死**（文档改版会漂移）。
+	agreements := `[{"doc":"user_agreement","version":"v1.0"},{"doc":"privacy_policy","version":"v1.0"}]`
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO student(student_no, name, phone, phone_verified_at, id_card_hash, id_card_cipher, password_hash)
-		 VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)`,
-		studentNo, input.Name, input.Phone, digest, ciphertext, hashPassword(input.Password))
+		`INSERT INTO student(student_no, name, phone, phone_verified_at, id_card_hash, id_card_cipher, password_hash, agreement_versions)
+		 VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)`,
+		studentNo, input.Name, input.Phone, digest, ciphertext, hashPassword(input.Password), agreements)
 	if err != nil {
 		if stringsContains(err.Error(), "student.phone") || stringsContains(err.Error(), "UNIQUE constraint failed: student.phone") {
 			return Student{}, ErrPhoneRegistered

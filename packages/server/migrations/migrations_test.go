@@ -62,8 +62,10 @@ func TestSQLiteMigrationsExecuteAndAreIdempotent(t *testing.T) {
 		}
 	}
 
-	// 部分唯一索引：SQLite 支持，必须建出来（它承载"单档单会话 / 未撤销证书唯一"等口径）。
-	for _, idx := range []string{"uq_exam_ongoing", "uq_certificate_active", "uq_entitlement_active", "uq_pending_order"} {
+	// 部分唯一索引：SQLite 支持，必须建出来（它承载"未撤销证书唯一 / 有效权益唯一 / 防重复下单"等口径）。
+	// ⚠️ `uq_exam_ongoing`（同档单会话）按数据字典属 **v2.16 → 迁移 0019**，**不在本批次**，
+	//    故此处故意不列（由后续迁移补，见 0005 文件里的 `@deferred` 行）。
+	for _, idx := range []string{"uq_certificate_active", "uq_entitlement_active", "uq_pending_order"} {
 		var n int
 		if err := database.QueryRowContext(ctx,
 			`SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name = ?`, idx).Scan(&n); err != nil {
