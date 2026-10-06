@@ -45,6 +45,16 @@ jobs:
     runs-on: ubuntu-latest
     environment: cw-tc-production
     steps:
+      - name: 校验生产部署凭据已配置（不输出秘密）
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          test -n "$DEPLOY_HOST" || { echo '缺少 GitHub Environment secret: DEPLOY_HOST' >&2; exit 1; }
+          test -n "$DEPLOY_USER" || { echo '缺少 GitHub Environment secret: DEPLOY_USER' >&2; exit 1; }
+          test -n "$DEPLOY_SSH_KEY" || { echo '缺少 GitHub Environment secret: DEPLOY_SSH_KEY' >&2; exit 1; }
+
       - name: 下载已审批不可变制品
         env:
           RUN_ID: ${{ inputs.archive_url }}
