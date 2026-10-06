@@ -28,10 +28,10 @@
 
 ## 当前状态
 
-**M0 已收口，可直接进 M1**：**PRD v2.23**（`docs/PRD-第三课堂-v2.md`）· 技术选型 **v1.3** ·
+**M0 已收口，可直接进 M1**：**PRD v2.24**（`docs/PRD-第三课堂-v2.md`）· 技术选型 **v1.3** ·
 **`docs/技术方案-v1.md` v1.0** · **`docs/开发准备度评估-v1.md` v1.0** ·
 **`docs/M2-支付接入要求-v1.md` v1.0** · **`docs/M4-模型选型与AI备案要求-v1.md` v1.0** ·
-`docs/API接口参考-v1.md` v1.13 · `docs/数据字典-v1.md` v1.13 ·
+`docs/API接口参考-v1.md` v1.14 · `docs/数据字典-v1.md` v1.14 ·
 **`docs/对外展示内容-v1.md` v1.0**（官网/落地页文案与数字）· 后端 / 学生端 / 管理端骨架 · CI 门禁。
 **数据库边界：开发/测试 SQLite · 生产腾讯云 PostgreSQL**（`migrations/{postgres,sqlite}/` 两套方言）。
 仓库 `dll/cw-tc`（私有）。

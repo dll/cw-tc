@@ -407,7 +407,11 @@ def main():
 
     dic_tables = {}
     for m in re.finditer(r"(?m)^### \d+\.\d+ `(\w+)`[^\n]*\n([\s\S]*?)(?=\n### |\n## |\Z)", dic):
-        cols = re.findall(r"(?m)^\| `(\w+)` \|", m.group(2))
+        # 取每行**第一个单元格**里的所有 `列名` —— 这样 `` `created_at` / `finished_at` `` 这类
+        # **合并写法的行也能解析到**（否则会误报"迁移多了这两列"，即假阳性）。
+        cols = []
+        for row in re.findall(r"(?m)^\| ([^\n]+?) \|", m.group(2)):
+            cols += re.findall(r"`(\w+)`", row.split("|")[0])
         if cols:
             dic_tables[m.group(1)] = cols
 

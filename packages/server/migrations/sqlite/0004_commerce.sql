@@ -1,7 +1,7 @@
 -- 0004_commerce.sql（**SQLite 方言 · 仅供开发与测试**）
 -- 与 `migrations/postgres/0004_commerce.sql` 的表与列**一一对应**；差异仅类型与自增写法。
 -- ⚠️ 生产不使用本文件；上线走 postgres/ 那一套（见 migrations/README.md）。
--- 本文件由 `migrations/postgres/0004_commerce.sql` 机械翻译：BIGSERIAL PRIMARY KEY×5 · TIMESTAMPTZ×6 · DEFAULT now()×4 · reconcile_date DATE×1
+-- 本文件由 `migrations/postgres/0004_commerce.sql` 机械翻译：BIGSERIAL PRIMARY KEY×5 · TIMESTAMPTZ×7 · DEFAULT now()×4 · reconcile_date DATE×1
 
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,12 +49,30 @@ CREATE TABLE IF NOT EXISTS payment_txn (
     UNIQUE(channel, channel_txn_no)
 );
 
+-- 退款：**两类必须显式区分**（PRD §7.3 G-4 / G-7）——
+--   `normal`：普通退款 → **撤权益 + 连带撤销证书**；
+--   `reward`：**奖励性退款**（按学习成绩或优惠活动打折 / 全退）→ **保留权益与已发证书**，
+--             即「**先买后退**」构成的**免费学习**。
 CREATE TABLE IF NOT EXISTS refund (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    refund_no TEXT NOT NULL UNIQUE,
     order_id BIGINT NOT NULL REFERENCES orders(id),
-    amount_cents BIGINT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('normal','reward')),
+    basis TEXT CHECK (basis IS NULL OR basis IN ('score','campaign','other')),
+    basis_ref TEXT,
+    amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),
     reason TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    initiator TEXT NOT NULL CHECK (initiator IN ('student','admin')),
+    operator_id BIGINT REFERENCES staff(id),
+    channel_refund_id TEXT,
+    status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing','success','failed')),
+    fail_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TEXT,
+    -- 奖励性退款必须留「依据类别 + 依据编号」，否则等于「随便给钱」
+    CHECK (kind <> 'reward' OR (basis IS NOT NULL AND basis_ref IS NOT NULL)),
+    -- 管理员发起的必须记操作人（不得无痕）
+    CHECK (initiator <> 'admin' OR operator_id IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS reconcile_record (

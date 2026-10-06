@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.13**（v2.23：新增管理员授权免费学习三接口 `/admin/entitlements`；v2.16：测评可信度与断线续考 · 价格试算与优惠码 · 离线下载 · 运营位与风控 · 异常复核） |
+| 版本 | **v1.14**（v2.24：退款分两类 `normal` / `reward`，后者即「先买后退」的免费学习；v2.23：新增管理员授权免费学习三接口 `/admin/entitlements`；v2.16：测评可信度与断线续考 · 价格试算与优惠码 · 离线下载 · 运营位与风控 · 异常复核） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -322,12 +322,12 @@
 | GET | `/admin/kb/status` | 管理员 | 知识库状态（**切片数 / 向量数 / 最后构建时间**） |
 | GET | `/admin/majors` · POST · PATCH | 管理员 | 专业字典维护 |
 | GET | `/admin/orders` | 管理员 | 订单查询（筛选 + 导出 CSV） |
-| POST | `/admin/orders/{orderNo}/refund` | 管理员 | 管理员退款（**连带撤销证书**） |
+| POST | `/admin/orders/{orderNo}/refund` | 管理员 | 管理员退款。**`kind`**：`normal`（默认，**连带撤销证书**）/ `reward`（**奖励性退款**：保留权益与证书）；**`reward` 必填 `basis` + `basis_ref`，可选 `amount_cents`（部分 = 打折）**；二次确认 + 写审计（§7.3 G-4 / G-7） |
 | GET | `/admin/reconcile` | 管理员 | 对账结果（**差异必须为 0**） |
 | GET | `/admin/reconcile/{date}` | 管理员 | **按日对账明细**（笔数 / 金额 / 退款，含渠道原始对账单对照） |
 | GET | `/admin/reconcile/{date}/diff` | 管理员 | **差异明细导出 CSV**（差异 ≠ 0 时必看；同时触发告警，不靠人盯页面） |
 | GET | `/admin/payments/channels` | 管理员 | **渠道配置状态**（只回"已配置 / 未配置"与商户号后四位；**绝不返回值**，§7.10.6） |
-| POST | `/admin/orders/{orderNo}/partial-refund` | 管理员 | **`[P1]` 部分退款** —— **首发不做**（PRD §16-13 整门解锁，部分退款语义待定） |
+| POST | `/admin/orders/{orderNo}/partial-refund` | 管理员 | **[P0] 部分退款（= 打折）** —— **语义已定（v2.24）**：等价于 `kind=reward` + 指定 `amount_cents`；**保留权益与证书**、**不计入退款率**、**计入对账**（§7.3 G-7）。保留本路径仅为兼容早期引用 |
 | GET | `/admin/certs` | 管理员 | 证书台账 |
 | POST | `/admin/certs/{certNo}/revoke` | 管理员 | 撤销证书（须填原因） |
 | GET | `/admin/users` | 管理员 | **用户列表**（`q` 支持手机号 / 姓名 / 学号 / 账号；**`id_card` 参数被忽略**） |
