@@ -5,7 +5,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.12**（v2.16：测评可信度与断线续考 · 价格试算与优惠码 · 离线下载 · 运营位与风控 · 异常复核） |
+| 版本 | **v1.13**（v2.23：新增管理员授权免费学习三接口 `/admin/entitlements`；v2.16：测评可信度与断线续考 · 价格试算与优惠码 · 离线下载 · 运营位与风控 · 异常复核） |
 | 日期 | 2026-10-03 |
 | 基址 | 生产 `https://cw-tc.ccit-agent.cn/api/v1` · staging `https://staging.cw-tc.ccit-agent.cn/api/v1` |
 | 反向代理 | nginx 反代到 `127.0.0.1:8071`（**应用端口不对公网开放**） |
@@ -359,6 +359,9 @@
 | POST | `/admin/broadcasts` | 管理员 | 发送广播 |
 | GET·PATCH | `/admin/content` | 管理员 | **对外内容管理**（简介三档 / 六条亮点 / 声明 / AI 公示 `filing_note`）；**发布即生成版本，旧版本不删**；**`evidence_ref` 为空不允许发布**；发布与下架**二次确认** |
 | GET·PATCH | `/admin/job-map` | 管理员 | **就业直达映射**维护与发布；**`evidence_ref` 与 `lecture_refs` 缺一不得发布**；**可改不可清空** |
+| POST | `/admin/entitlements` | 管理员 | **授权免费学习**（`student_id` + `course_id` + **`reason` 必填**）；**重复授权 409**；**写 `audit_log`**；**二次确认**（§7.3 G-7） |
+| DELETE | `/admin/entitlements/{id}` | 管理员 | **撤销授权**（`reason` 必填）；**只收权益，已发证保留**；写审计 |
+| GET | `/admin/entitlements` | 管理员 | 授权台账（按学员 / 课程 / 时间筛；**只回脱敏后的学员标识**） |
 | GET·PATCH | `/admin/showcase` | 管理员 | **学员成果核验与授权台账**（提交 / 授权 / 撤回时间 · 核验人）；**一键下架**；**撤回后 24h 内下架（含缓存失效）**；**只核验不存档**（不留劳动合同 / 社保 / 薪资） |
 | GET·PATCH | `/admin/operations` | 管理员 | **运营位管理**（banner / 推荐位 / 置顶）：排期 · 权重 · 上下线；**课程下架时自动移除**；**文案过禁词门禁**（§7.10.12） |
 | GET·PATCH | `/admin/promo` | 管理员 | **优惠码管理**：创建 / 定向发放 / **单人限用 + 总量上限 + 有效期**（§7.3 G-6） |

@@ -382,6 +382,63 @@ def main():
     if plan_problems:
         problems.append(("开发计划（§13）不可执行", plan_problems))
 
+    # ---------- 11. 迁移 ↔ 数据字典：列必须一致（**字典是建表唯一依据**） ----------
+    # 抓的正是"字典定义了某列、迁移却没建"这类硬伤
+    # （v2.23 实测踩过一次：`entitlement` 少了 source/order_id/granted_at/revoke_reason）。
+    mig_dir = os.path.join(ROOT, "packages", "server", "migrations", "postgres")
+    mig_tables = {}
+    if os.path.isdir(mig_dir):
+        for fn in sorted(os.listdir(mig_dir)):
+            if not fn.endswith(".sql"):
+                continue
+            body = io.open(os.path.join(mig_dir, fn), encoding="utf-8").read()
+            for m in re.finditer(r"CREATE TABLE IF NOT EXISTS\s+(\w+)\s*\(([\s\S]*?)\n\);", body):
+                cols = []
+                for line in m.group(2).split("\n"):
+                    s = line.strip()
+                    if not s or s.startswith("--"):
+                        continue
+                    if re.match(r"^(CHECK|UNIQUE|PRIMARY|FOREIGN|CONSTRAINT)\b", s, re.I):
+                        continue
+                    cm = re.match(r"^(\w+)\s+", s)
+                    if cm:
+                        cols.append(cm.group(1))
+                mig_tables[m.group(1)] = (fn, cols)
+
+    dic_tables = {}
+    for m in re.finditer(r"(?m)^### \d+\.\d+ `(\w+)`[^\n]*\n([\s\S]*?)(?=\n### |\n## |\Z)", dic):
+        cols = re.findall(r"(?m)^\| `(\w+)` \|", m.group(2))
+        if cols:
+            dic_tables[m.group(1)] = cols
+
+    mig_problems = []
+    if not mig_tables:
+        mig_problems.append("没解析到任何迁移表（migrations/postgres/ 路径或写法变了？否则本检查会空转）")
+    for tbl, (fn, cols) in sorted(mig_tables.items()):
+        if tbl not in dic_tables:
+            continue
+        dcols = dic_tables[tbl]
+        only_mig = [c for c in cols if c not in dcols]
+        only_dic = [c for c in dcols if c not in cols]
+        if only_mig or only_dic:
+            mig_problems.append("%s（%s）：迁移多了 %s / 字典多了 %s"
+                                % (tbl, fn, only_mig or "—", only_dic or "—"))
+    # ⚠️ **提示级**（不判失败）：批次 0 的迁移被明确定义为"**骨架**"，而数据字典是**全量目标**
+    # （0006~0019 才逐批补齐）。此刻判失败＝把正常进度误判成错误（假警报）。
+    # 但**"迁移多了字典没有的列"最可疑** —— 那意味着迁移凭空造了列（可能与字典的设计不一致）。
+    only_mig_tables = []
+    for tbl, (fn, cols) in sorted(mig_tables.items()):
+        if tbl not in dic_tables:
+            continue
+        only_mig = [c for c in cols if c not in dic_tables[tbl]]
+        if only_mig:
+            only_mig_tables.append("%s（%s）：迁移多了 %s" % (tbl, fn, only_mig))
+    if mig_problems:
+        notes.append(("迁移与数据字典的列差异（**提示级**：骨架 vs 全量目标，0006~0019 才补齐）", mig_problems))
+    if only_mig_tables:
+        notes.append(("⚠️ 上面这类里最可疑的一组：**迁移建了数据字典没有的列**（字典是建表唯一依据，凭空造列＝分叉）",
+                      only_mig_tables))
+
     # ---------- 输出 ----------
     if not a.quiet:
         print("== PRD 闭环性审计 ==")
