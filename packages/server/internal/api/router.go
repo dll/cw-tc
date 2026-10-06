@@ -84,6 +84,7 @@ func (s *Server) Router() *gin.Engine {
 
 	v1 := r.Group("/api/v1")
 	v1.GET("/me", authRequired(s.identity), s.me)
+	v1.POST("/auth/sms/send", s.sendSMS)
 	v1.POST("/auth/logout-all", s.logoutAll)
 	v1.POST("/auth/logout", s.logout)
 	v1.POST("/auth/login", s.login)
