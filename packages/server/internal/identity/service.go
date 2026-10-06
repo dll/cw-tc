@@ -1,0 +1,98 @@
+package identity
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"errors"
+	"fmt"
+)
+
+var (
+	ErrInvalidInput          = errors.New("注册参数非法")
+	ErrDatabaseNotConfigured = errors.New("账号数据库未配置")
+	ErrPhoneRegistered       = errors.New("手机号已注册")
+	ErrIDCardRegistered      = errors.New("身份证号已注册")
+)
+
+type RegisterInput struct {
+	Name     string
+	Phone    string
+	IDCard   string
+	Password string
+}
+
+type Student struct {
+	ID        int64
+	StudentNo string
+	Name      string
+	Phone     string
+}
+
+type Service struct {
+	db      *sql.DB
+	encKey  []byte
+	hmacKey []byte
+}
+
+func NewService(database *sql.DB, encKey, hmacKey []byte) *Service {
+	return &Service{db: database, encKey: encKey, hmacKey: hmacKey}
+}
+
+func (s *Service) Register(ctx context.Context, input RegisterInput) (Student, error) {
+	if input.Name == "" || ValidatePhone(input.Phone) != nil || ValidateIDCard(input.IDCard) != nil || input.Password == "" {
+		return Student{}, ErrInvalidInput
+	}
+	if s.db == nil {
+		return Student{}, ErrDatabaseNotConfigured
+	}
+	ciphertext, digest, err := ProtectIDCard(input.IDCard, s.encKey, s.hmacKey)
+	if err != nil {
+		return Student{}, fmt.Errorf("保护身份证号失败: %w", err)
+	}
+	studentNo := fmt.Sprintf("S%08d", checksumStudentNo(input.Phone, input.IDCard))
+	result, err := s.db.ExecContext(ctx,
+		`INSERT INTO student(student_no, name, phone, phone_verified_at, id_card_hash, id_card_cipher, password_hash)
+		 VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)`,
+		studentNo, input.Name, input.Phone, digest, ciphertext, hashPassword(input.Password))
+	if err != nil {
+		if stringsContains(err.Error(), "student.phone") || stringsContains(err.Error(), "UNIQUE constraint failed: student.phone") {
+			return Student{}, ErrPhoneRegistered
+		}
+		if stringsContains(err.Error(), "id_card_hash") {
+			return Student{}, ErrIDCardRegistered
+		}
+		return Student{}, fmt.Errorf("注册写入失败: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return Student{}, err
+	}
+	return Student{ID: id, StudentNo: studentNo, Name: input.Name, Phone: input.Phone}, nil
+}
+
+func hashPassword(password string) []byte {
+	digest := sha256.Sum256([]byte(password))
+	return digest[:]
+}
+
+func checksumStudentNo(phone, id string) int64 {
+	var sum int64
+	for _, value := range phone + id {
+		sum = (sum*31 + int64(value)) % 100000000
+	}
+	return sum
+}
+
+func stringsContains(value, target string) bool {
+	return len(target) > 0 && len(value) >= len(target) && contains(value, target)
+}
+
+func contains(value, target string) bool {
+	for i := 0; i+len(target) <= len(value); i++ {
+		if value[i:i+len(target)] == target {
+			return true
+		}
+	}
+	return false
+}
