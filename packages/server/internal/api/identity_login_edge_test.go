@@ -12,6 +12,28 @@ import (
 	"github.com/cw-tc/server/migrations"
 )
 
+func TestLoginEndpointRejectsMalformedJSON(t *testing.T) {
+	r := New(testConfig(t, true)).Router()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader("{"))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	r.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"code":10002`) {
+		t.Fatalf("非法登录 JSON 响应 = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestLoginEndpointFailsClosedWithoutIdentityService(t *testing.T) {
+	r := New(testConfig(t, true)).Router()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"phone":"13812345678","password":"password"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	r.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("未配置登录服务状态码 = %d", response.Code)
+	}
+}
+
 func TestLoginEndpointRejectsWrongPasswordWithoutCookie(t *testing.T) {
 	database, err := db.Open(context.Background(), db.DialectSQLite, "")
 	if err != nil {
