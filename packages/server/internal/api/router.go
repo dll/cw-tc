@@ -30,6 +30,7 @@ type Server struct {
 	cfg      *config.Config
 	identity *identity.Service
 	database db.Pinger
+	dbConn   *sql.DB
 }
 
 // New 构造 Server。
@@ -51,6 +52,7 @@ func NewWithDatabase(cfg *config.Config, database *sql.DB) *Server {
 	server := New(cfg)
 	if database != nil {
 		server.database = sqlPinger{database: database}
+		server.dbConn = database
 	}
 	return server
 }
@@ -59,6 +61,7 @@ func NewWithIdentityAndDatabase(cfg *config.Config, service *identity.Service, d
 	server := NewWithIdentity(cfg, service)
 	if database != nil {
 		server.database = sqlPinger{database: database}
+		server.dbConn = database
 	}
 	return server
 }
@@ -91,6 +94,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.POST("/auth/logout", s.logout)
 	v1.POST("/auth/login", s.login)
 	v1.POST("/auth/register", s.register)
+	v1.POST("/orders", authRequired(s.identity), s.createOrder)
 	v1.GET("/health", s.health)
 
 	// 对外公开状态（PRD v2 §7.12 K-2）：只读、聚合、**不含任何个人信息**。
