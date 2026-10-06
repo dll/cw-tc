@@ -42,6 +42,14 @@ func (s *Service) CreateSession(ctx context.Context, studentID int64, now time.T
 	return Session{ID: id, Token: token, ExpiresAt: expires}, nil
 }
 
+func (s *Service) RevokeAllSessions(ctx context.Context, studentID int64) error {
+	if s.db == nil || studentID <= 0 {
+		return ErrSessionNotFound
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE student_session SET revoked_at = CURRENT_TIMESTAMP WHERE student_id = ? AND revoked_at IS NULL`, studentID)
+	return err
+}
+
 func (s *Service) RevokeSession(ctx context.Context, token string) error {
 	if s.db == nil || token == "" {
 		return ErrSessionNotFound
