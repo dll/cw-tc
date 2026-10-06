@@ -30,6 +30,10 @@ jobs:
         env:
           BASE_URL: ${{ secrets.DEPLOY_BASE_URL }}
         run: |
+          if [ -z "$BASE_URL" ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "首次部署未配置 DEPLOY_BASE_URL，跳过公网健康探针；安装后由 SSH 服务器侧 health 验证。"
+            exit 0
+          fi
           test -n "$BASE_URL"
           curl -fsS --max-time 15 "$BASE_URL/api/v1/health"
           curl -fsS --max-time 15 "$BASE_URL/api/v1/public/status"
