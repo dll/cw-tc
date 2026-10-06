@@ -49,9 +49,7 @@ type envelope struct {
 func (s *Server) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(requestID())
-	r.Use(withClock)
-	r.Use(s.accessLog())
+	installMiddleware(r, s.accessLog())
 
 	v1 := r.Group("/api/v1")
 	v1.GET("/health", s.health)
@@ -121,6 +119,7 @@ func (s *Server) accessLog() gin.HandlerFunc {
 	logger := slog.Default()
 	return func(c *gin.Context) {
 		start := time.Now()
+		appendMiddlewareTrace(c, "access_log")
 		c.Next()
 
 		raw := c.Request.URL.RequestURI()
