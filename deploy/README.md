@@ -9,8 +9,9 @@
 | 域名 | **cw-tc.ccit-agent.cn** |
 | 部署根目录 | `/opt/cw-tc` |
 | 应用端口 | `127.0.0.1:8071`（**不对公网开放**） |
-| 数据库 | PostgreSQL（仅容器/本机访问） |
-| 缓存 | Redis（仅容器/本机访问） |
+| 生产数据库 | **腾讯云 PostgreSQL 15+（沿用 CCIT 既有实例/私网参数）** |
+| 开发/测试数据库 | SQLite（内存或文件，不连接本机 PostgreSQL） |
+| 缓存 | Redis（生产沿用既有 CCIT/腾讯云内网 Redis；开发/测试不启动、不连接） |
 | 反代 | nginx（`:80` 跳转 / `:443` TLS 终止） |
 
 ## 二、目录约定
@@ -91,9 +92,9 @@ sudo chown ubuntu:ubuntu /opt/cw-tc/shared/.env
 ## 五、服务器一次性准备
 
 ```bash
-# 1. 依赖
+# 1. 依赖（沿用既有 CCIT/腾讯云服务器；不新建服务器、数据库或本机服务）
 sudo apt update
-sudo apt install -y docker.io docker-compose-v2 rsync curl nginx postgresql redis-server
+sudo apt install -y rsync curl nginx
 
 # 2. 部署目录
 sudo mkdir -p /opt/cw-tc/{releases,shared,backups}
@@ -110,8 +111,7 @@ sudo systemctl daemon-reload && sudo systemctl enable cw-tc-server
 # 5. 环境变量（见第三节）
 sudo cp deploy/.env.example /opt/cw-tc/shared/.env && sudo chmod 600 /opt/cw-tc/shared/.env
 
-# 6. pgvector 扩展（知识库依赖）
-sudo -u postgres psql -d cwtc -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+# 6. pgvector/数据库扩展：由既有腾讯云 PostgreSQL DBA 按变更单执行；本机不执行。
 ```
 
 ## 六、安全组（最小放行）
@@ -122,8 +122,9 @@ sudo -u postgres psql -d cwtc -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 ## 七、发布流程（自动）
 
 ```
-push main → 构建 → 测试(含判分器 --self-test) → 同步内容(--check)
-        → 上传 releases/<时间>-<commit>/ → 迁移 DB → 重启 → 健康检查(≤90s)
+push main → 构建 → 测试 → 生成不可变制品 + 审批材料
+        → CO/运维审批 → 服务器侧注入 shared/.env
+        → 既有腾讯云 PostgreSQL 先迁移 → 重启 → 健康检查
         → 成功：切 current、清理旧版本(留5)  失败：自动回滚、标红
 ```
 
@@ -163,4 +164,4 @@ push main → 构建 → 测试(含判分器 --self-test) → 同步内容(--che
 - [ ] **staff 开通**：种子管理员可登录且**强制改密**；管理员可开通教师账号
 - [ ] **staging**：与生产物理隔离，且有访问限制
 
-> ⚠️ 当前处于 **M0**，本目录为**骨架与约定**；发布脚本在 **M6 前**落地。
+> ⚠️ 生产部署只生成审批材料，不由 GitHub Actions 自动 SSH、迁移、重启或切流量。
