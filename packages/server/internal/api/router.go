@@ -86,7 +86,7 @@ func (s *Server) publicStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"source":     "cw-tc",
 		"observedAt": clock.From(c.Request.Context()).Now().Format(time.RFC3339),
-		"status":     statusAvailable,
+		"status":     statusUnavailable,
 		"dataSource": "not_wired", // 显式标注：计数尚未接入数据源
 		"courses": gin.H{
 			"total":     nil,
