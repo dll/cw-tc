@@ -4,16 +4,18 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/cw-tc/server/internal/platform/clock"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/cw-tc/server/internal/config"
 	"github.com/cw-tc/server/internal/identity"
+	"github.com/cw-tc/server/internal/platform/clock"
+	"github.com/cw-tc/server/internal/platform/db"
 	"github.com/cw-tc/server/internal/redact"
 )
 
@@ -27,6 +29,7 @@ var StartedAt = time.Now()
 type Server struct {
 	cfg      *config.Config
 	identity *identity.Service
+	database db.Pinger
 }
 
 // New 构造 Server。
@@ -38,6 +41,26 @@ func New(cfg *config.Config) *Server {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	return &Server{cfg: cfg}
+}
+
+type sqlPinger struct{ database *sql.DB }
+
+func (p sqlPinger) Ping(ctx context.Context) error { return p.database.PingContext(ctx) }
+
+func NewWithDatabase(cfg *config.Config, database *sql.DB) *Server {
+	server := New(cfg)
+	if database != nil {
+		server.database = sqlPinger{database: database}
+	}
+	return server
+}
+
+func NewWithIdentityAndDatabase(cfg *config.Config, service *identity.Service, database *sql.DB) *Server {
+	server := NewWithIdentity(cfg, service)
+	if database != nil {
+		server.database = sqlPinger{database: database}
+	}
+	return server
 }
 
 func NewWithIdentity(cfg *config.Config, service *identity.Service) *Server {
@@ -77,6 +100,12 @@ func (s *Server) Router() *gin.Engine {
 
 // health 健康检查。部署流水线的探活依赖（见 deploy/README.md）。
 func (s *Server) health(c *gin.Context) {
+	if s.database != nil {
+		if err := s.database.Ping(c.Request.Context()); err != nil {
+			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "数据库不可用"})
+			return
+		}
+	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"status":     "ok",
 		"version":    Version,
