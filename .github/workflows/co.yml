@@ -7,12 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       release_id:
-        description: "已获批的 release ID；留空仅执行健康巡检"
-        required: false
+        description: "CD 制品对应的 release ID（例如 20261006T000000Z-<sha>）"
+        required: true
         type: string
       archive_url:
-        description: "已获批制品下载 URL；不得填写生产凭据"
-        required: false
+        description: "CD workflow run ID（不是 URL；例如 37435069059）"
+        required: true
         type: string
 
 permissions:
@@ -43,8 +43,18 @@ jobs:
     steps:
       - name: 下载已审批不可变制品
         env:
-          ARCHIVE_URL: ${{ inputs.archive_url }}
-        run: curl --fail --location --max-time 120 "$ARCHIVE_URL" --output release.tar.gz
+          RUN_ID: ${{ inputs.archive_url }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 输入兼容旧字段，但现在应填写 CD workflow run ID；下载走 GitHub 鉴权，
+          # 不接受未鉴权的任意 URL，避免把未经审批的外部文件送入生产。
+          test -n "$RUN_ID"
+          HEAD_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" --jq .head_sha)
+          ARTIFACT="cw-tc-release-${HEAD_SHA}"
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT" --dir release-download
+          ARCHIVE=$(find release-download -type f -name '*.tar.gz' -print -quit)
+          test -n "$ARCHIVE"
+          cp "$ARCHIVE" release.tar.gz
 
       - name: 上传已审批不可变制品
         uses: appleboy/scp-action@v0.1.7
@@ -67,7 +77,9 @@ jobs:
             set -euo pipefail
             test -f /opt/cw-tc/shared/.env
             RELEASE_ID='${{ inputs.release_id }}'
-            DEPLOY_PATH=/opt/cw-tc RELEASE_ID="$RELEASE_ID" bash /opt/cw-tc/current/deploy/server-install-release.sh /opt/cw-tc/incoming/release.tar.gz
+            INSTALLER="/opt/cw-tc/releases/$RELEASE_ID/deploy/server-install-release.sh"
+            test -x "$INSTALLER"
+            DEPLOY_PATH=/opt/cw-tc RELEASE_ID="$RELEASE_ID" bash "$INSTALLER" /opt/cw-tc/incoming/release.tar.gz
             rm -f /opt/cw-tc/incoming/release.tar.gz
 
   incident-dedup:
