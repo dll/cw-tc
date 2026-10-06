@@ -14,6 +14,8 @@
     3. 文件引用有效性：`docs/xxx.md` · `tools/xxx.py` · `deploy/scripts/xxx.sh` 是否存在
     4. 模块闭环矩阵：每个模块（A~Q）在 **自查表 / §15.1 验收 / API 契约 / 数据字典** 四处是否有落点
     5. 枚举登记粗筛（**提示级，不判失败**）：`CHECK` 里的值是否出现在"枚举值集中表"
+    6. **开发计划可执行性（§13）**：任务表逐行受检 —— **产出物 / 完成定义（DoD）齐备** ·
+       **依赖指向真实任务且无环** · **§7 的每个模块在 §13 有任务承接**（模块的**第 5 个落点**）
 
 **为什么要有映射表而不是"关键词自动匹配"**：
     自动匹配会制造假警报，而**假警报多了门禁就会被绕过（比没有门禁更糟）**。
@@ -308,6 +310,77 @@ def main():
         selfnum.append("§13 任务编号重复：%s" % "、".join(dup))
     if selfnum:
         problems.append(("自述数字 / 版本自相矛盾", selfnum))
+
+    # ---------- 10. 开发计划可执行性（§13 任务表） ----------
+    # 计划要能"照着做"，必须满足四条 —— 任一条不成立，计划就不可执行（**致命**）：
+    #   ① 每个任务都有产出物与完成定义（没有判据 = 不知道算不算做完）；
+    #   ② 依赖指向真实任务、无自依赖、无环；
+    #   ③ §7 的每个模块在 §13 都有任务承接（**第 5 个落点**）；
+    #   ④ 任务编号唯一（在"自述数字"一节已查）。
+    plan = prd[prd.index("## 13. 开发计划"):prd.index("## 14. 风险与对策")]
+    plan_rows, cols = [], None
+    for ln in plan.splitlines():
+        if not ln.startswith("|"):
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if not cells:
+            continue
+        if cells[0] == "ID":
+            cols = [c.strip("* ") for c in cells]
+            continue
+        if re.match(r"^M[0-9]-\d{2}$", cells[0]):
+            plan_rows.append(dict(zip(cols or [], cells)))
+
+    plan_problems = []
+    if not plan_rows:
+        plan_problems.append("§13 里没解析到任何任务行（表格格式变了？—— 这时检查会空转，必须报错）")
+    for r in plan_rows:
+        tid = r.get("ID", "?")
+        if not (r.get("产出物") or "").strip():
+            plan_problems.append("%s 缺「产出物」" % tid)
+        if not (r.get("完成定义（DoD）") or "").strip():
+            plan_problems.append("%s 缺「完成定义（DoD）」—— 不知道怎样才算做完" % tid)
+
+    ids = [r.get("ID") for r in plan_rows]
+    edges = {}
+    for r in plan_rows:
+        deps = re.findall(r"M[0-9]-\d{2}", r.get("依赖", "") or "")
+        edges[r.get("ID")] = deps
+        for d in deps:
+            if d not in set(ids):
+                plan_problems.append("%s 依赖了不存在的任务 %s" % (r.get("ID"), d))
+            if d == r.get("ID"):
+                plan_problems.append("%s 依赖自身" % d)
+
+    color, cycles = {}, []
+
+    def _visit(node, stack):
+        color[node] = 1
+        stack.append(node)
+        for nxt in edges.get(node, []):
+            if nxt not in edges:
+                continue
+            if color.get(nxt) == 1:
+                cycles.append(" -> ".join(stack[stack.index(nxt):] + [nxt]))
+            elif color.get(nxt) is None:
+                _visit(nxt, stack)
+        stack.pop()
+        color[node] = 2
+
+    for node in ids:
+        if color.get(node) is None:
+            _visit(node, [])
+    for cyc in cycles:
+        plan_problems.append("依赖成环：%s" % cyc)
+
+    cover = " ".join(re.findall(r"(?m)^\*\*覆盖模块\*\*：(.*)$", plan))
+    covered = set(re.findall(r"\*\*([A-Z]+)\*\*", cover)) | set(re.findall(r"模块 ([A-Z]+)", plan))
+    for _sec, _name, letter in MODULE_RE.findall(prd):
+        if letter not in covered:
+            plan_problems.append("模块 %s 在 §13 没有任务落点（补「覆盖模块」行或加任务）" % letter)
+
+    if plan_problems:
+        problems.append(("开发计划（§13）不可执行", plan_problems))
 
     # ---------- 输出 ----------
     if not a.quiet:

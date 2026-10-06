@@ -1,0 +1,61 @@
+name: "CD Release Approval"
+# 仅在 CI 成功后的 main push 上构建不可变制品并生成审批材料；不 SSH、不迁移、不触碰生产。
+
+on:
+  workflow_run:
+    workflows: ["CI Quality Gate"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "要打包的提交 SHA（默认当前分支 HEAD）"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-approval-bundle:
+    name: Build immutable release and approval request
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出已通过 CI 的提交
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || inputs.commit || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.x'
+          cache: true
+          cache-dependency-path: packages/server/go.sum
+
+      - name: 构建不可变发布包（不连接外部服务）
+        run: bash deploy/scripts/build-release-bundle.sh release-output
+
+      - name: 上传发布包与审批请求
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cw-tc-release-${{ github.event.workflow_run.head_sha || inputs.commit || github.sha }}
+          path: |
+            release-output/*.tar.gz
+            release-output/*.sha256
+            release-output/*/deployment-approval-request.json
+          if-no-files-found: error
+
+      - name: 写入审批说明
+        run: |
+          {
+            echo "## CD 输出"
+            echo "- 已构建不可变制品与 SHA-256 校验文件。"
+            echo "- 已生成 deployment-approval-request.json。"
+            echo "- 本工作流不包含 SSH、生产迁移、重启、切流或回滚执行步骤。"
+            echo "- 生产参数仅由目标服务器 /opt/cw-tc/shared/.env 注入。"
+          } >> "$GITHUB_STEP_SUMMARY"

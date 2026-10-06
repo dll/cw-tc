@@ -35,10 +35,23 @@ run: ## 本地运行（需先按 deploy/.env.example 配好强制密钥）
 test: ## 全量单测
 	go test ./... -count=1
 
+.PHONY: fmt-check
+fmt-check: ## 检查格式（不修改文件）
+	@test -z "$$(gofmt -l .)" || { echo "存在未格式化的 Go 文件" >&2; gofmt -l .; exit 1; }
+
 .PHONY: cover
 cover: ## 单测 + 覆盖率（阈值 $(COVER_MIN)%）
 	go test ./... -count=1 -covermode=set -coverpkg=./... -coverprofile=$(COVER_FILE)
 	@go tool cover -func=$(COVER_FILE) | tail -1
 
+.PHONY: migration-test
+migration-test: ## 在内存 SQLite 中执行迁移测试
+	go test ./migrations/... -count=1 -v
+
+.PHONY: compliance
+compliance: ## 执行仓库合规扫描
+	bash ../../deploy/scripts/scan-sensitive.sh
+	bash ../../deploy/scripts/scan-claims.sh
+
 .PHONY: check
-check: fmt vet test ## 提交前自检
+check: fmt-check vet test migration-test ## 提交前自检（不连接外部数据库/缓存）

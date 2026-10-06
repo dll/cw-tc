@@ -32,11 +32,15 @@ jobs:
   # 后端门禁：格式 / 静态检查 / 构建 / 单测 / 覆盖率 >= 80%
   # ------------------------------------------------------------------
   go-quality-gate:
-    name: Go fmt/vet/build/test + coverage >= 80%
+    name: Go fmt/vet/build/test/migrations
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: packages/server
+    env:
+      # CI 与本地一致：只使用 SQLite 内存库，不启动或连接 PostgreSQL/Redis。
+      CWTC_DB_DRIVER: sqlite
+      CWTC_DB_DSN: ""
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
@@ -69,10 +73,17 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      - name: go build
-        run: go build ./...
+      - name: Go 构建（不可变候选制品）
+        run: go build -trimpath ./...
 
-      - name: go test 全量
+      - name: SQLite 迁移真跑与方言门禁
+        run: go test ./migrations/... -count=1 -v
+
+      - name: 仓库差异空白检查
+        working-directory: .
+        run: git diff --check
+
+      - name: 全量测试
         run: go test ./... -count=1
 
       - name: 覆盖率门禁（低于 80% 失败）

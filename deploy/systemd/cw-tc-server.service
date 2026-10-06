@@ -1,7 +1,7 @@
 [Unit]
 Description=第三课堂 (cw-tc) 应用服务
 Documentation=https://cw-tc.ccit-agent.cn
-After=network-online.target postgresql.service redis-server.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
