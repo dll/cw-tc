@@ -50,6 +50,7 @@ jobs:
             release-output/*/deployment-approval-request.json
             release-output/*/RELEASE-MANIFEST.txt
             release-output/*/deploy/migration-preflight.sh
+            release-output/*/deploy/server-install-release.sh
           if-no-files-found: error
 
       - name: 写入审批说明

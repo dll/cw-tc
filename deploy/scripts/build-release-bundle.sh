@@ -31,6 +31,7 @@ cp -R "$SERVER/migrations/postgres" "$RELEASE_DIR/migrations/"
 cp "$ROOT/deploy/systemd/cw-tc-server.service" "$RELEASE_DIR/deploy/"
 cp "$ROOT/deploy/nginx/cw-tc.conf" "$RELEASE_DIR/deploy/"
 cp "$ROOT/deploy/scripts/migration-preflight.sh" "$RELEASE_DIR/deploy/"
+cp "$ROOT/deploy/scripts/server-install-release.sh" "$RELEASE_DIR/deploy/"
 
 cat > "$RELEASE_DIR/RELEASE-MANIFEST.txt" <<EOF
 release_id=$RELEASE_ID
@@ -48,6 +49,7 @@ files:
 - deploy/cw-tc-server.service
 - deploy/cw-tc.conf
 - deploy/migration-preflight.sh
+- deploy/server-install-release.sh
 - deployment-approval-request.json
 EOF
 

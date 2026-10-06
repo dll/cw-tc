@@ -1,0 +1,87 @@
+name: "CO Production Operations"
+# 生产巡检/部署均需 GitHub Environment 审批；不使用本地开发数据库。
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: "已获批的 release ID；留空仅执行健康巡检"
+        required: false
+        type: string
+      archive_url:
+        description: "已获批制品下载 URL；不得填写生产凭据"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  health-check:
+    name: Tencent Cloud production health probe
+    runs-on: ubuntu-latest
+    environment: cw-tc-production
+    steps:
+      - name: 检查公网入口
+        env:
+          BASE_URL: ${{ secrets.DEPLOY_BASE_URL }}
+        run: |
+          test -n "$BASE_URL"
+          curl -fsS --max-time 15 "$BASE_URL/api/v1/health"
+          curl -fsS --max-time 15 "$BASE_URL/api/v1/public/status"
+
+  approved-install:
+    name: Approved server-side release install
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_id != '' && inputs.archive_url != '' }}
+    needs: health-check
+    runs-on: ubuntu-latest
+    environment: cw-tc-production
+    steps:
+      - name: 下载已审批不可变制品
+        env:
+          ARCHIVE_URL: ${{ inputs.archive_url }}
+        run: curl --fail --location --max-time 120 "$ARCHIVE_URL" --output release.tar.gz
+
+      - name: 上传已审批不可变制品
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          source: release.tar.gz
+          target: /opt/cw-tc/incoming
+
+      - name: SSH 安装到既有腾讯云服务器
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            test -f /opt/cw-tc/shared/.env
+            RELEASE_ID='${{ inputs.release_id }}'
+            DEPLOY_PATH=/opt/cw-tc RELEASE_ID="$RELEASE_ID" bash /opt/cw-tc/current/deploy/server-install-release.sh /opt/cw-tc/incoming/release.tar.gz
+            rm -f /opt/cw-tc/incoming/release.tar.gz
+
+  incident-dedup:
+    name: Incident deduplication
+    if: ${{ failure() }}
+    needs: [health-check, approved-install]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const title = '[告警] cw-tc 生产巡检或审批部署失败';
+            const label = 'cw-tc-prod-incident';
+            const { data } = await github.rest.issues.listForRepo({owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: label, per_page: 100});
+            if (!data.some(i => i.title === title)) {
+              await github.rest.issues.create({owner: context.repo.owner, repo: context.repo.repo, title, labels: [label], body: `时间：${new Date().toISOString()}\nRun：${context.runId}\n请按变更单检查既有腾讯云服务器、PostgreSQL、Redis 与 nginx。`});
+            }
