@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/cw-tc/server/internal/config"
+	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/redact"
 )
 
@@ -24,7 +25,8 @@ var StartedAt = time.Now()
 
 // Server 持有路由所需的依赖。
 type Server struct {
-	cfg *config.Config
+	cfg      *config.Config
+	identity *identity.Service
 }
 
 // New 构造 Server。
@@ -36,6 +38,12 @@ func New(cfg *config.Config) *Server {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	return &Server{cfg: cfg}
+}
+
+func NewWithIdentity(cfg *config.Config, service *identity.Service) *Server {
+	server := New(cfg)
+	server.identity = service
+	return server
 }
 
 // envelope 为统一响应信封。
@@ -52,6 +60,7 @@ func (s *Server) Router() *gin.Engine {
 	installMiddleware(r, s.accessLog())
 
 	v1 := r.Group("/api/v1")
+	v1.POST("/auth/register", s.register)
 	v1.GET("/health", s.health)
 
 	// 对外公开状态（PRD v2 §7.12 K-2）：只读、聚合、**不含任何个人信息**。
