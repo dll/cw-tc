@@ -10,6 +10,7 @@ import (
 )
 
 var ErrSMSCooldown = errors.New("短信发送过于频繁")
+var ErrSMSInvalid = errors.New("短信验证码错误或过期")
 
 type SMSService struct {
 	mu    sync.Mutex
@@ -38,6 +39,22 @@ func (s *SMSService) Issue(_ context.Context, phone, scene, code string, now tim
 	digest := sha256.Sum256([]byte(code))
 	s.codes[key] = smsRecord{digest: hex.EncodeToString(digest[:]), createdAt: now}
 	return "", nil
+}
+
+func (s *SMSService) Consume(phone, scene, code string, now time.Time) error {
+	key := phone + ":" + scene
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.codes[key]
+	if !ok || now.Sub(record.createdAt) > 10*time.Minute {
+		return ErrSMSInvalid
+	}
+	digest := sha256.Sum256([]byte(code))
+	if hex.EncodeToString(digest[:]) != record.digest {
+		return ErrSMSInvalid
+	}
+	delete(s.codes, key)
+	return nil
 }
 
 func (s *SMSService) Verify(phone, scene, code string, now time.Time) bool {
