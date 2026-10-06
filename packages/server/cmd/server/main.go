@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cw-tc/server/internal/api"
 	"github.com/cw-tc/server/internal/config"
 )
 
@@ -50,7 +49,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr(),
-		Handler:           api.New(cfg).Router(),
+		Handler:           buildAPI(cfg, database).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -58,7 +57,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		slog.Info("服务启动", "version", api.Version)
+		slog.Info("服务启动", "version", "dev")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("监听失败", "err", err)
 			stop()
