@@ -30,6 +30,26 @@ cp "$ROOT/deploy/.env.example" "$RELEASE_DIR/deploy/.env.example"
 cp -R "$SERVER/migrations/postgres" "$RELEASE_DIR/migrations/"
 cp "$ROOT/deploy/systemd/cw-tc-server.service" "$RELEASE_DIR/deploy/"
 cp "$ROOT/deploy/nginx/cw-tc.conf" "$RELEASE_DIR/deploy/"
+cp "$ROOT/deploy/scripts/migration-preflight.sh" "$RELEASE_DIR/deploy/"
+
+cat > "$RELEASE_DIR/RELEASE-MANIFEST.txt" <<EOF
+release_id=$RELEASE_ID
+commit=$COMMIT
+environment=production
+database_driver=postgres
+database_provider=existing-ccit-tencent-cloud-postgresql
+secrets_source=/opt/cw-tc/shared/.env
+production_touch=false
+approval_required=true
+files:
+- bin/cw-tc-server
+- migrations/postgres/*.sql
+- deploy/.env.example
+- deploy/cw-tc-server.service
+- deploy/cw-tc.conf
+- deploy/migration-preflight.sh
+- deployment-approval-request.json
+EOF
 
 (cd "$RELEASE_DIR" && sha256sum bin/cw-tc-server > SHA256SUMS)
 cat > "$RELEASE_DIR/deployment-approval-request.json" <<EOF

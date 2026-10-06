@@ -48,6 +48,8 @@ jobs:
             release-output/*.tar.gz
             release-output/*.sha256
             release-output/*/deployment-approval-request.json
+            release-output/*/RELEASE-MANIFEST.txt
+            release-output/*/deploy/migration-preflight.sh
           if-no-files-found: error
 
       - name: 写入审批说明
