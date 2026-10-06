@@ -95,6 +95,9 @@ func (s *Server) Router() *gin.Engine {
 	v1.POST("/auth/login", s.login)
 	v1.POST("/auth/register", s.register)
 	v1.POST("/orders", authRequired(s.identity), s.createOrder)
+	v1.GET("/orders/:orderNo", authRequired(s.identity), s.getOrder)
+	v1.POST("/orders/:orderNo/pay", authRequired(s.identity), s.preparePayment)
+	v1.POST("/orders/:orderNo/cancel", authRequired(s.identity), s.cancelOrder)
 	v1.GET("/health", s.health)
 
 	// 对外公开状态（PRD v2 §7.12 K-2）：只读、聚合、**不含任何个人信息**。
