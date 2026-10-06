@@ -30,6 +30,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	database, closeDatabase, err := openDatabase(context.Background(), cfg)
+	if err != nil || database == nil {
+		slog.Error("数据库初始化失败，服务拒绝启动", "err", err, "driver", cfg.DBDriver)
+		os.Exit(1)
+	}
+	defer closeDatabase()
+
 	// 能力开关如实播报，便于运维一眼看出"哪些功能因未配凭据而关闭"。
 	slog.Info("配置已加载",
 		"addr", cfg.Addr(),
