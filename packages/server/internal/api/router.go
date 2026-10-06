@@ -60,6 +60,7 @@ func (s *Server) Router() *gin.Engine {
 	installMiddleware(r, s.accessLog())
 
 	v1 := r.Group("/api/v1")
+	v1.GET("/me", authRequired(s.identity), s.me)
 	v1.POST("/auth/logout", s.logout)
 	v1.POST("/auth/login", s.login)
 	v1.POST("/auth/register", s.register)
