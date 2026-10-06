@@ -58,6 +58,18 @@ func (s *Service) pending(ctx context.Context, studentID, courseID int64) (Order
 	return order, err
 }
 
+func (s *Service) CreateOrderFromCourse(ctx context.Context, studentID, courseID int64, requestID string, expiresAt time.Time) (Order, error) {
+	if s.db == nil || studentID <= 0 || courseID <= 0 {
+		return Order{}, ErrOrderInput
+	}
+	var input OrderInput
+	if err := s.db.QueryRowContext(ctx, `SELECT name, price_cents FROM course WHERE id=? AND status='published'`, courseID).Scan(&input.CourseName, &input.PriceCents); err != nil {
+		return Order{}, fmt.Errorf("课程不可下单: %w", err)
+	}
+	input.StudentID, input.CourseID, input.RequestID, input.ExpiresAt = studentID, courseID, requestID, expiresAt
+	return s.CreateOrder(ctx, input)
+}
+
 func (s *Service) CreateOrder(ctx context.Context, in OrderInput) (Order, error) {
 	if s.db == nil || in.StudentID <= 0 || in.CourseID <= 0 || in.CourseName == "" || in.PriceCents < 0 || in.ExpiresAt.IsZero() {
 		return Order{}, ErrOrderInput
