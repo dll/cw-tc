@@ -44,19 +44,23 @@ func (s *Server) verifyCaptcha(c *gin.Context) {
 		c.JSON(http.StatusOK, envelope{Code: 10002, Msg: "请求参数格式非法"})
 		return
 	}
-	captchaMemory.mu.Lock()
-	challenge, ok := captchaMemory.items[input.ID]
-	if ok && time.Now().After(challenge.expires) {
-		delete(captchaMemory.items, input.ID)
-		ok = false
-	}
-	if ok && input.Answer == challenge.answer {
-		delete(captchaMemory.items, input.ID)
-	}
-	captchaMemory.mu.Unlock()
-	if !ok || input.Answer != challenge.answer {
+	if !consumeCaptcha(input.ID, input.Answer) {
 		c.JSON(http.StatusOK, envelope{Code: 10002, Msg: "验证码错误或过期"})
 		return
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"verified": true}})
+}
+
+func consumeCaptcha(id, answer string) bool {
+	captchaMemory.mu.Lock()
+	defer captchaMemory.mu.Unlock()
+	challenge, ok := captchaMemory.items[id]
+	if !ok || time.Now().After(challenge.expires) || answer != challenge.answer {
+		if ok && time.Now().After(challenge.expires) {
+			delete(captchaMemory.items, id)
+		}
+		return false
+	}
+	delete(captchaMemory.items, id)
+	return true
 }
