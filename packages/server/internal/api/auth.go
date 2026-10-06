@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cw-tc/server/internal/identity"
+	"github.com/cw-tc/server/internal/redact"
 	"github.com/gin-gonic/gin"
 )
 
@@ -47,6 +48,6 @@ func (s *Server) me(c *gin.Context) {
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"student_no": student.StudentNo,
 		"name":       student.Name,
-		"phone":      student.Phone,
+		"phone":      redact.Phone(student.Phone),
 	}})
 }
