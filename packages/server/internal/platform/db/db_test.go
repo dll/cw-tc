@@ -29,6 +29,16 @@ func TestOpenSQLiteInMemory(t *testing.T) {
 	}
 }
 
+func TestOpenSQLiteWithDSN(t *testing.T) {
+	database, err := Open(context.Background(), DialectSQLite, "file:test-dsn?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("带 DSN 打开 SQLite 失败: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("关闭 SQLite 失败: %v", err)
+	}
+}
+
 func TestOpenPostgresIsExplicitlyUnsupported(t *testing.T) {
 	// 生产走 PostgreSQL，但本仓库**尚未接入驱动**。
 	// 这里断言它**显式失败**而不是静默降级到别的方言 —— 未验证的依赖不引入。
