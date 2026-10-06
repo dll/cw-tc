@@ -30,8 +30,8 @@ jobs:
         env:
           BASE_URL: ${{ secrets.DEPLOY_BASE_URL }}
         run: |
-          if [ -z "$BASE_URL" ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "首次部署未配置 DEPLOY_BASE_URL，跳过公网健康探针；安装后由 SSH 服务器侧 health 验证。"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.release_id }}" ]; then
+            echo "审批部署模式：先执行服务器侧 SSH 安装与本机 health，公网 DNS 由安装后单独验收。"
             exit 0
           fi
           test -n "$BASE_URL"
