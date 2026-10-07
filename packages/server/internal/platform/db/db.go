@@ -11,8 +11,8 @@
 // # 一条纪律
 //
 // **生产不得使用 SQLite**（`config` 层在 `DEPLOY_ENV=production` 时拒绝该驱动）；
-// PostgreSQL 驱动**本仓库尚未接入** —— 本机没有可验证的实例，宁可显式失败，
-// 也不引入一个无法验证的依赖（见 `ErrDialectUnsupported`）。
+// PostgreSQL 驱动已接入（`github.com/lib/pq`，纯 Go、无 CGO），
+// 与 SQLite 共用 `database/sql` 抽象；`migrations/postgres/` 由迁移执行器按方言执行。
 package db
 
 import (
@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 
+	_ "github.com/lib/pq"
 	_ "modernc.org/sqlite"
 )
 
@@ -80,9 +81,7 @@ func Open(ctx context.Context, dialect Dialect, dsn string) (*sql.DB, error) {
 	case DialectSQLite:
 		return openSQLite(ctx, dsn)
 	case DialectPostgres:
-		// 刻意留空：本机没有可验证的 PG 实例，接入未验证的驱动不如显式失败。
-		// 接入点见 docs/技术方案-v1.md §5 与批次 1 任务（有生产实例可验时再做）。
-		return nil, fmt.Errorf("%w：postgres（开发/测试请用 sqlite；生产接入见批次 1）", ErrDialectUnsupported)
+		return openPostgres(ctx, dsn)
 	default:
 		return nil, fmt.Errorf("%w：%q", ErrUnknownDialect, dialect)
 	}
@@ -99,6 +98,22 @@ func openSQLite(ctx context.Context, dsn string) (*sql.DB, error) {
 	}
 	// 内存库在多个连接下易出现表锁；单连接即可满足开发与测试。
 	database.SetMaxOpenConns(1)
+	if err := database.PingContext(ctx); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	return database, nil
+}
+
+// openPostgres 按 libpq 风格 DSN（或 URL）打开 PostgreSQL 连接池。
+//
+// 驱动为 lib/pq（database/sql，注册名 "postgres"）；纯 Go、无 CGO。lib/pq 对无参 Exec
+// 走简单查询协议，故**多语句迁移（整文件一次 Exec）**可直接执行。
+func openPostgres(ctx context.Context, dsn string) (*sql.DB, error) {
+	database, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, err
+	}
 	if err := database.PingContext(ctx); err != nil {
 		_ = database.Close()
 		return nil, err
@@ -189,8 +204,12 @@ func applyOne(ctx context.Context, database *sql.DB, fsys fs.FS, dir, name strin
 		_ = tx.Rollback()
 		return fmt.Errorf("执行迁移 %s/%s 失败：%w", dir, name, err)
 	}
+	placeholder := "?"
+	if dir == string(DialectPostgres) {
+		placeholder = "$1"
+	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO schema_migrations(version) VALUES (?)`, name); err != nil {
+		`INSERT INTO schema_migrations(version) VALUES (`+placeholder+`)`, name); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("记录迁移 %s 失败：%w", name, err)
 	}
