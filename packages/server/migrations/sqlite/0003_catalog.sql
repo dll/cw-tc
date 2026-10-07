@@ -62,10 +62,11 @@ CREATE TABLE IF NOT EXISTS lecture (
     no INT NOT NULL,
     title TEXT NOT NULL,
     is_preview INTEGER NOT NULL DEFAULT false,
+    origin TEXT NOT NULL DEFAULT 'upstream',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_lecture_course_no ON lecture(course_id, no);
--- @deferred lecture: in_exam_scope@0015 kind@0011 origin@0015
+-- @deferred lecture: in_exam_scope@0015 kind@0011
 -- @note lecture: 0015：补 `CHECK (origin <> 'upstream' OR in_exam_scope = true)`（该约束依赖 `in_exam_scope`，必须同批加）
 -- @note lecture: 0015：补 `INDEX(course_id, origin)`
 
