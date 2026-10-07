@@ -40,8 +40,6 @@ jobs:
 
   approved-install:
     name: Approved server-side release install
-    # 当前按 CO 指令暂停生产安装；保留代码供后续变更单批准后恢复。
-    if: ${{ false }}
     needs: health-check
     runs-on: ubuntu-latest
     environment: cw-tc-production
