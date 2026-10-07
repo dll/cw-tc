@@ -26,11 +26,11 @@ func TestRunSyncWithFixture(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "课程总览.json"), body, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	courses, lectures, err := runSync(context.Background(), "", root)
+	courses, lectures, questions, err := runSync(context.Background(), "", root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if courses != 1 || lectures != 1 {
-		t.Fatalf("同步结果错误: 课程 %d 讲次 %d", courses, lectures)
+		t.Fatalf("同步结果错误: 课程 %d 讲次 %d 题目 %d", courses, lectures, questions)
 	}
 }

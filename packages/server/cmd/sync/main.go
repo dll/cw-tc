@@ -26,31 +26,32 @@ func main() {
 	dsn := flag.String("dsn", "", "SQLite DSN（默认内存库，仅开发/测试）")
 	flag.Parse()
 
-	courses, lectures, err := runSync(context.Background(), *dsn, *source)
+	courses, lectures, questions, err := runSync(context.Background(), *dsn, *source)
 	if err != nil {
 		log.Fatalf("同步失败: %v", err)
 	}
-	fmt.Printf("同步完成：上游课程 %d 门，讲次 %d 讲。\n", courses, lectures)
+	fmt.Printf("同步完成：上游课程 %d 门，讲次 %d 讲，题目 %d 题。\n", courses, lectures, questions)
 }
 
-// runSync 打开数据库、执行迁移并运行同步，返回上游课程数与讲次数。
-func runSync(ctx context.Context, dsn, source string) (int, int, error) {
+// runSync 打开数据库、执行迁移并运行同步，返回上游课程数、讲次数与题目数。
+func runSync(ctx context.Context, dsn, source string) (int, int, int, error) {
 	if source == "" {
 		source = defaultSource
 	}
 	database, err := db.Open(ctx, db.DialectSQLite, dsn)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	defer database.Close()
 	if err := db.ApplyMigrations(ctx, database, migrations.FS, db.DialectSQLite); err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	if err := sync.Run(ctx, database, source); err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
-	var courses, lectures int
+	var courses, lectures, questions int
 	_ = database.QueryRow(`SELECT COUNT(*) FROM course WHERE source='upstream'`).Scan(&courses)
 	_ = database.QueryRow(`SELECT COUNT(*) FROM lecture WHERE origin='upstream'`).Scan(&lectures)
-	return courses, lectures, nil
+	_ = database.QueryRow(`SELECT COUNT(*) FROM question`).Scan(&questions)
+	return courses, lectures, questions, nil
 }

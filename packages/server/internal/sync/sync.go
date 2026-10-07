@@ -54,9 +54,51 @@ type Level struct {
 	Excellent   int    `json:"excellent"`
 }
 
+// QuestionBank 是「测试题集/题库.json」的顶层结构。
+type QuestionBank struct {
+	Questions []Question `json:"questions"`
+}
+
+// Question 是题库里的一道题（上游只读，平台通过 is_override 覆盖）。
+type Question struct {
+	ID           string   `json:"id"`
+	Level        string   `json:"level"`
+	Lecture      string   `json:"lecture"`
+	Type         string   `json:"type"`
+	Score        float64  `json:"score"`
+	Stem         string   `json:"stem"`
+	Options      []string `json:"options"`
+	Answer       string   `json:"answer"`
+	Explanation  string   `json:"explanation"`
+	AnswerKey    string   `json:"answer_key"`
+	Scoring      string   `json:"scoring"`
+	AutoGradable bool     `json:"auto_gradable"`
+}
+
 const overviewFile = "课程总览.json"
+const questionBankFile = "测试题集/题库.json"
 
 var lectureDirRe = regexp.MustCompile(`^(\d{1,2})_?(.+)$`)
+
+// typeMap 上游中文题型 → 平台枚举（数据字典 §1 question.type）。
+var typeMap = map[string]string{
+	"单选":     "single",
+	"判断":     "judge",
+	"填空":     "blank",
+	"名词解释":   "term",
+	"简答":     "short",
+	"计算":     "calc",
+	"代码阅读":   "code_read",
+	"SQL 阅读": "code_read",
+	"工件阅读":   "code_read",
+	"编程":     "code_read",
+	"实验设计":   "design",
+	"系统设计":   "design",
+	"对比分析":   "compare",
+	"故障归因":   "fault",
+	"选型评审":   "review",
+	"综合论证":   "synth",
+}
 
 // LoadOverview 从源目录读取并解析「课程总览.json」。
 func LoadOverview(sourceDir string) (*Overview, error) {
@@ -94,6 +136,9 @@ func Run(ctx context.Context, database *sql.DB, sourceDir string) error {
 			if err := syncLectures(ctx, database, course); err != nil {
 				return err
 			}
+		}
+		if err := syncQuestions(ctx, database, course); err != nil {
+			return err
 		}
 	}
 	if err := pruneUpstreamCourses(ctx, database, seenCourses); err != nil {
@@ -227,4 +272,103 @@ func pruneUpstreamLectures(ctx context.Context, database *sql.DB, courseID int64
 	_, err := database.ExecContext(ctx,
 		`DELETE FROM lecture WHERE course_id = ? AND origin = 'upstream' AND no NOT IN (`+placeholders+`)`, args...)
 	return err
+}
+
+// syncQuestions 读取该课程「测试题集/题库.json」，只写 upstream 课程的题目，不覆盖平台改过的题（is_override=true）。
+func syncQuestions(ctx context.Context, database *sql.DB, course Course) error {
+	path := filepath.Join(course.Path, questionBankFile)
+	body, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // 无题库的课程（如部分案例制）跳过
+		}
+		return fmt.Errorf("读取题库 %s 失败: %w", path, err)
+	}
+	var bank QuestionBank
+	if err := json.Unmarshal(body, &bank); err != nil {
+		return fmt.Errorf("解析题库 %s 失败: %w", path, err)
+	}
+	var courseID int64
+	if err := database.QueryRowContext(ctx, `SELECT id FROM course WHERE course_code = ? AND source = 'upstream'`, course.ID).Scan(&courseID); err != nil {
+		return fmt.Errorf("课程 %s 未找到: %w", course.ID, err)
+	}
+	seen := make([]string, 0, len(bank.Questions))
+	for _, q := range bank.Questions {
+		gradability := "manual"
+		if q.AutoGradable {
+			gradability = "auto"
+		}
+		answer := q.Answer
+		if answer == "" {
+			answer = q.AnswerKey
+		}
+		if _, err := database.ExecContext(ctx,
+			`INSERT INTO question(course_id, qno, level, type, gradability, stem, options, answer, analysis, rubric, score, evidence, is_override)
+			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,false)
+			 ON CONFLICT(course_id, qno) DO UPDATE SET
+			   level=excluded.level, type=excluded.type, gradability=excluded.gradability,
+			   stem=excluded.stem, options=excluded.options, answer=excluded.answer,
+			   analysis=excluded.analysis, rubric=excluded.rubric, score=excluded.score, evidence=excluded.evidence
+			 WHERE question.is_override = false`,
+			courseID, q.ID, q.Level, questionType(q.Type), gradability, q.Stem,
+			optionsJSON(q.Options), nullIfEmpty(answer), nullIfEmpty(q.Explanation),
+			nullIfEmpty(q.Scoring), q.Score, evidenceJSON(q.Lecture)); err != nil {
+			return fmt.Errorf("写入题目 %s 失败: %w", q.ID, err)
+		}
+		seen = append(seen, q.ID)
+	}
+	return pruneUpstreamQuestions(ctx, database, courseID, seen)
+}
+
+// pruneUpstreamQuestions 删除上游已删题目（只动 is_override=false，绝不碰平台改过的题）。
+func pruneUpstreamQuestions(ctx context.Context, database *sql.DB, courseID int64, keep []string) error {
+	if len(keep) == 0 {
+		_, err := database.ExecContext(ctx, `DELETE FROM question WHERE course_id = ? AND is_override = false`, courseID)
+		return err
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",")
+	args := make([]any, 0, len(keep)+1)
+	args = append(args, courseID)
+	for _, qno := range keep {
+		args = append(args, qno)
+	}
+	_, err := database.ExecContext(ctx,
+		`DELETE FROM question WHERE course_id = ? AND is_override = false AND qno NOT IN (`+placeholders+`)`, args...)
+	return err
+}
+
+// questionType 把上游中文题型映射到平台枚举；未知题型按客观/主观回退。
+func questionType(chinese string) string {
+	if t, ok := typeMap[chinese]; ok {
+		return t
+	}
+	return "short"
+}
+
+// optionsJSON 清洗选项（去掉 "- " 前缀）后序列化为 JSON 数组；空则返回 nil。
+func optionsJSON(options []string) any {
+	if len(options) == 0 {
+		return nil
+	}
+	cleaned := make([]string, len(options))
+	for i, opt := range options {
+		cleaned[i] = strings.TrimPrefix(strings.TrimSpace(opt), "- ")
+	}
+	body, _ := json.Marshal(cleaned)
+	return string(body)
+}
+
+// evidenceJSON 构造证据链（题目来源讲次）；空则返回 nil。
+func evidenceJSON(lecture string) any {
+	if lecture == "" {
+		return nil
+	}
+	return fmt.Sprintf(`{"source":"L%s"}`, lecture)
+}
+
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
