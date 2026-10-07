@@ -31,6 +31,7 @@ type Server struct {
 	identity *identity.Service
 	database db.Pinger
 	dbConn   *sql.DB
+	sms      *identity.SMSService
 }
 
 // New 构造 Server。
@@ -72,6 +73,15 @@ func NewWithIdentity(cfg *config.Config, service *identity.Service) *Server {
 	return server
 }
 
+// WithSMS 注入短信服务，供验证码登录 / 找回 / 换绑使用；未注入时相关接口 fail-closed。
+func (s *Server) WithSMS(sms *identity.SMSService) *Server {
+	s.sms = sms
+	if s.identity != nil {
+		s.identity = s.identity.WithSMS(sms)
+	}
+	return s
+}
+
 // envelope 为统一响应信封。
 type envelope struct {
 	Code int    `json:"code"`
@@ -95,7 +105,11 @@ func (s *Server) Router() *gin.Engine {
 	v1.POST("/auth/logout-all", s.logoutAll)
 	v1.POST("/auth/logout", s.logout)
 	v1.POST("/auth/login", s.login)
+	v1.POST("/auth/sms-login", s.smsLogin)
+	v1.POST("/auth/reset-password", s.resetPassword)
 	v1.POST("/auth/register", s.register)
+	v1.POST("/me/phone", authRequired(s.identity), s.rebindPhone)
+	v1.POST("/me/delete", authRequired(s.identity), s.deleteAccount)
 	v1.POST("/orders", authRequired(s.identity), s.createOrder)
 	v1.GET("/orders/:orderNo", authRequired(s.identity), s.getOrder)
 	v1.POST("/orders/:orderNo/pay", authRequired(s.identity), s.preparePayment)

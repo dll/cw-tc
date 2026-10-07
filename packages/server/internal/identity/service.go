@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 )
 
 var (
@@ -20,6 +21,8 @@ type RegisterInput struct {
 	Phone    string
 	IDCard   string
 	Password string
+	SMSCode  string
+	SMSScene string
 }
 
 type Student struct {
@@ -33,11 +36,15 @@ type Service struct {
 	db      *sql.DB
 	encKey  []byte
 	hmacKey []byte
+	sms     *SMSService
 }
 
 func NewService(database *sql.DB, encKey, hmacKey []byte) *Service {
 	return &Service{db: database, encKey: encKey, hmacKey: hmacKey}
 }
+
+// WithSMS 注入短信服务，启用验证码校验；未注入时相关能力 fail-closed。
+func (s *Service) WithSMS(sms *SMSService) *Service { s.sms = sms; return s }
 
 func (s *Service) Register(ctx context.Context, input RegisterInput) (Student, error) {
 	if input.Name == "" || ValidatePhone(input.Phone) != nil || ValidateIDCard(input.IDCard) != nil || input.Password == "" {
@@ -45,6 +52,14 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (Student, e
 	}
 	if err := ValidatePasswordAgainstIDCard(input.Password, input.IDCard); err != nil {
 		return Student{}, ErrInvalidInput
+	}
+	if s.sms != nil {
+		if input.SMSCode == "" || input.SMSScene == "" {
+			return Student{}, ErrInvalidInput
+		}
+		if err := s.sms.Consume(input.Phone, input.SMSScene, input.SMSCode, time.Now().UTC()); err != nil {
+			return Student{}, err
+		}
 	}
 	if s.db == nil {
 		return Student{}, ErrDatabaseNotConfigured

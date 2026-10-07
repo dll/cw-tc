@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/cw-tc/server/internal/identity"
+	"github.com/cw-tc/server/internal/redact"
 	"github.com/gin-gonic/gin"
 )
 
@@ -12,6 +13,8 @@ type registerRequest struct {
 	Phone    string `json:"phone"`
 	IDCard   string `json:"id_card"`
 	Password string `json:"password"`
+	SMSCode  string `json:"sms_code"`
+	SMSScene string `json:"sms_scene"`
 }
 
 func (s *Server) register(c *gin.Context) {
@@ -26,6 +29,7 @@ func (s *Server) register(c *gin.Context) {
 	}
 	student, err := s.identity.Register(c.Request.Context(), identity.RegisterInput{
 		Name: request.Name, Phone: request.Phone, IDCard: request.IDCard, Password: request.Password,
+		SMSCode: request.SMSCode, SMSScene: request.SMSScene,
 	})
 	if err != nil {
 		code := 10002
@@ -33,6 +37,8 @@ func (s *Server) register(c *gin.Context) {
 			code = 10103
 		} else if err == identity.ErrIDCardRegistered {
 			code = 10104
+		} else if err == identity.ErrSMSInvalid {
+			code = 10105
 		}
 		c.JSON(http.StatusOK, envelope{Code: code, Msg: "注册失败"})
 		return
@@ -40,6 +46,6 @@ func (s *Server) register(c *gin.Context) {
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"student_no": student.StudentNo,
 		"name":       student.Name,
-		"phone":      student.Phone,
+		"phone":      redact.Phone(student.Phone),
 	}})
 }
