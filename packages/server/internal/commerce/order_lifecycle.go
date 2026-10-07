@@ -70,8 +70,12 @@ func (s *Service) ListEntitlements(ctx context.Context, studentID int64) ([]Enti
 	for rows.Next() {
 		var item Entitlement
 		var granted string
-		if err := rows.Scan(&item.ID, &item.CourseID, &item.OrderID, &item.Source, &granted); err != nil {
+		var orderID sql.NullInt64
+		if err := rows.Scan(&item.ID, &item.CourseID, &orderID, &item.Source, &granted); err != nil {
 			return nil, err
+		}
+		if orderID.Valid {
+			item.OrderID = orderID.Int64
 		}
 		item.GrantedAt, err = time.Parse(time.RFC3339, granted)
 		if err != nil {
