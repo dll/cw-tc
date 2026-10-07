@@ -68,7 +68,10 @@ func BuildPaper(ctx context.Context, db *sql.DB, courseID int64, level string, l
 	return string(body), nil
 }
 
-// StartSession 开考：先校验权益 + 单档单会话，再创建 ongoing 会话，返回 session id。
+// DefaultExamDuration 测评时长默认值（60 分钟）。上线前迁入 system_config（exam.duration_minutes，铁律 15 不写死）。
+const DefaultExamDuration = 60 * time.Minute
+
+// StartSession 开考：先校验权益 + 单档单会话，再创建 ongoing 会话（含服务端截止时间），返回 session id。
 func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, level, paper string) (int64, error) {
 	if level != "L1" && level != "L2" && level != "L3" {
 		return 0, ErrInvalidLevel
@@ -93,9 +96,10 @@ func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, le
 	if ongoing > 0 {
 		return 0, ErrSessionOngoing
 	}
+	now := time.Now().UTC()
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO exam_session(student_id, course_id, level, paper, status, started_at) VALUES(?,?,?,?,'ongoing',?)`,
-		studentID, courseID, level, paper, time.Now().UTC().Format(time.RFC3339))
+		`INSERT INTO exam_session(student_id, course_id, level, paper, status, started_at, server_deadline_at) VALUES(?,?,?,?,'ongoing',?,?)`,
+		studentID, courseID, level, paper, now.Format(time.RFC3339), now.Add(DefaultExamDuration).Format(time.RFC3339))
 	if err != nil {
 		return 0, err
 	}
