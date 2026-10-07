@@ -16,12 +16,13 @@ CREATE TABLE IF NOT EXISTS exam_session (
     started_at TIMESTAMPTZ,
     submitted_at TIMESTAMPTZ,
     server_deadline_at TIMESTAMPTZ NOT NULL,
+    retake_seq INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (level IN ('L1','L2','L3')),
     CHECK (status IN ('ongoing','submitted','graded'))
 );
 CREATE INDEX IF NOT EXISTS idx_exam_session_student ON exam_session(student_id, created_at DESC);
--- @deferred exam_session: active_device_key@0019 anomaly_count@0019 last_heartbeat_at@0019 retake_seq@0019
+-- @deferred exam_session: active_device_key@0019 anomaly_count@0019 last_heartbeat_at@0019
 -- @note exam_session: 0019：补**部分唯一索引** `UNIQUE(student_id, course_id, level) WHERE status='ongoing'`（同档单会话）
 
 CREATE TABLE IF NOT EXISTS exam_result (
