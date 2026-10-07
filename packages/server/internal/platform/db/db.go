@@ -75,7 +75,7 @@ func ParseDialect(s string) (Dialect, error) {
 //
 //   - sqlite：`dsn` 为空时使用**共享内存库**（测试用）；并显式打开 `foreign_keys`，
 //     使外键约束行为与 PostgreSQL 对齐（SQLite 默认**不**enforce 外键）。
-//   - postgres：**尚未接入驱动**，返回 ErrDialectUnsupported（显式失败，不静默降级）。
+//   - postgres：经 lib/pq 打开连接池；不可达的 DSN 会显式报连接错误（不静默降级）。
 func Open(ctx context.Context, dialect Dialect, dsn string) (*sql.DB, error) {
 	switch dialect {
 	case DialectSQLite:

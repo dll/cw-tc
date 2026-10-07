@@ -39,11 +39,16 @@ func TestOpenSQLiteWithDSN(t *testing.T) {
 	}
 }
 
-func TestOpenPostgresIsExplicitlyUnsupported(t *testing.T) {
-	// 生产走 PostgreSQL，但本仓库**尚未接入驱动**。
-	// 这里断言它**显式失败**而不是静默降级到别的方言 —— 未验证的依赖不引入。
-	if _, err := Open(context.Background(), DialectPostgres, "postgres://x"); !errors.Is(err, ErrDialectUnsupported) {
-		t.Fatalf("postgres 方言应返回 ErrDialectUnsupported，实际：%v", err)
+func TestOpenPostgresReachesDriver(t *testing.T) {
+	// 生产走 PostgreSQL，驱动已接入（lib/pq）。这里断言：
+	// 1) 不静默降级到其它方言（不应返回 ErrUnknownDialect / ErrDialectUnsupported）；
+	// 2) 不可达的 DSN 会显式报连接错误（PingContext 失败），而不是假装成功。
+	_, err := Open(context.Background(), DialectPostgres, "postgres://x:1/nope?connect_timeout=1")
+	if err == nil {
+		t.Fatal("不可达的 postgres DSN 应报错，实际成功")
+	}
+	if errors.Is(err, ErrUnknownDialect) || errors.Is(err, ErrDialectUnsupported) {
+		t.Fatalf("postgres 已接入驱动，不应返回方言不支持错误，实际：%v", err)
 	}
 }
 
