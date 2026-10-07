@@ -155,12 +155,15 @@ func ListNotifications(ctx context.Context, db *sql.DB, studentID int64, unreadO
 	out := make([]Notification, 0)
 	for rows.Next() {
 		var n Notification
-		var readAt, broadcastID sql.NullString
-		if err := rows.Scan(&n.ID, &n.Type, &n.Title, &n.Body, &n.Link, &readAt, &broadcastID, &n.CreatedAt); err != nil {
+		var readAt, broadcastID, link sql.NullString
+		if err := rows.Scan(&n.ID, &n.Type, &n.Title, &n.Body, &link, &readAt, &broadcastID, &n.CreatedAt); err != nil {
 			return nil, err
 		}
 		if readAt.Valid {
 			n.Read = true
+		}
+		if link.Valid {
+			n.Link = link.String
 		}
 		out = append(out, n)
 	}

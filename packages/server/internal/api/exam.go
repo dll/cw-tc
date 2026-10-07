@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/cw-tc/server/internal/exam"
 	"github.com/cw-tc/server/internal/identity"
@@ -105,4 +106,49 @@ func issueCertForSession(ctx context.Context, db *sql.DB, sessionID int64, res e
 		Score:      res.TotalScore,
 		Band:       res.Band,
 	})
+}
+
+// resumeExam GET /exams/:sessionID —— 断线重连恢复（答案 + 剩余时间服务端计算）。
+func (s *Server) resumeExam(c *gin.Context) {
+	sessionID, err := strconv.ParseInt(c.Param("sessionID"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	if s.dbConn == nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "测评服务不可用"})
+		return
+	}
+	state, err := exam.Resume(c.Request.Context(), s.dbConn, sessionID, time.Now().UTC())
+	if err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: state})
+}
+
+// saveExamAnswer POST /exams/:sessionID/answers —— 按题即时持久化（断线不丢）。
+func (s *Server) saveExamAnswer(c *gin.Context) {
+	sessionID, err := strconv.ParseInt(c.Param("sessionID"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	var req struct {
+		QNo    string `json:"qno"`
+		Answer string `json:"answer"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.QNo == "" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	if s.dbConn == nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "测评服务不可用"})
+		return
+	}
+	if err := exam.SaveAnswer(c.Request.Context(), s.dbConn, sessionID, req.QNo, req.Answer); err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0})
 }
