@@ -114,6 +114,8 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/orders/:orderNo", authRequired(s.identity), s.getOrder)
 	v1.POST("/orders/:orderNo/pay", authRequired(s.identity), s.preparePayment)
 	v1.POST("/orders/:orderNo/cancel", authRequired(s.identity), s.cancelOrder)
+	v1.POST("/exams", authRequired(s.identity), s.startExam)
+	v1.POST("/exams/:sessionID/submit", authRequired(s.identity), s.submitExam)
 	v1.POST("/payment/callback", s.paymentCallback)
 	v1.GET("/courses", s.listPublicCourses)
 	v1.GET("/courses/:courseCode", s.publicCourseDetail)
