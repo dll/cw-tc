@@ -48,6 +48,41 @@ func (s *Service) PreparePayment(ctx context.Context, studentID int64, params Pa
 	return order, nil
 }
 
+type Entitlement struct {
+	ID        int64
+	CourseID  int64
+	OrderID   int64
+	Source    string
+	Status    string
+	GrantedAt time.Time
+}
+
+func (s *Service) ListEntitlements(ctx context.Context, studentID int64) ([]Entitlement, error) {
+	if s.db == nil || studentID <= 0 {
+		return nil, ErrOrderNotFound
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, course_id, order_id, source, granted_at FROM entitlement WHERE student_id=? AND revoked_at IS NULL ORDER BY granted_at DESC`, studentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]Entitlement, 0)
+	for rows.Next() {
+		var item Entitlement
+		var granted string
+		if err := rows.Scan(&item.ID, &item.CourseID, &item.OrderID, &item.Source, &granted); err != nil {
+			return nil, err
+		}
+		item.GrantedAt, err = time.Parse(time.RFC3339, granted)
+		if err != nil {
+			return nil, err
+		}
+		item.Status = "active"
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *Service) CancelOrder(ctx context.Context, studentID int64, orderNo string) error {
 	result, err := s.db.ExecContext(ctx, `UPDATE orders SET status='closed', closed_at=?, updated_at=? WHERE order_no=? AND student_id=? AND status='pending'`, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderNo, studentID)
 	if err != nil {
