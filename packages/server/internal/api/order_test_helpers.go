@@ -25,3 +25,14 @@ func containsAll(value string, parts ...string) bool {
 	}
 	return true
 }
+
+// performJSONWithBearer 用 Bearer token 请求（后台/内部人员接口）。
+func performJSONWithBearer(t *testing.T, r http.Handler, method, path, body, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	r.ServeHTTP(response, request)
+	return response
+}
