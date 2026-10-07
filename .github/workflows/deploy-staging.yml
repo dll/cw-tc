@@ -1,0 +1,40 @@
+name: "Deploy Staging (cw-tc.ccit-agent.cn)"
+
+# 仅部署到 staging：CI（main）通过后自动，或在 Actions 里手动触发。
+# 采用「服务器端构建」：SSH 到服务器执行 /opt/cw-tc-build/deploy-staging.sh
+# （拉最新 main → go build linux → 组装 release → 软链切换 → 重启 → 健康检查），
+# 因此**不依赖** CI/本机产出的目标平台二进制。
+#
+# 生产发布不在此处：按 docs/PRD-第三课堂-v2.md §12，生产走审批门禁（cd.yml 只出审批材料）。
+
+on:
+  workflow_run:
+    workflows: ["CI Quality Gate"]
+    types: [completed]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: SSH → 服务器端构建 + 部署到 staging
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 触发服务器端部署脚本
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'bash /opt/cw-tc-build/deploy-staging.sh'
