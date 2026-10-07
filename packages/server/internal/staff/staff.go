@@ -89,3 +89,28 @@ func hashPassword(password string) []byte {
 	sum := sha256.Sum256([]byte(password))
 	return sum[:]
 }
+
+// TransferCourse 课程移交：把课程 teacher_id 改到另一位在职教师名下（停用教师前必须，铁律 8）。
+func TransferCourse(ctx context.Context, db *sql.DB, courseID, toTeacherID int64) error {
+	if db == nil || courseID <= 0 || toTeacherID <= 0 {
+		return ErrStaffInput
+	}
+	var role, status string
+	if err := db.QueryRowContext(ctx, `SELECT role, status FROM staff WHERE id = ?`, toTeacherID).Scan(&role, &status); err != nil {
+		return ErrStaffNotFound
+	}
+	if role != string(RoleTeacher) || status != "active" {
+		return ErrStaffNotFound
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE course SET teacher_id = ?, updated_at = ? WHERE id = ?`,
+		toTeacherID, time.Now().UTC().Format(time.RFC3339), courseID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrStaffNotFound
+	}
+	return nil
+}

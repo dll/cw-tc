@@ -76,3 +76,28 @@ func TestDisableTeacherWithCourseRejected(t *testing.T) {
 		t.Fatalf("名下课程未移交应报 ErrHasActiveCourse，实际 %v", err)
 	}
 }
+
+func TestTransferCourse(t *testing.T) {
+	database := staffDB(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	teacherA, _ := Create(ctx, database, "ta", "甲老师", RoleTeacher, "Temp@123", 1)
+	teacherB, _ := Create(ctx, database, "tb", "乙老师", RoleTeacher, "Temp@123", 1)
+	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,'C1','platform','课程','main',1,'published',?)`, teacherA); err != nil {
+		t.Fatal(err)
+	}
+	// 移交给乙老师
+	if err := TransferCourse(ctx, database, 1, teacherB); err != nil {
+		t.Fatal(err)
+	}
+	var owner int64
+	_ = database.QueryRow(`SELECT teacher_id FROM course WHERE id=1`).Scan(&owner)
+	if owner != teacherB {
+		t.Fatalf("课程应移交给乙老师(%d)，实际 %d", teacherB, owner)
+	}
+	// 移交给非教师（超管）→ 拒绝
+	if err := TransferCourse(ctx, database, 1, 1); err != ErrStaffNotFound {
+		t.Fatalf("移交给非教师应报 ErrStaffNotFound，实际 %v", err)
+	}
+}
