@@ -121,6 +121,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/courses/:courseCode/lectures/:no/resources", s.listLectureResources)
 	v1.GET("/majors", s.listMajors)
 	v1.GET("/health", s.health)
+	v1.GET("/verify/:certNo", s.verifyCert)
 
 	// 对外公开状态（PRD v2 §7.12 K-2）：只读、聚合、**不含任何个人信息**。
 	// 未启用时路由不注册，避免"存在但不可用"的暧昧状态。
