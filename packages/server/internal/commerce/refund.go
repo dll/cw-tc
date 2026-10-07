@@ -101,6 +101,11 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (Refund, error) {
 		if _, err := tx.ExecContext(ctx, `UPDATE entitlement SET revoked_at = ?, revoke_reason = 'order_refunded' WHERE student_id = ? AND course_id = ? AND revoked_at IS NULL`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
 			return Refund{}, err
 		}
+		// 铁律 4 / M3-08：退款撤证联动 —— 同一事务内连带撤销该学员本课的有效证书，
+		// 不得出现「退了款、证书仍有效」。
+		if _, err := tx.ExecContext(ctx, `UPDATE certificate SET status = 'revoked', revoked_reason = 'order_refunded', revoked_at = ? WHERE student_id = ? AND course_id = ? AND status = 'valid'`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
+			return Refund{}, err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE orders SET status = 'refunded', refunded_at = ?, updated_at = ? WHERE id = ?`, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderID); err != nil {
 		return Refund{}, err
