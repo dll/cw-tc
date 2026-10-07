@@ -51,6 +51,7 @@ func TestSQLiteMigrationsExecuteAndAreIdempotent(t *testing.T) {
 		"entitlement", "orders", "payment_txn", "refund", "reconcile_record",
 		"promo_code", "promo_redemption",
 		"exam_session", "exam_result", "manual_review", "cert_no_sequence", "certificate",
+		"risk_blacklist",
 	}
 	for _, table := range want {
 		var n int

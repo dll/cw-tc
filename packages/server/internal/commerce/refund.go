@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/cw-tc/server/internal/risk"
 )
 
 var (
-	ErrRefundInput        = errors.New("退款参数非法")
-	ErrOrderNotRefundable = errors.New("订单状态不允许退款")
+	ErrRefundInput             = errors.New("退款参数非法")
+	ErrOrderNotRefundable      = errors.New("订单状态不允许退款")
+	ErrRefundNeedsManualReview = errors.New("自助退款次数已达上限，转人工审核")
 )
 
 type RefundInput struct {
@@ -70,6 +73,17 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (Refund, error) {
 	}
 	if in.Kind == "normal" && in.AmountCents != amountCents {
 		return Refund{}, ErrOrderNotRefundable
+	}
+
+	// 退款滥用风控（§9.13）：学员自助普通退款达上限 → 转人工审核，不自动退款。
+	if in.Initiator == "student" && in.Kind == "normal" {
+		exceeded, err := risk.RefundAbuseExceeded(ctx, tx, studentID, risk.DefaultRefundAbuseLimit, risk.DefaultRefundAbuseWindowDays, time.Now())
+		if err != nil {
+			return Refund{}, err
+		}
+		if exceeded {
+			return Refund{}, ErrRefundNeedsManualReview
+		}
 	}
 
 	refundNo := newRefundNo()
