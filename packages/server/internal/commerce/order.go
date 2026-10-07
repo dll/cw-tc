@@ -2,12 +2,21 @@ package commerce
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 )
+
+// newOrderNo 生成唯一订单号：时间戳 + 学员号 + 随机段，避免并发或粗粒度时钟下碰撞。
+func newOrderNo(studentID int64) string {
+	var raw [8]byte
+	_, _ = rand.Read(raw[:])
+	return fmt.Sprintf("O%d%08d%s", time.Now().UnixNano(), studentID, hex.EncodeToString(raw[:]))
+}
 
 var (
 	ErrOrderInput         = errors.New("订单参数非法")
@@ -78,7 +87,12 @@ func (s *Service) CreateOrder(ctx context.Context, in OrderInput) (Order, error)
 	if err == nil && time.Now().Before(existing.ExpiredAt) {
 		return existing, nil
 	}
-	orderNo := fmt.Sprintf("O%d%08d", time.Now().UnixNano(), in.StudentID)
+	// 待支付订单已过期：先关闭，再创建新订单，避免唯一索引冲突。
+	if err == nil {
+		_, _ = s.db.ExecContext(ctx, `UPDATE orders SET status='closed', closed_at=?, updated_at=? WHERE id=? AND status='pending'`,
+			time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), existing.ID)
+	}
+	orderNo := newOrderNo(in.StudentID)
 	result, err := s.db.ExecContext(ctx, `INSERT INTO orders(order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, request_id, expired_at) VALUES(?,?,?,?,?,?,?,?,?)`, orderNo, in.StudentID, in.CourseID, in.CourseName, in.PriceCents, in.PriceCents, "pending", in.RequestID, in.ExpiresAt.UTC().Format(time.RFC3339))
 	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: orders.student_id, orders.course_id") {
 		candidate, retryErr := s.pending(ctx, in.StudentID, in.CourseID)
