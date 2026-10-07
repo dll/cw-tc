@@ -43,6 +43,9 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (Student, e
 	if input.Name == "" || ValidatePhone(input.Phone) != nil || ValidateIDCard(input.IDCard) != nil || input.Password == "" {
 		return Student{}, ErrInvalidInput
 	}
+	if err := ValidatePasswordAgainstIDCard(input.Password, input.IDCard); err != nil {
+		return Student{}, ErrInvalidInput
+	}
 	if s.db == nil {
 		return Student{}, ErrDatabaseNotConfigured
 	}

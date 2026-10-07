@@ -25,7 +25,7 @@ func TestRegisterPersistsProtectedIdentityAndRejectsDuplicates(t *testing.T) {
 		Name:     "样例学员",
 		Phone:    "13812345678",
 		IDCard:   "110101199001011237",
-		Password: "not-a-real-password",
+		Password: "not-a-real-password1",
 	})
 	if err != nil {
 		t.Fatalf("注册失败: %v", err)
@@ -40,7 +40,7 @@ func TestRegisterPersistsProtectedIdentityAndRejectsDuplicates(t *testing.T) {
 	if strings.Contains(plain, "110101199001011237") || hash == "" {
 		t.Fatal("数据库不得保存身份证明文，且必须保存摘要")
 	}
-	_, err = service.Register(context.Background(), RegisterInput{Name: "重复", Phone: "13812345678", IDCard: "110101199001011245", Password: "another"})
+	_, err = service.Register(context.Background(), RegisterInput{Name: "重复", Phone: "13812345678", IDCard: "110101199001011245", Password: "another-pass-1"})
 	if !errors.Is(err, ErrPhoneRegistered) {
 		t.Fatalf("重复手机号错误 = %v，期望 ErrPhoneRegistered", err)
 	}
@@ -52,7 +52,7 @@ func TestRegisterRequiresConfiguredDatabaseAndValidInput(t *testing.T) {
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("非法输入错误 = %v", err)
 	}
-	_, err = NewService((*sql.DB)(nil), make([]byte, 32), make([]byte, 32)).Register(context.Background(), RegisterInput{Name: "样例", Phone: "13812345678", IDCard: "110101199001011237", Password: "password"})
+	_, err = NewService((*sql.DB)(nil), make([]byte, 32), make([]byte, 32)).Register(context.Background(), RegisterInput{Name: "样例", Phone: "13812345678", IDCard: "110101199001011237", Password: "password1"})
 	if !errors.Is(err, ErrDatabaseNotConfigured) {
 		t.Fatalf("未配置数据库错误 = %v", err)
 	}

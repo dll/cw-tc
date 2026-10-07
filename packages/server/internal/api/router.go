@@ -89,6 +89,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.POST("/auth/captcha", s.issueCaptcha)
 	v1.POST("/auth/captcha/verify", s.verifyCaptcha)
 	v1.GET("/me", authRequired(s.identity), s.me)
+	v1.POST("/me/password", authRequired(s.identity), s.changePassword)
 	v1.GET("/me/entitlements", authRequired(s.identity), s.listEntitlements)
 	v1.POST("/auth/sms/send", s.sendSMS)
 	v1.POST("/auth/logout-all", s.logoutAll)
