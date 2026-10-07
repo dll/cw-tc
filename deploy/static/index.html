@@ -1,32 +1,45 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>第三课堂 cw-tc · Third Classroom</title>
-<meta name="description" content="第三课堂（CW-TC）在线学习平台入口：学生端、管理端与 API。Official entry: Student App, Admin Console and API."/>
+<title>第三课堂 CW-TC · 在线学习与测评平台</title>
+<meta name="description" content="第三课堂（CW-TC）：面向学生、教师、管理员的在线学习与测评平台。Official site of Third Classroom (CW-TC)."/>
 <meta name="robots" content="noindex, nofollow"/>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%93%9A%3C/text%3E%3C/svg%3E"/>
-<style>
- :root{--bg:#f5f7fa;--fg:#1f2937;--muted:#6b7280;--card:#fff;--line:#e5e7eb;--accent:#2563eb;--foot:#9ca3af}
- @media (prefers-color-scheme:dark){:root{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--card:#1e293b;--line:#334155;--accent:#60a5fa;--foot:#64748b}}
- *{box-sizing:border-box}
- body{font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;background:var(--bg);color:var(--fg)}
- .wrap{max-width:720px;margin:8vh auto;padding:0 20px}
- h1{font-size:28px;margin:0 0 4px} .sub{color:var(--muted);margin-bottom:24px}
- .menu{display:grid;gap:14px}
- a.card{display:flex;gap:14px;align-items:flex-start;padding:18px 20px;background:var(--card);border:1px solid var(--line);border-radius:14px;text-decoration:none;color:inherit;box-shadow:0 1px 2px rgba(0,0,0,.04);transition:border-color .15s,transform .15s}
- a.card:hover{border-color:var(--accent);transform:translateY(-1px)}
- .ic{font-size:22px;line-height:1.2}
- .t{font-weight:600;font-size:17px;display:block} .d{color:var(--muted);font-size:13px;margin-top:4px;display:block}
- .foot{color:var(--foot);font-size:12px;margin-top:28px}
-</style></head>
-<body><div class="wrap">
-<h1>第三课堂 <span style="color:var(--accent)">cw-tc</span></h1>
-<div class="sub">请选择入口 · Choose an entry</div>
-<div class="menu">
- <a class="card" href="/student/"><span class="ic">🎓</span><span><span class="t">学生端 · Student App</span><span class="d">学习 / 测评 / 证书 · Learning / Assessment / Certificates</span></span></a>
- <a class="card" href="/admin/"><span class="ic">🛠️</span><span><span class="t">管理端 · Admin Console</span><span class="d">课程 / 用户 / 测评 / 发证 · Courses / Users / Assessment / Issuing</span></span></a>
- <a class="card" href="/api/v1/health"><span class="ic">🔌</span><span><span class="t">API 健康检查 · API Health</span><span class="d">/api/v1/health</span></span></a>
- <a class="card" href="https://www.ccit-agent.cn/"><span class="ic">🏠</span><span><span class="t">返回官网 · CCIT Website</span><span class="d">www.ccit-agent.cn · 滁州畅网智能科技有限公司</span></span></a>
-</div>
-<div class="foot">© 滁州畅网智能科技有限公司（CCIT）</div>
-</div></body></html>
+<link rel="stylesheet" href="/portal.css"/>
+</head><body>
+<header class="nav"><div class="inner">
+ <a class="brand" href="/">第三课堂 <span>CW-TC</span></a>
+ <nav class="links">
+  <a href="/">首页</a>
+  <a href="/student/">学生端</a>
+  <a href="/teacher/">教师端</a>
+  <a href="/admin/">管理端</a>
+  <a href="/about/">关于</a>
+  <a class="ext" href="https://www.ccit-agent.cn/" target="_blank" rel="noopener">官网 ↗</a>
+ </nav>
+</div></header>
+
+<main>
+ <section class="hero">
+  <h1>第三课堂 <em>CW-TC</em></h1>
+  <p class="lead">面向学生、教师、管理员的一体化在线学习与测评平台。</p>
+  <p class="lead en">An integrated online learning &amp; assessment platform for students, teachers and administrators.</p>
+ </section>
+
+ <section class="grid">
+  <a class="card" href="/student/"><div class="ic">🎓</div><h3>学生端</h3><p>选课 · 学习 · 测评 · 证书</p><span class="cta">进入学生端 →</span></a>
+  <a class="card" href="/teacher/"><div class="ic">👩‍🏫</div><h3>教师端</h3><p>课程 · 组卷 · 批阅 · 成绩</p><span class="cta">进入教师端 →</span></a>
+  <a class="card" href="/admin/"><div class="ic">🛠️</div><h3>管理端</h3><p>用户 · 订单 · 发证 · 运营</p><span class="cta">进入管理端 →</span></a>
+ </section>
+
+ <section class="about">
+  <h2>关于第三课堂</h2>
+  <p>第三课堂（CW-TC）由滁州畅网智能科技有限公司（CCIT）建设运营，提供课程学习、在线测评、证书签发等能力。详见 <a href="/about/">关于我们</a>。</p>
+ </section>
+</main>
+
+<footer class="foot"><div class="inner">
+ <span>© 滁州畅网智能科技有限公司（CCIT）</span>
+ <span><a href="/about/">关于</a> · <a href="https://www.ccit-agent.cn/" target="_blank" rel="noopener">官网</a></span>
+</div></footer>
+</body></html>
