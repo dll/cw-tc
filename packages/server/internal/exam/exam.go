@@ -1,0 +1,103 @@
+// Package exam 实现测评引擎：组卷、开考、单档单会话（PRD §7.7 C-7 · 铁律 15）。
+//
+// 铁律：单档单会话 —— 同档测评同时只允许一个进行中会话。
+// 应用层在此校验；DB 部分唯一索引 `uq_exam_ongoing` 由迁移 0019 兜底（本批次不含）。
+package exam
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"time"
+)
+
+var (
+	ErrNoEntitlement  = errors.New("未解锁该课程，无法开考")
+	ErrSessionOngoing = errors.New("同档测评已有进行中的会话")
+	ErrInvalidLevel   = errors.New("档位非法")
+	ErrEmptyPaper     = errors.New("该档位无题可组")
+)
+
+// PaperItem 是组卷后下发给学员的一道题（不含答案/解析/评分要点，铁律：答案绝不下发）。
+type PaperItem struct {
+	Qno     string   `json:"qno"`
+	Type    string   `json:"type"`
+	Stem    string   `json:"stem"`
+	Options []string `json:"options,omitempty"`
+	Score   float64  `json:"score"`
+}
+
+// BuildPaper 组卷：按课程 + 档位抽取题目，返回不含答案的题单 JSON（limit<=0 表示全量）。
+func BuildPaper(ctx context.Context, db *sql.DB, courseID int64, level string, limit int) (string, error) {
+	if level != "L1" && level != "L2" && level != "L3" {
+		return "", ErrInvalidLevel
+	}
+	rows, err := db.QueryContext(ctx,
+		`SELECT qno, type, stem, options, score FROM question WHERE course_id = ? AND level = ? ORDER BY qno`,
+		courseID, level)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	var items []PaperItem
+	for rows.Next() {
+		var it PaperItem
+		var options sql.NullString
+		if err := rows.Scan(&it.Qno, &it.Type, &it.Stem, &options, &it.Score); err != nil {
+			return "", err
+		}
+		if options.Valid {
+			_ = json.Unmarshal([]byte(options.String), &it.Options)
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	if len(items) == 0 {
+		return "", ErrEmptyPaper
+	}
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	body, err := json.Marshal(items)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+// StartSession 开考：先校验权益 + 单档单会话，再创建 ongoing 会话，返回 session id。
+func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, level, paper string) (int64, error) {
+	if level != "L1" && level != "L2" && level != "L3" {
+		return 0, ErrInvalidLevel
+	}
+	// 权益校验：已付费解锁（或免费授权）才能开考。
+	var ent int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM entitlement WHERE student_id = ? AND course_id = ? AND revoked_at IS NULL`,
+		studentID, courseID).Scan(&ent); err != nil {
+		return 0, err
+	}
+	if ent == 0 {
+		return 0, ErrNoEntitlement
+	}
+	// 单档单会话（应用层；DB 部分唯一索引由迁移 0019 兜底）。
+	var ongoing int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM exam_session WHERE student_id = ? AND course_id = ? AND level = ? AND status = 'ongoing'`,
+		studentID, courseID, level).Scan(&ongoing); err != nil {
+		return 0, err
+	}
+	if ongoing > 0 {
+		return 0, ErrSessionOngoing
+	}
+	res, err := db.ExecContext(ctx,
+		`INSERT INTO exam_session(student_id, course_id, level, paper, status, started_at) VALUES(?,?,?,?,'ongoing',?)`,
+		studentID, courseID, level, paper, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
