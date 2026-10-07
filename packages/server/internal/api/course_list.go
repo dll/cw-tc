@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,7 +12,16 @@ func (s *Server) listPublicCourses(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
 	}
-	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT course_code, name, intro, price_cents, original_price_cents, major_id FROM course WHERE status='published' ORDER BY sort_weight DESC, id ASC`)
+	query := `SELECT course_code, name, intro, price_cents, original_price_cents, major_id FROM course WHERE status='published'`
+	args := make([]any, 0)
+	if majorStr := c.Query("major_id"); majorStr != "" {
+		if majorID, err := strconv.ParseInt(majorStr, 10, 64); err == nil {
+			query += ` AND major_id = ?`
+			args = append(args, majorID)
+		}
+	}
+	query += ` ORDER BY sort_weight DESC, id ASC`
+	rows, err := s.dbConn.QueryContext(c.Request.Context(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
