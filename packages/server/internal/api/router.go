@@ -118,6 +118,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/courses", s.listPublicCourses)
 	v1.GET("/courses/:courseCode", s.publicCourseDetail)
 	v1.GET("/courses/:courseCode/lectures", s.listCourseLectures)
+	v1.GET("/courses/:courseCode/lectures/:no/resources", s.listLectureResources)
 	v1.GET("/majors", s.listMajors)
 	v1.GET("/health", s.health)
 
