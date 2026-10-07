@@ -124,5 +124,17 @@ func TestFullFlowWithMockPayment(t *testing.T) {
 		t.Fatalf("判分错误: is_pass=%v auto_score=%v", res.IsPass, res.AutoScore)
 	}
 
-	t.Logf("✅ 全链路通过：注册→登录→下单→mock支付(幂等)→权益→组卷→开考→答题→重连→交卷→判分（%v 分）", res.AutoScore)
+	// 7. M3-06 发证 + M3-07 验真（交卷 → 判分 → 发证 → 验真 全链路）
+	certNo, err := exam.IssueCertificate(ctx, database, exam.CertIssueInput{
+		StudentID: stu.ID, CourseID: 1, CourseCode: "C1", Level: "L1", Score: res.TotalScore, Band: res.Band,
+	})
+	if err != nil {
+		t.Fatalf("发证失败: %v", err)
+	}
+	vr, err := exam.VerifyCert(ctx, database, certNo, time.Now())
+	if err != nil || vr.State != exam.StateValid {
+		t.Fatalf("验真失败: state=%v err=%v", vr.State, err)
+	}
+
+	t.Logf("✅ 全链路通过：注册→登录→下单→mock支付(幂等)→权益→组卷→开考→答题→重连→交卷→判分→发证→验真（%v 分）", res.AutoScore)
 }
