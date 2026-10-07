@@ -38,8 +38,15 @@ const (
 	EnvLLMAPIKey     = "CWTC_LLM_API_KEY"
 	EnvWXPayMchID    = "CWTC_WXPAY_MCH_ID"
 	EnvWXPayAPIv3Key = "CWTC_WXPAY_API_V3_KEY"
+	EnvWXPayAppID    = "CWTC_WXPAY_APP_ID"
+	EnvWXPaySerialNo = "CWTC_WXPAY_SERIAL_NO"
+	EnvWXPayKeyPath  = "CWTC_WXPAY_PRIVATE_KEY_PATH"
+	EnvWXPayNotify   = "CWTC_WXPAY_NOTIFY_URL"
 	EnvAlipayAppID   = "CWTC_ALIPAY_APP_ID"
 	EnvAlipayPrivKey = "CWTC_ALIPAY_PRIVATE_KEY_PATH"
+	EnvAlipayPubKey  = "CWTC_ALIPAY_PUBLIC_KEY_PATH"
+	EnvAlipayNotify  = "CWTC_ALIPAY_NOTIFY_URL"
+	EnvAlipayGateway = "CWTC_ALIPAY_GATEWAY"
 
 	// 部署环境与数据库（开发/测试 SQLite；生产 PostgreSQL）
 	EnvDeployEnv = "DEPLOY_ENV"
@@ -76,8 +83,15 @@ type Config struct {
 	LLMAPIKey     string
 	WXPayMchID    string
 	WXPayAPIv3Key string
+	WXPayAppID    string
+	WXPaySerialNo string
+	WXPayKeyPath  string
+	WXPayNotify   string
 	AlipayAppID   string
 	AlipayPrivKey string
+	AlipayPubKey  string
+	AlipayNotify  string
+	AlipayGateway string
 
 	PublicStatusEnabled bool
 	LogRedactEnabled    bool
@@ -115,8 +129,15 @@ func LoadFrom(get Getenv) (*Config, error) {
 		LLMAPIKey:     strings.TrimSpace(get(EnvLLMAPIKey)),
 		WXPayMchID:    strings.TrimSpace(get(EnvWXPayMchID)),
 		WXPayAPIv3Key: strings.TrimSpace(get(EnvWXPayAPIv3Key)),
+		WXPayAppID:    strings.TrimSpace(get(EnvWXPayAppID)),
+		WXPaySerialNo: strings.TrimSpace(get(EnvWXPaySerialNo)),
+		WXPayKeyPath:  strings.TrimSpace(get(EnvWXPayKeyPath)),
+		WXPayNotify:   strings.TrimSpace(get(EnvWXPayNotify)),
 		AlipayAppID:   strings.TrimSpace(get(EnvAlipayAppID)),
 		AlipayPrivKey: strings.TrimSpace(get(EnvAlipayPrivKey)),
+		AlipayPubKey:  strings.TrimSpace(get(EnvAlipayPubKey)),
+		AlipayNotify:  strings.TrimSpace(get(EnvAlipayNotify)),
+		AlipayGateway: strings.TrimSpace(get(EnvAlipayGateway)),
 
 		// 部署环境与数据库（默认按开发环境；生产必须显式设 postgres）
 		DeployEnv: strings.ToLower(strings.TrimSpace(get(EnvDeployEnv))),
@@ -207,11 +228,17 @@ func (c *Config) SMSEnabled() bool {
 // LLMEnabled AI 网关是否可用（fail-closed）。
 func (c *Config) LLMEnabled() bool { return c.LLMProvider != "" && c.LLMAPIKey != "" }
 
-// WXPayEnabled 微信支付是否可用（fail-closed）。
-func (c *Config) WXPayEnabled() bool { return c.WXPayMchID != "" && c.WXPayAPIv3Key != "" }
+// WXPayEnabled 微信支付是否可用（fail-closed：全套齐备才启用）。
+func (c *Config) WXPayEnabled() bool {
+	return c.WXPayMchID != "" && c.WXPayAppID != "" && c.WXPayAPIv3Key != "" &&
+		c.WXPaySerialNo != "" && c.WXPayKeyPath != "" && c.WXPayNotify != ""
+}
 
-// AlipayEnabled 支付宝是否可用（fail-closed）。
-func (c *Config) AlipayEnabled() bool { return c.AlipayAppID != "" && c.AlipayPrivKey != "" }
+// AlipayEnabled 支付宝是否可用（fail-closed：全套齐备才启用）。
+func (c *Config) AlipayEnabled() bool {
+	return c.AlipayAppID != "" && c.AlipayPrivKey != "" && c.AlipayPubKey != "" &&
+		c.AlipayNotify != "" && c.AlipayGateway != ""
+}
 
 // ErrNoSecret 供调用方 errors.Is 判定的哨兵错误。
 var ErrNoSecret = errors.New("强制密钥未配置")
