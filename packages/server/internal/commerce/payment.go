@@ -16,8 +16,12 @@ import (
 var ErrCallbackInvalid = errors.New("支付回调验签或金额校验失败")
 
 type CallbackInput struct {
-	OrderNo, Channel, ChannelTxnID, IdempotencyKey, Signature string
-	AmountCents                                               int64
+	OrderNo        string `json:"order_no"`
+	Channel        string `json:"channel"`
+	ChannelTxnID   string `json:"channel_txn_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	Signature      string `json:"signature"`
+	AmountCents    int64  `json:"amount_cents"`
 }
 type PaymentService struct {
 	db     *sql.DB
