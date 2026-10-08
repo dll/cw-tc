@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
+import 'audio_player_page.dart';
 import 'resource_viewer_page.dart';
 import 'video_player_page.dart';
 
@@ -99,6 +100,15 @@ class _LearnPageState extends State<LearnPage> {
       );
       return;
     }
+    // 音频：有 COS 预签名直链就端内播放。
+    if (r.kind == 'audio' && r.url != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => AudioPlayerPage(title: r.fileName, url: r.url!),
+        ),
+      );
+      return;
+    }
     if (r.isTextKind) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -107,7 +117,7 @@ class _LearnPageState extends State<LearnPage> {
       );
       return;
     }
-    // 音频 / 课件播放后续接（音频走 audioplayers、课件走 WebView/浏览器）。
+    // 课件（slide）播放后续接（WebView/浏览器打开 PPTX）。
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('该资源暂不支持端内播放')),
     );

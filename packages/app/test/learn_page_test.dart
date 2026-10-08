@@ -1,5 +1,6 @@
 import 'package:cw_tc_app/src/api/api_client.dart';
 import 'package:cw_tc_app/src/models/lecture_resource.dart';
+import 'package:cw_tc_app/src/pages/audio_player_page.dart';
 import 'package:cw_tc_app/src/pages/learn_page.dart';
 import 'package:cw_tc_app/src/pages/video_player_page.dart';
 import 'package:dio/dio.dart';
@@ -27,6 +28,15 @@ class _FakeApiClient extends ApiClient {
         expiresAt: 0,
         signature: 's',
         url: 'https://example.com/hello.mp4?sign=abc',
+      ),
+      LectureResource(
+        kind: 'audio',
+        title: '音频',
+        storageKey: 'AI化教学创新03-CF/01_你好世界/audio_01.wav',
+        sizeBytes: 102400,
+        expiresAt: 0,
+        signature: 's',
+        url: 'https://example.com/audio_01.wav?sign=abc',
       ),
     ];
   }
@@ -85,6 +95,20 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(VideoPlayerPage), findsOneWidget);
+  });
+
+  testWidgets('点击音频资源进入播放页', (WidgetTester tester) async {
+    final api = _FakeApiClient();
+    await tester.pumpWidget(
+      MaterialApp(home: LearnPage(courseCode: 'C1', no: 1, api: api)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('audio_01.wav'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(AudioPlayerPage), findsOneWidget);
   });
 
   testWidgets('未购课（403）显示购买提示', (WidgetTester tester) async {
