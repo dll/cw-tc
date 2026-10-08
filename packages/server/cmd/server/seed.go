@@ -10,23 +10,35 @@ import (
 	"github.com/cw-tc/server/internal/staff"
 )
 
+// seedResult 是单个种子账号的结果。
+type seedResult struct {
+	Account string
+	Name    string
+	Role    string
+	ID      int64
+	Created bool
+}
+
 // seedAdmin 实现 `cw-tc-server seed-admin` 的核心逻辑（可测试）。
 //
-// 读取（不写死默认密码，密码缺失即拒绝）：
+// 一次种子三个角色（超管 / 运营 / 教师），每个账号密码都不写死默认值：
 //
-//	CWTC_ADMIN_ACCOUNT（默认 admin）· CWTC_ADMIN_NAME（默认 超级管理员）· CWTC_ADMIN_PASSWORD（必填）
+//	CWTC_ADMIN_ACCOUNT/PASSWORD   （admin_super，必填，缺失则失败）
+//	CWTC_OPS_ACCOUNT/PASSWORD     （admin_ops，可选，缺密码则跳过）
+//	CWTC_TEACHER_ACCOUNT/PASSWORD （teacher，可选，缺密码则跳过）
 //
 // 只连数据库（轻量配置，不校验身份证等强制密钥 —— 种子命令无需它们）。
-// 返回 (account, id, created, err)。
-func seedAdmin(get config.Getenv) (string, int64, bool, error) {
-	account := strings.TrimSpace(get(config.EnvAdminAccount))
-	if account == "" {
-		account = "admin"
-	}
-	name := strings.TrimSpace(get(config.EnvAdminName))
-	password := get(config.EnvAdminPassword)
-	if password == "" {
-		return "", 0, false, fmt.Errorf("初始超管密码未配置（%s）：密码绝不写死默认值", config.EnvAdminPassword)
+// 返回 (结果列表, err)。
+func seedAdmin(get config.Getenv) ([]seedResult, error) {
+	accounts := []struct {
+		acctKey, passKey, nameKey string
+		defAcct, defName          string
+		role                      staff.Role
+		required                  bool
+	}{
+		{config.EnvAdminAccount, config.EnvAdminPassword, config.EnvAdminName, "admin", "超级管理员", staff.RoleAdminSuper, true},
+		{config.EnvOpsAccount, config.EnvOpsPassword, config.EnvOpsName, "ops", "运营管理员", staff.RoleAdminOps, false},
+		{config.EnvTeacherAccount, config.EnvTeacherPasswd, config.EnvTeacherName, "teacher", "教师", staff.RoleTeacher, false},
 	}
 
 	cfg := &config.Config{
@@ -42,28 +54,50 @@ func seedAdmin(get config.Getenv) (string, int64, bool, error) {
 	}
 	database, closeDB, err := openDatabase(context.Background(), cfg)
 	if err != nil || database == nil {
-		return "", 0, false, fmt.Errorf("数据库初始化失败: %w", err)
+		return nil, fmt.Errorf("数据库初始化失败: %w", err)
 	}
 	defer closeDB()
 
-	id, created, err := staff.SeedAdmin(context.Background(), database, account, name, password)
-	if err != nil {
-		return "", 0, false, fmt.Errorf("创建初始超管失败: %w", err)
+	results := make([]seedResult, 0, 3)
+	for _, a := range accounts {
+		account := strings.TrimSpace(get(a.acctKey))
+		if account == "" {
+			account = a.defAcct
+		}
+		name := strings.TrimSpace(get(a.nameKey))
+		if name == "" {
+			name = a.defName
+		}
+		password := get(a.passKey)
+		if password == "" {
+			if a.required {
+				return nil, fmt.Errorf("初始超管密码未配置（%s）：密码绝不写死默认值", a.passKey)
+			}
+			slog.Info("跳过种子账号（密码未配置）", "account", account, "role", string(a.role))
+			continue
+		}
+		id, created, err := staff.SeedStaff(context.Background(), database, account, name, a.role, password)
+		if err != nil {
+			return nil, fmt.Errorf("创建账号 %s 失败: %w", account, err)
+		}
+		results = append(results, seedResult{Account: account, Name: name, Role: string(a.role), ID: id, Created: created})
 	}
-	return account, id, created, nil
+	return results, nil
 }
 
 // runSeedAdmin 执行 seed-admin 子命令；错误通过返回值表达（由 main 决定退出码）。
 func runSeedAdmin() error {
-	account, id, created, err := seedAdmin(config.OSGetenv)
+	results, err := seedAdmin(config.OSGetenv)
 	if err != nil {
 		slog.Error("种子命令失败", "err", err)
 		return err
 	}
-	if created {
-		slog.Info("初始超管已创建（首登强制改密）", "account", account, "role", "admin_super", "id", id)
-	} else {
-		slog.Info("初始超管已存在，幂等跳过", "account", account, "id", id)
+	for _, r := range results {
+		if r.Created {
+			slog.Info("账号已创建（首登强制改密）", "account", r.Account, "name", r.Name, "role", r.Role, "id", r.ID)
+		} else {
+			slog.Info("账号已存在，幂等跳过", "account", r.Account, "role", r.Role, "id", r.ID)
+		}
 	}
 	return nil
 }
