@@ -229,3 +229,20 @@ export async function createMajor(name: string, sort: number): Promise<void> {
 export async function updateMajor(id: number, input: { name?: string; sort?: number; status?: string }): Promise<void> {
   await unwrap<unknown>(http.put(`/admin/majors/${id}`, input))
 }
+
+// —— 教师工作台 ——
+export async function listTeacherCourses(): Promise<AdminCourse[]> {
+  const r = await unwrap<{ items: AdminCourse[] }>(http.get('/teacher/courses'))
+  return r.items
+}
+export async function createTeacherCourse(input: {
+  name: string
+  line?: string
+  major_id?: number | null
+  intro?: string
+}): Promise<{ course_code: string }> {
+  return unwrap<{ course_code: string }>(http.post('/teacher/courses', input))
+}
+export async function submitCourse(code: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/teacher/courses/${code}/submit`, {}))
+}
