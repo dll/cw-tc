@@ -1,8 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
 import 'resource_viewer_page.dart';
+import 'video_player_page.dart';
 
 /// 学习页（PRD v2 §7.4 B-4）：某讲的资源清单（讲义 / 课件 / 视频）。
 ///
@@ -40,7 +42,24 @@ class _LearnPageState extends State<LearnPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return const Center(child: Text('资源加载失败'));
+            final err = snapshot.error;
+            if (err is DioException && err.response?.statusCode == 403) {
+              return const Center(child: Text('请先购买 / 解锁本课程'));
+            }
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Text('资源加载失败'),
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _future = _api.lectureResources(widget.courseCode, widget.no);
+                    }),
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            );
           }
           final resources = snapshot.data ?? const <LectureResource>[];
           if (resources.isEmpty) {
@@ -71,6 +90,15 @@ class _LearnPageState extends State<LearnPage> {
   }
 
   void _open(BuildContext context, LectureResource r) {
+    // 视频：有 COS 预签名直链就端内播放。
+    if (r.kind == 'video' && r.url != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => VideoPlayerPage(title: r.fileName, url: r.url!),
+        ),
+      );
+      return;
+    }
     if (r.isTextKind) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -79,9 +107,9 @@ class _LearnPageState extends State<LearnPage> {
       );
       return;
     }
-    // 二进制资源（课件/视频/音频）需对象存储与资源网关，暂未落地。
+    // 音频 / 课件播放后续接（音频走 audioplayers、课件走 WebView/浏览器）。
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('该资源为二进制文件，端内播放待资源网关落地后开放')),
+      const SnackBar(content: Text('该资源暂不支持端内播放')),
     );
   }
 

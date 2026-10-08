@@ -33,6 +33,9 @@ dependencies:
   # 该约束沿用 wxx 的实测结论（wxx/frontend/pubspec.yaml 有同样注释）。
   webview_flutter: ">=4.4.4 <4.9.0"
 
+  # 视频播放（学习页视频，Web/Android 共用）
+  video_player: ^2.9.2
+
   # 以下依赖按里程碑加入，版本沿用 wxx 已验证的组合（此处先留说明，不提前引入）：
   #   M1  音频播放      audioplayers: ^6.1.0
   #   M1  Markdown 渲染 flutter_markdown_plus: ^1.0.0

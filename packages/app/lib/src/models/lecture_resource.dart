@@ -7,6 +7,7 @@ class LectureResource {
     required this.sizeBytes,
     required this.expiresAt,
     required this.signature,
+    this.url,
   });
 
   final String kind; // 讲义 / 课件 / 视频 等
@@ -16,6 +17,9 @@ class LectureResource {
   final int expiresAt; // unix 秒
   final String signature;
 
+  /// 视频/音频的 COS 预签名直链（自认证，Web 播放器无需带 Bearer 头）。其余资源为 null。
+  final String? url;
+
   factory LectureResource.fromJson(Map<String, dynamic> json) {
     return LectureResource(
       kind: json['kind'] as String,
@@ -24,6 +28,7 @@ class LectureResource {
       sizeBytes: (json['size_bytes'] as num?)?.toInt() ?? 0,
       expiresAt: (json['expires_at'] as num?)?.toInt() ?? 0,
       signature: json['signature'] as String,
+      url: json['url'] as String?,
     );
   }
 
