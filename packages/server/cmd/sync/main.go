@@ -2,9 +2,10 @@
 //
 // 用法：
 //
-//	go run ./cmd/sync --source <上游目录> [--dsn <SQLite DSN>]
+//	go run ./cmd/sync --source <上游目录> [--driver sqlite|postgres] [--dsn <DSN>]
 //
-// 默认源目录取 CWTC_CONTENT_SOURCE，未设置时回退到本机上游路径。
+// 默认源目录取 CWTC_CONTENT_SOURCE，未设置时回退到本机上游路径；
+// 默认驱动取 CWTC_DB_DRIVER（未设置回退 sqlite）。
 package main
 
 import (
@@ -23,10 +24,11 @@ const defaultSource = "E:/2026-2027/2026-2027-1/AI化教学创新"
 
 func main() {
 	source := flag.String("source", os.Getenv("CWTC_CONTENT_SOURCE"), "上游内容目录（默认 CWTC_CONTENT_SOURCE）")
-	dsn := flag.String("dsn", "", "SQLite DSN（默认内存库，仅开发/测试）")
+	driver := flag.String("driver", os.Getenv("CWTC_DB_DRIVER"), "数据库驱动 sqlite|postgres（默认 CWTC_DB_DRIVER）")
+	dsn := flag.String("dsn", os.Getenv("CWTC_DB_DSN"), "数据库 DSN（默认 CWTC_DB_DSN）")
 	flag.Parse()
 
-	courses, lectures, questions, err := runSync(context.Background(), *dsn, *source)
+	courses, lectures, questions, err := runSync(context.Background(), *driver, *dsn, *source)
 	if err != nil {
 		log.Fatalf("同步失败: %v", err)
 	}
@@ -34,16 +36,20 @@ func main() {
 }
 
 // runSync 打开数据库、执行迁移并运行同步，返回上游课程数、讲次数与题目数。
-func runSync(ctx context.Context, dsn, source string) (int, int, int, error) {
+func runSync(ctx context.Context, driver, dsn, source string) (int, int, int, error) {
 	if source == "" {
 		source = defaultSource
 	}
-	database, err := db.Open(ctx, db.DialectSQLite, dsn)
+	dialect, err := db.ParseDialect(driver)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	database, err := db.Open(ctx, dialect, dsn)
 	if err != nil {
 		return 0, 0, 0, err
 	}
 	defer database.Close()
-	if err := db.ApplyMigrations(ctx, database, migrations.FS, db.DialectSQLite); err != nil {
+	if err := db.ApplyMigrations(ctx, database, migrations.FS, dialect); err != nil {
 		return 0, 0, 0, err
 	}
 	if err := sync.Run(ctx, database, source); err != nil {

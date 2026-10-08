@@ -238,13 +238,22 @@ func syncLectures(ctx context.Context, database *sql.DB, course Course) error {
 	return pruneUpstreamLectures(ctx, database, courseID, seen)
 }
 
+// placeholders 生成从 start 起的 n 个连续占位符（如 "$1,$2,$3"）。
+// 用于动态 NOT IN 列表（PostgreSQL/SQLite 均需按位置编号）。
+func placeholders(start, n int) string {
+	parts := make([]string, n)
+	for i := 0; i < n; i++ {
+		parts[i] = "$" + strconv.Itoa(start+i)
+	}
+	return strings.Join(parts, ",")
+}
+
 // pruneUpstreamCourses 删除上游已不再存在的课程（只动 source='upstream'），先删其上游讲次再删课程（避免外键）。
 func pruneUpstreamCourses(ctx context.Context, database *sql.DB, keep []string) error {
 	notIn := "1=1"
 	args := make([]any, 0, len(keep))
 	if len(keep) > 0 {
-		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",")
-		notIn = "course_code NOT IN (" + placeholders + ")"
+		notIn = "course_code NOT IN (" + placeholders(1, len(keep)) + ")"
 		for _, code := range keep {
 			args = append(args, code)
 		}
@@ -263,7 +272,7 @@ func pruneUpstreamLectures(ctx context.Context, database *sql.DB, courseID int64
 		_, err := database.ExecContext(ctx, `DELETE FROM lecture WHERE course_id = $1 AND origin = 'upstream'`, courseID)
 		return err
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",")
+	placeholders := placeholders(2, len(keep))
 	args := make([]any, 0, len(keep)+1)
 	args = append(args, courseID)
 	for _, no := range keep {
@@ -326,7 +335,7 @@ func pruneUpstreamQuestions(ctx context.Context, database *sql.DB, courseID int6
 		_, err := database.ExecContext(ctx, `DELETE FROM question WHERE course_id = $1 AND is_override = false`, courseID)
 		return err
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",")
+	placeholders := placeholders(2, len(keep))
 	args := make([]any, 0, len(keep)+1)
 	args = append(args, courseID)
 	for _, qno := range keep {

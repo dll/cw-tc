@@ -26,7 +26,7 @@ func TestRunSyncWithFixture(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "课程总览.json"), body, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	courses, lectures, questions, err := runSync(context.Background(), "", root)
+	courses, lectures, questions, err := runSync(context.Background(), "", "", root)
 	if err != nil {
 		t.Fatal(err)
 	}
