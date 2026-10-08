@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"time"
 )
@@ -85,10 +86,12 @@ func Disable(ctx context.Context, db *sql.DB, staffID int64) error {
 	return nil
 }
 
-// hashPassword 与 identity 一致的散列（内部人员临时口令，非密码学强度要求场景）。
-func hashPassword(password string) []byte {
+// hashPassword 返回口令的 SHA-256 十六进制串（64 字符 ASCII）。
+// 存 TEXT 列：原始 32 字节在 PostgreSQL 的 TEXT 列会因非 UTF-8 字节触发校验失败，
+// 十六进制串则 SQLite / PG 均安全。
+func hashPassword(password string) string {
 	sum := sha256.Sum256([]byte(password))
-	return sum[:]
+	return hex.EncodeToString(sum[:])
 }
 
 // ChangePassword 修改内部人员口令并标记已改密（首登强制改密闭环）。
@@ -97,11 +100,11 @@ func ChangePassword(ctx context.Context, db *sql.DB, staffID int64, oldPassword,
 	if db == nil || staffID <= 0 || oldPassword == "" || newPassword == "" {
 		return ErrStaffInput
 	}
-	var stored []byte
+	var stored string
 	if err := db.QueryRowContext(ctx, `SELECT password_hash FROM staff WHERE id = $1`, staffID).Scan(&stored); err != nil {
 		return ErrStaffNotFound
 	}
-	if len(stored) != sha256.Size || subtle.ConstantTimeCompare(hashPassword(oldPassword), stored) != 1 {
+	if len(stored) != 64 || subtle.ConstantTimeCompare([]byte(hashPassword(oldPassword)), []byte(stored)) != 1 {
 		return ErrInvalidCredentials
 	}
 	res, err := db.ExecContext(ctx,

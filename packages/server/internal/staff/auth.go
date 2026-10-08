@@ -33,7 +33,7 @@ func Login(ctx context.Context, db *sql.DB, account, password string, now time.T
 	}
 	var st Staff
 	var roleStr, status string
-	var stored []byte
+	var stored string
 	var changedAt sql.NullString
 	if err := db.QueryRowContext(ctx,
 		`SELECT id, account, name, role, password_hash, status, password_changed_at FROM staff WHERE account = $1`, account).
@@ -43,7 +43,7 @@ func Login(ctx context.Context, db *sql.DB, account, password string, now time.T
 	if status != "active" {
 		return Staff{}, "", ErrAccountDisabled
 	}
-	if len(stored) != sha256.Size || subtle.ConstantTimeCompare(hashPassword(password), stored) != 1 {
+	if len(stored) != 64 || subtle.ConstantTimeCompare([]byte(hashPassword(password)), []byte(stored)) != 1 {
 		return Staff{}, "", ErrInvalidCredentials
 	}
 	st.Role = Role(roleStr)

@@ -26,7 +26,7 @@ func (s *Service) loginWithClock(ctx context.Context, phone, password string, no
 		return Student{}, ErrInvalidCredentials
 	}
 	var student Student
-	var stored []byte
+	var stored string
 	var lockedUntil sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone, password_hash, locked_until FROM student WHERE phone = $1 AND status = 'active'`, phone).
 		Scan(&student.ID, &student.StudentNo, &student.Name, &student.Phone, &stored, &lockedUntil)
@@ -38,7 +38,7 @@ func (s *Service) loginWithClock(ctx context.Context, phone, password string, no
 			return Student{}, ErrAccountLocked
 		}
 	}
-	if len(stored) != 32 || subtle.ConstantTimeCompare(hashPassword(password), stored) != 1 {
+	if len(stored) != 64 || subtle.ConstantTimeCompare([]byte(hashPassword(password)), []byte(stored)) != 1 {
 		s.recordFailedLogin(ctx, student.ID, now)
 		return Student{}, ErrInvalidCredentials
 	}

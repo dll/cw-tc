@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -93,9 +94,9 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (Student, e
 	return Student{ID: id, StudentNo: studentNo, Name: input.Name, Phone: input.Phone}, nil
 }
 
-func hashPassword(password string) []byte {
+func hashPassword(password string) string {
 	digest := sha256.Sum256([]byte(password))
-	return digest[:]
+	return hex.EncodeToString(digest[:])
 }
 
 func checksumStudentNo(phone, id string) int64 {

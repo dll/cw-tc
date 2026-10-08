@@ -13,12 +13,12 @@ func (s *Service) ChangePassword(ctx context.Context, studentID int64, oldPasswo
 	if s.db == nil || studentID <= 0 || newPassword == "" {
 		return ErrInvalidCredentials
 	}
-	var stored []byte
+	var stored string
 	var idCardCipher []byte
 	if err := s.db.QueryRowContext(ctx, `SELECT password_hash, id_card_cipher FROM student WHERE id = $1`, studentID).Scan(&stored, &idCardCipher); err != nil {
 		return ErrInvalidCredentials
 	}
-	if len(stored) != 32 || subtle.ConstantTimeCompare(hashPassword(oldPassword), stored) != 1 {
+	if len(stored) != 64 || subtle.ConstantTimeCompare([]byte(hashPassword(oldPassword)), []byte(stored)) != 1 {
 		return ErrInvalidCredentials
 	}
 	idCard, err := UnprotectIDCard(idCardCipher, s.encKey)
