@@ -74,3 +74,12 @@ func (s *Store) Upload(ctx context.Context, key string, r io.Reader) error {
 	_, err := s.client.Object.Put(ctx, key, r, nil)
 	return err
 }
+
+// Head 返回对象的元数据（HEAD 权限与 GET 一致）；用于诊断读权限与对象存在性。
+func (s *Store) Head(ctx context.Context, key string) error {
+	resp, err := s.client.Object.Head(ctx, key, nil)
+	if err != nil {
+		return err
+	}
+	return resp.Body.Close()
+}

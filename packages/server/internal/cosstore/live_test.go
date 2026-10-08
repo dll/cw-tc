@@ -24,6 +24,14 @@ func TestCosLiveRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	key := "costest/hello.txt"
 	content := "cw-tc cos self-test " + time.Now().Format(time.RFC3339)
+
+	// 读权限诊断：HEAD 一个不存在的对象，403=无访问、404=有读权限。
+	if err := store.Head(ctx, key); err != nil {
+		t.Logf("⚠ HEAD 诊断: %v", err)
+	} else {
+		t.Log("✓ HEAD 读权限可用")
+	}
+
 	if err := store.Upload(ctx, key, strings.NewReader(content)); err != nil {
 		t.Fatalf("上传失败: %v", err)
 	}
