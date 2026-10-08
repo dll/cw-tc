@@ -118,11 +118,11 @@ func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, le
 	_ = db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM exam_session WHERE student_id = $1 AND course_id = $2 AND level = $3`,
 		studentID, courseID, level).Scan(&history)
-	res, err := db.ExecContext(ctx,
-		`INSERT INTO exam_session(student_id, course_id, level, paper, status, started_at, server_deadline_at, retake_seq) VALUES($1,$2,$3,$4,'ongoing',$5,$6,$7)`,
-		studentID, courseID, level, paper, now.Format(time.RFC3339), now.Add(DefaultExamDuration).Format(time.RFC3339), history+1)
-	if err != nil {
+	var sessionID int64
+	if err := db.QueryRowContext(ctx,
+		`INSERT INTO exam_session(student_id, course_id, level, paper, status, started_at, server_deadline_at, retake_seq) VALUES($1,$2,$3,$4,'ongoing',$5,$6,$7) RETURNING id`,
+		studentID, courseID, level, paper, now.Format(time.RFC3339), now.Add(DefaultExamDuration).Format(time.RFC3339), history+1).Scan(&sessionID); err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	return sessionID, nil
 }

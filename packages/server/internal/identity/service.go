@@ -74,22 +74,21 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (Student, e
 	// 且合规上要有据可查（铁律 3）。空值或空数组都不行 —— 那等于"同意过什么"查不到。
 	// TODO(M1-04)：版本号应取自 `/public/site` 当前生效版本，**不要长期写死**（文档改版会漂移）。
 	agreements := `[{"doc":"user_agreement","version":"v1.0"},{"doc":"privacy_policy","version":"v1.0"}]`
-	result, err := s.db.ExecContext(ctx,
+	var id int64
+	err = s.db.QueryRowContext(ctx,
 		`INSERT INTO student(student_no, name, phone, phone_verified_at, id_card_hash, id_card_cipher, password_hash, agreement_versions)
-		 VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5, $6, $7)`,
-		studentNo, input.Name, input.Phone, digest, ciphertext, hashPassword(input.Password), agreements)
+		 VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5, $6, $7) RETURNING id`,
+		studentNo, input.Name, input.Phone, digest, ciphertext, hashPassword(input.Password), agreements).Scan(&id)
 	if err != nil {
-		if stringsContains(err.Error(), "student.phone") || stringsContains(err.Error(), "UNIQUE constraint failed: student.phone") {
+		// 唯一约束报错跨方言：SQLite 是 `UNIQUE constraint failed: student.phone`，
+		// PostgreSQL 是 `duplicate key ... "uq_student_phone"`，两套都要匹配。
+		if stringsContains(err.Error(), "student.phone") || stringsContains(err.Error(), "uq_student_phone") {
 			return Student{}, ErrPhoneRegistered
 		}
 		if stringsContains(err.Error(), "id_card_hash") {
 			return Student{}, ErrIDCardRegistered
 		}
 		return Student{}, fmt.Errorf("注册写入失败: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return Student{}, err
 	}
 	return Student{ID: id, StudentNo: studentNo, Name: input.Name, Phone: input.Phone}, nil
 }

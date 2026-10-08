@@ -42,12 +42,11 @@ func (s *Server) adminCreateMajor(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
 		return
 	}
-	res, err := s.dbConn.ExecContext(c.Request.Context(), `INSERT INTO major(name, sort, status) VALUES($1, $2, 'enabled')`, req.Name, req.Sort)
-	if err != nil {
+	var id int64
+	if err := s.dbConn.QueryRowContext(c.Request.Context(), `INSERT INTO major(name, sort, status) VALUES($1, $2, 'enabled') RETURNING id`, req.Name, req.Sort).Scan(&id); err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10002, Msg: "创建失败"})
 		return
 	}
-	id, _ := res.LastInsertId()
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"id": id}})
 }
 

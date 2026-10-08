@@ -29,15 +29,12 @@ func (s *Service) CreateSession(ctx context.Context, studentID int64, now time.T
 	token := hex.EncodeToString(raw)
 	digest := sha256.Sum256([]byte(token))
 	expires := now.Add(7 * 24 * time.Hour)
-	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO student_session(student_id, token_hash, issued_at, expires_at) VALUES ($1, $2, $3, $4)`,
-		studentID, digest[:], now.UTC().Format(time.RFC3339), expires.UTC().Format(time.RFC3339))
+	var id int64
+	err := s.db.QueryRowContext(ctx,
+		`INSERT INTO student_session(student_id, token_hash, issued_at, expires_at) VALUES ($1, $2, $3, $4) RETURNING id`,
+		studentID, digest[:], now.UTC().Format(time.RFC3339), expires.UTC().Format(time.RFC3339)).Scan(&id)
 	if err != nil {
 		return Session{}, fmt.Errorf("创建会话失败: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return Session{}, err
 	}
 	return Session{ID: id, Token: token, ExpiresAt: expires}, nil
 }

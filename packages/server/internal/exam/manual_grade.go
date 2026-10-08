@@ -27,7 +27,7 @@ func ListManualReviews(ctx context.Context, db *sql.DB, teacherID int64) ([]Manu
 	rows, err := db.QueryContext(ctx,
 		`SELECT r.id, r.exam_session_id, r.student_id, r.course_id, c.name, r.level, r.auto_score, r.manual_score, r.total_score
 		 FROM exam_result r JOIN course c ON r.course_id = c.id
-		 WHERE c.teacher_id = $1 AND r.detail LIKE '%"manual":true%'
+		 WHERE c.teacher_id = $1 AND CAST(r.detail AS text) LIKE '%"manual":true%'
 		 ORDER BY r.id DESC`, teacherID)
 	if err != nil {
 		return nil, err

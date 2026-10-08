@@ -29,13 +29,13 @@ func AddLecture(ctx context.Context, db *sql.DB, in LectureInput) (int64, error)
 		`SELECT COALESCE(MAX(no), 0) FROM lecture WHERE course_id = $1`, in.CourseID).Scan(&no); err != nil {
 		return 0, err
 	}
-	res, err := db.ExecContext(ctx,
-		`INSERT INTO lecture(course_id, no, title, is_preview, origin) VALUES($1,$2,$3,$4,'platform')`,
-		in.CourseID, no+1, in.Title, in.IsPreview)
-	if err != nil {
+	var id int64
+	if err := db.QueryRowContext(ctx,
+		`INSERT INTO lecture(course_id, no, title, is_preview, origin) VALUES($1,$2,$3,$4,'platform') RETURNING id`,
+		in.CourseID, no+1, in.Title, in.IsPreview).Scan(&id); err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // QuestionInput 添加题目入参。
@@ -71,14 +71,14 @@ func AddQuestion(ctx context.Context, db *sql.DB, in QuestionInput) (int64, erro
 	if dup > 0 {
 		return 0, ErrCourseInput // qno 重复
 	}
-	res, err := db.ExecContext(ctx,
+	var id int64
+	if err := db.QueryRowContext(ctx,
 		`INSERT INTO question(course_id, qno, level, type, gradability, stem, options, answer, analysis, score)
-		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		in.CourseID, in.QNo, in.Level, in.Type, in.Gradability, in.Stem, in.Options, in.Answer, in.Analysis, in.Score)
-	if err != nil {
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+		in.CourseID, in.QNo, in.Level, in.Type, in.Gradability, in.Stem, in.Options, in.Answer, in.Analysis, in.Score).Scan(&id); err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // checkPlatformOwnership 校验课程是 platform 且为教师本人（铁律 8 归属强制）。

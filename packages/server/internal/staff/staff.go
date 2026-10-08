@@ -52,13 +52,13 @@ func Create(ctx context.Context, db *sql.DB, account, name string, role Role, pa
 	if createdBy > 0 {
 		createdByArg = createdBy
 	}
-	res, err := db.ExecContext(ctx,
-		`INSERT INTO staff(account, name, role, password_hash, created_source, created_by) VALUES($1,$2,$3,$4,'admin',$5)`,
-		account, name, string(role), hashPassword(password), createdByArg)
-	if err != nil {
+	var id int64
+	if err := db.QueryRowContext(ctx,
+		`INSERT INTO staff(account, name, role, password_hash, created_source, created_by) VALUES($1,$2,$3,$4,'admin',$5) RETURNING id`,
+		account, name, string(role), hashPassword(password), createdByArg).Scan(&id); err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // Disable 停用：若名下仍有课程则拒绝（必须先移交，铁律 8）。
@@ -137,13 +137,12 @@ func SeedStaff(ctx context.Context, db *sql.DB, account, name string, role Role,
 	if err != sql.ErrNoRows {
 		return 0, false, err
 	}
-	res, err := db.ExecContext(ctx,
-		`INSERT INTO staff(account, name, role, password_hash, created_source) VALUES($1,$2,$3,$4,'seed')`,
-		account, name, string(role), hashPassword(password))
-	if err != nil {
+	var newID int64
+	if err := db.QueryRowContext(ctx,
+		`INSERT INTO staff(account, name, role, password_hash, created_source) VALUES($1,$2,$3,$4,'seed') RETURNING id`,
+		account, name, string(role), hashPassword(password)).Scan(&newID); err != nil {
 		return 0, false, err
 	}
-	newID, _ := res.LastInsertId()
 	return newID, true, nil
 }
 

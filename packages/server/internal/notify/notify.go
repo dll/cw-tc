@@ -44,13 +44,13 @@ func CreateBroadcast(ctx context.Context, db *sql.DB, in BroadcastInput) (int64,
 	if existing.Valid {
 		return existing.Int64, nil
 	}
-	res, err := db.ExecContext(ctx,
-		`INSERT INTO broadcast(operator_id, target, target_value, title, body, link, idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7)`,
-		in.OperatorID, in.Target, in.TargetValue, in.Title, in.Body, in.Link, in.IdempotencyKey)
-	if err != nil {
+	var id int64
+	if err := db.QueryRowContext(ctx,
+		`INSERT INTO broadcast(operator_id, target, target_value, title, body, link, idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+		in.OperatorID, in.Target, in.TargetValue, in.Title, in.Body, in.Link, in.IdempotencyKey).Scan(&id); err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // ConfirmBroadcast 二次确认发送（第二步）：幂等 —— 已发送则直接返回实际人数，不重复扩散。

@@ -93,7 +93,8 @@ func (s *Service) CreateOrder(ctx context.Context, in OrderInput) (Order, error)
 			time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), existing.ID)
 	}
 	orderNo := newOrderNo(in.StudentID)
-	result, err := s.db.ExecContext(ctx, `INSERT INTO orders(order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, request_id, expired_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, orderNo, in.StudentID, in.CourseID, in.CourseName, in.PriceCents, in.PriceCents, "pending", in.RequestID, in.ExpiresAt.UTC().Format(time.RFC3339))
+	var id int64
+	err = s.db.QueryRowContext(ctx, `INSERT INTO orders(order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, request_id, expired_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, orderNo, in.StudentID, in.CourseID, in.CourseName, in.PriceCents, in.PriceCents, "pending", in.RequestID, in.ExpiresAt.UTC().Format(time.RFC3339)).Scan(&id)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: orders.student_id, orders.course_id") {
 		candidate, retryErr := s.pending(ctx, in.StudentID, in.CourseID)
 		if retryErr == nil {
@@ -102,10 +103,6 @@ func (s *Service) CreateOrder(ctx context.Context, in OrderInput) (Order, error)
 	}
 	if err != nil {
 		return Order{}, fmt.Errorf("创建订单失败: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return Order{}, err
 	}
 	return Order{ID: id, OrderNo: orderNo, StudentID: in.StudentID, CourseID: in.CourseID, CourseName: in.CourseName, PriceCents: in.PriceCents, AmountCents: in.PriceCents, Status: "pending", ExpiredAt: in.ExpiresAt}, nil
 }
