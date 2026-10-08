@@ -34,4 +34,13 @@ class LectureResource {
     if (sizeBytes < 1024 * 1024) return '${(sizeBytes / 1024).toStringAsFixed(1)} KB';
     return '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
+
+  /// 文件名（storage_key 的末段，如 `README.md`）。
+  String get fileName {
+    final idx = storageKey.lastIndexOf('/');
+    return idx >= 0 ? storageKey.substring(idx + 1) : storageKey;
+  }
+
+  /// 文本类资源（讲义 Markdown / 代码 / HTML）可端内阅读。
+  bool get isTextKind => kind == 'markdown' || kind == 'code' || kind == 'html';
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
+import 'resource_viewer_page.dart';
 
 /// 学习页（PRD v2 §7.4 B-4）：某讲的资源清单（讲义 / 课件 / 视频）。
 ///
@@ -55,8 +56,11 @@ class _LearnPageState extends State<LearnPage> {
                 margin: EdgeInsets.zero,
                 child: ListTile(
                   leading: Icon(_iconFor(r.kind)),
-                  title: Text(r.title),
-                  subtitle: Text('${r.kind}${r.sizeLabel.isEmpty ? '' : ' · ${r.sizeLabel}'}'),
+                  title: Text(r.fileName),
+                  subtitle: Text(_labelFor(r.kind) +
+                      (r.sizeLabel.isEmpty ? '' : ' · ${r.sizeLabel}')),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _open(context, r),
                 ),
               );
             },
@@ -66,17 +70,56 @@ class _LearnPageState extends State<LearnPage> {
     );
   }
 
+  void _open(BuildContext context, LectureResource r) {
+    if (r.isTextKind) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ResourceViewerPage(resource: r, api: _api),
+        ),
+      );
+      return;
+    }
+    // 二进制资源（课件/视频/音频）需对象存储与资源网关，暂未落地。
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('该资源为二进制文件，端内播放待资源网关落地后开放')),
+    );
+  }
+
   IconData _iconFor(String kind) {
     switch (kind) {
       case 'video':
         return Icons.play_circle_outline;
-      case 'slides':
+      case 'audio':
+        return Icons.audiotrack_outlined;
+      case 'slide':
         return Icons.slideshow_outlined;
-      case 'handout':
-      case '讲义':
+      case 'markdown':
         return Icons.description_outlined;
+      case 'code':
+        return Icons.code;
+      case 'html':
+        return Icons.web_outlined;
       default:
         return Icons.insert_drive_file_outlined;
+    }
+  }
+
+  String _labelFor(String kind) {
+    switch (kind) {
+      case 'video':
+        return '视频';
+      case 'audio':
+        return '音频';
+      case 'slide':
+        return '课件';
+      case 'markdown':
+        return '讲义';
+      case 'code':
+        return '代码';
+      case 'html':
+        return 'HTML 页';
+      default:
+        return kind;
     }
   }
 }

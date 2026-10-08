@@ -182,6 +182,35 @@ class ApiClient {
     return items.map((e) => LectureResource.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// 资源签名下载 URL（`GET /api/v1/assets/raw?key=&expires=&sig=`）。
+  ///
+  /// 后端校验签名与过期时间后直接从内容目录取文件（不剥 JSON 信封、返回原始字节）。
+  /// 供网页端/系统浏览器直接打开二进制资源（课件/视频）时拼 URL 使用。
+  String resourceUrl(LectureResource r) {
+    final uri = Uri.parse(_baseUrl).replace(
+      path: '/api/v1/assets/raw',
+      queryParameters: <String, String>{
+        'key': r.storageKey,
+        'expires': '${r.expiresAt}',
+        'sig': r.signature,
+      },
+    );
+    return uri.toString();
+  }
+
+  /// 拉取文本类资源（讲义 Markdown / 代码 / HTML）原文，供端内阅读。
+  Future<String> fetchResourceText(LectureResource r) async {
+    final res = await _dio.get<String>(
+      '/api/v1/assets/raw',
+      queryParameters: <String, dynamic>{
+        'key': r.storageKey,
+        'expires': r.expiresAt,
+        'sig': r.signature,
+      },
+    );
+    return res.data ?? '';
+  }
+
   /// 禁止把疑似身份证号 / 手机号放进 URL。
   ///
   /// 这里刻意做成"运行时抛错"而不是静默脱敏：一旦有人这么写，
