@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../models/course.dart';
+
 /// 后端 API 客户端（M0 骨架）。
 ///
 /// 约定（PRD v2 §9.6）：
@@ -46,6 +48,19 @@ class ApiClient {
   Future<Map<String, dynamic>> health() async {
     final res = await _dio.get<Map<String, dynamic>>('/api/v1/health');
     return res.data ?? <String, dynamic>{};
+  }
+
+  /// 课程广场列表（`GET /api/v1/courses`，公开只读）。
+  Future<List<Course>> courses({int? majorId}) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/api/v1/courses',
+      queryParameters: majorId != null ? {'major_id': majorId} : null,
+    );
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return items
+        .map((e) => Course.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   /// 禁止把疑似身份证号 / 手机号放进 URL。
