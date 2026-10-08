@@ -42,6 +42,7 @@ class ApiClient {
   static const String defaultBaseUrl = 'https://cw-tc.ccit-agent.cn';
 
   static const String _tokenKey = 'cw_tc_session';
+  static const String _phoneKey = 'cw_tc_phone';
 
   final String _baseUrl;
   final Dio _dio;
@@ -65,6 +66,7 @@ class ApiClient {
     final token = data?['token'] as String? ?? '';
     if (token.isNotEmpty) {
       await _storage.write(key: _tokenKey, value: token);
+      await _storage.write(key: _phoneKey, value: phone);
     }
     return token;
   }
@@ -89,6 +91,7 @@ class ApiClient {
     final token = data?['token'] as String? ?? '';
     if (token.isNotEmpty) {
       await _storage.write(key: _tokenKey, value: token);
+      await _storage.write(key: _phoneKey, value: phone);
     }
     return token;
   }
@@ -96,12 +99,19 @@ class ApiClient {
   /// 登出：清除本地会话凭据。
   Future<void> logout() async {
     await _storage.delete(key: _tokenKey);
+    await _storage.delete(key: _phoneKey);
   }
 
   /// 是否已登录（本地有会话凭据）。
   Future<bool> hasSession() async {
     final token = await _storage.read(key: _tokenKey);
     return token != null && token.isNotEmpty;
+  }
+
+  /// 已登录的手机号（登录/注册时写入，未登录返回 null）。
+  Future<String?> storedPhone() async {
+    final phone = await _storage.read(key: _phoneKey);
+    return (phone == null || phone.isEmpty) ? null : phone;
   }
 
   /// 课程广场列表（`GET /api/v1/courses`，公开只读）。

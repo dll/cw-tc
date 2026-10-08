@@ -1,11 +1,61 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// 个人中心（PRD v2 §8.1 `/me`）——基础骨架。
-///
-/// M1 起接入：登录态、我的课程 / 订单 / 成绩 / 证书真实数据。
-class MePage extends StatelessWidget {
-  const MePage({super.key});
+import '../api/api_client.dart';
+
+/// 个人中心（PRD v2 §8.1 `/me`）：登录态 + 我的课程 / 订单 / 成绩 / 证书入口。
+class MePage extends StatefulWidget {
+  const MePage({super.key, this.api});
+
+  final ApiClient? api;
+
+  @override
+  State<MePage> createState() => _MePageState();
+}
+
+class _MePageState extends State<MePage> {
+  late final ApiClient _api = widget.api ?? ApiClient();
+  bool _loggedIn = false;
+  String? _phone;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final loggedIn = await _api.hasSession();
+      final phone = await _api.storedPhone();
+      if (!mounted) return;
+      setState(() {
+        _loggedIn = loggedIn;
+        _phone = phone;
+      });
+    } catch (_) {
+      // 安全存储不可用（如测试环境）按未登录处理。
+    }
+  }
+
+  Future<void> _logout() async {
+    try {
+      await _api.logout();
+    } catch (_) {
+      // 忽略存储异常。
+    }
+    if (!mounted) return;
+    setState(() {
+      _loggedIn = false;
+      _phone = null;
+    });
+  }
+
+  String get _maskedPhone {
+    final p = _phone ?? '';
+    if (p.length != 11) return p;
+    return '${p.substring(0, 3)}****${p.substring(7)}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,12 +71,27 @@ class MePage extends StatelessWidget {
       body: Column(
         children: <Widget>[
           ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.person)),
-            title: const Text('未登录'),
-            subtitle: const Text('手机号注册 / 登录'),
+            leading: CircleAvatar(
+              child: Icon(_loggedIn ? Icons.person : Icons.person_outline),
+            ),
+            title: Text(_loggedIn
+                ? ((_phone == null || _phone!.isEmpty) ? '已登录' : _maskedPhone)
+                : '未登录'),
+            subtitle: Text(_loggedIn ? '已登录' : '手机号注册 / 登录'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/login'),
+            onTap: () async {
+              if (_loggedIn) return;
+              await context.push('/login');
+              await _refresh();
+            },
           ),
+          if (_loggedIn) ...<Widget>[
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('退出登录'),
+              onTap: _logout,
+            ),
+          ],
           const Divider(height: 1),
           Expanded(
             child: ListView.separated(
