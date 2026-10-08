@@ -138,6 +138,32 @@ class ApiClient {
         .toList();
   }
 
+  /// 创建订单（`POST /api/v1/orders`，用课程码），返回 order_no。
+  Future<String> createOrder(String courseCode) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/api/v1/orders',
+      data: <String, dynamic>{'course_code': courseCode},
+    );
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    return data?['order_no'] as String? ?? '';
+  }
+
+  /// 模拟支付成功（`POST /orders/:orderNo/mock-pay`，仅支付渠道未接入时）。
+  Future<void> mockPayOrder(String orderNo) async {
+    await _dio.post<Map<String, dynamic>>('/api/v1/orders/$orderNo/mock-pay', data: <String, dynamic>{});
+  }
+
+  /// 我的学习权益（`GET /api/v1/me/entitlements`），返回已购课程码列表。
+  Future<List<String>> myEntitlementCourseCodes() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/entitlements');
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return items
+        .map((e) => e['course_code'] as String? ?? '')
+        .where((c) => c.isNotEmpty)
+        .toList();
+  }
+
   /// 课程详情（`GET /api/v1/courses/:courseCode`，公开只读）。
   Future<Course> courseDetail(String courseCode) async {
     final res = await _dio.get<Map<String, dynamic>>('/api/v1/courses/$courseCode');

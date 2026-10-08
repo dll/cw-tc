@@ -17,7 +17,7 @@ func (s *Server) listEntitlements(c *gin.Context) {
 	}
 	data := make([]gin.H, 0, len(items))
 	for _, item := range items {
-		data = append(data, gin.H{"course_id": item.CourseID, "order_id": item.OrderID, "source": item.Source, "status": item.Status, "granted_at": item.GrantedAt})
+		data = append(data, gin.H{"course_id": item.CourseID, "course_code": item.CourseCode, "course_name": item.CourseName, "order_id": item.OrderID, "source": item.Source, "status": item.Status, "granted_at": item.GrantedAt})
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"items": data}})
 }

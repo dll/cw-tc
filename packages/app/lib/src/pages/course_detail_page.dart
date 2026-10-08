@@ -21,10 +21,44 @@ class CourseDetailPage extends StatefulWidget {
 
 class _CourseDetailPageState extends State<CourseDetailPage> {
   late final ApiClient _api = widget.api ?? ApiClient();
+  bool _entitled = false;
+  bool _buying = false;
 
   @override
   void initState() {
     super.initState();
+    _checkEntitlement();
+  }
+
+  Future<void> _checkEntitlement() async {
+    try {
+      final codes = await _api.myEntitlementCourseCodes();
+      if (!mounted) return;
+      setState(() => _entitled = codes.contains(widget.courseCode));
+    } catch (_) {
+      // 未登录/查询失败按未购处理。
+    }
+  }
+
+  Future<void> _buy(Course course) async {
+    setState(() => _buying = true);
+    try {
+      final orderNo = await _api.createOrder(widget.courseCode);
+      if (orderNo.isEmpty) throw Exception('下单失败');
+      await _api.mockPayOrder(orderNo);
+      if (!mounted) return;
+      setState(() => _entitled = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('购买成功，开始学习吧')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('购买失败，请稍后重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _buying = false);
+    }
   }
 
   @override
@@ -55,15 +89,22 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 children: <Widget>[
                   Text(course.priceLabel, style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
                   const Spacer(),
-                  OutlinedButton(
-                    onPressed: () => context.push('/exam/${widget.courseCode}/L1'),
-                    child: const Text('测评'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: () => context.push('/learn/${widget.courseCode}/1'),
-                    child: const Text('开始学习'),
-                  ),
+                  if (_entitled) ...<Widget>[
+                    OutlinedButton(
+                      onPressed: () => context.push('/exam/${widget.courseCode}/L1'),
+                      child: const Text('测评'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: () => context.push('/learn/${widget.courseCode}/1'),
+                      child: const Text('开始学习'),
+                    ),
+                  ] else ...<Widget>[
+                    FilledButton(
+                      onPressed: _buying ? null : () => _buy(course),
+                      child: Text(_buying ? '购买中…' : '购买'),
+                    ),
+                  ],
                 ],
               ),
               const Divider(height: 32),

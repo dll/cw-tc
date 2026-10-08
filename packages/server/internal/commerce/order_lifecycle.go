@@ -49,19 +49,21 @@ func (s *Service) PreparePayment(ctx context.Context, studentID int64, params Pa
 }
 
 type Entitlement struct {
-	ID        int64
-	CourseID  int64
-	OrderID   int64
-	Source    string
-	Status    string
-	GrantedAt time.Time
+	ID         int64
+	CourseID   int64
+	CourseCode string
+	CourseName string
+	OrderID    int64
+	Source     string
+	Status     string
+	GrantedAt  time.Time
 }
 
 func (s *Service) ListEntitlements(ctx context.Context, studentID int64) ([]Entitlement, error) {
 	if s.db == nil || studentID <= 0 {
 		return nil, ErrOrderNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, course_id, order_id, source, granted_at FROM entitlement WHERE student_id=$1 AND revoked_at IS NULL ORDER BY granted_at DESC`, studentID)
+	rows, err := s.db.QueryContext(ctx, `SELECT e.id, e.course_id, e.order_id, e.source, e.granted_at, c.course_code, c.name FROM entitlement e JOIN course c ON c.id = e.course_id WHERE e.student_id=$1 AND e.revoked_at IS NULL ORDER BY e.granted_at DESC`, studentID)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +73,7 @@ func (s *Service) ListEntitlements(ctx context.Context, studentID int64) ([]Enti
 		var item Entitlement
 		var granted string
 		var orderID sql.NullInt64
-		if err := rows.Scan(&item.ID, &item.CourseID, &orderID, &item.Source, &granted); err != nil {
+		if err := rows.Scan(&item.ID, &item.CourseID, &orderID, &item.Source, &granted, &item.CourseCode, &item.CourseName); err != nil {
 			return nil, err
 		}
 		if orderID.Valid {
@@ -100,4 +102,32 @@ func (s *Service) CancelOrder(ctx context.Context, studentID int64, orderNo stri
 		return ErrOrderNotPending
 	}
 	return nil
+}
+
+// MockPay 模拟支付成功（仅支付渠道线下未接时用，等价于支付回调的「置已支付 + 开通权益」）。
+// 生产（已配置支付渠道）不应调用，接口层用 cfg.PaymentEnabled() 拦。
+func (s *Service) MockPay(ctx context.Context, studentID int64, orderNo string) error {
+	if s.db == nil || studentID <= 0 || orderNo == "" {
+		return ErrOrderNotFound
+	}
+	order, err := s.GetOrder(ctx, orderNo)
+	if err != nil || order.StudentID != studentID {
+		return ErrOrderNotFound
+	}
+	if order.Status != "pending" {
+		return ErrOrderNotPending
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err = tx.ExecContext(ctx, `UPDATE orders SET status='paid', paid_at=$1, updated_at=$2 WHERE id=$3 AND status='pending'`, now, now, order.ID); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO entitlement(student_id, course_id, source, order_id, granted_at) VALUES($1,$2,'order',$3,$4) ON CONFLICT(student_id, course_id) WHERE revoked_at IS NULL DO NOTHING`, studentID, order.CourseID, order.ID, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

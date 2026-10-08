@@ -285,6 +285,11 @@ func (c *Config) AlipayEnabled() bool {
 		c.AlipayNotify != "" && c.AlipayGateway != ""
 }
 
+// PaymentEnabled 任一支付渠道已配置（微信或支付宝）。
+func (c *Config) PaymentEnabled() bool {
+	return c.WXPayEnabled() || c.AlipayEnabled()
+}
+
 // ErrNoSecret 供调用方 errors.Is 判定的哨兵错误。
 var ErrNoSecret = errors.New("强制密钥未配置")
 

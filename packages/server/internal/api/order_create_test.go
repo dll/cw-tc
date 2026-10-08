@@ -39,7 +39,7 @@ func TestCreateOrderRouteUsesCoursePriceSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := NewWithIdentityAndDatabase(testConfig(t, true), service, database).Router()
-	response := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/orders", `{"course_id":1}`, session.Token)
+	response := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/orders", `{"course_code":"C1"}`, session.Token)
 	if response.Code != http.StatusOK {
 		t.Fatalf("创建订单 = %d %s", response.Code, response.Body.String())
 	}

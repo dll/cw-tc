@@ -119,6 +119,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.POST("/orders", authRequired(s.identity), s.createOrder)
 	v1.GET("/orders/:orderNo", authRequired(s.identity), s.getOrder)
 	v1.POST("/orders/:orderNo/pay", authRequired(s.identity), s.preparePayment)
+	v1.POST("/orders/:orderNo/mock-pay", authRequired(s.identity), s.mockPayOrder)
 	v1.POST("/orders/:orderNo/cancel", authRequired(s.identity), s.cancelOrder)
 	v1.POST("/exams", authRequired(s.identity), s.startExam)
 	v1.POST("/exams/:sessionID/submit", authRequired(s.identity), s.submitExam)
