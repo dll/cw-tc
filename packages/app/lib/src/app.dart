@@ -35,7 +35,7 @@ class CwTcApp extends StatelessWidget {
 
 final GoRouter _router = GoRouter(
   routes: <RouteBase>[
-    // —— 带底部导航的三个顶级分支 ——
+    // —— 带底部导航的三个一级分支 ——
     StatefulShellRoute.indexedStack(
       builder: (BuildContext context, GoRouterState state, StatefulNavigationShell shell) =>
           AppShell(navigationShell: shell),

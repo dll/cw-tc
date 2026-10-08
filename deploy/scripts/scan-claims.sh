@@ -117,17 +117,27 @@ UPSTREAM="${CWTC_UPSTREAM:-E:/2026-2027/2026-2027-1/AI化教学创新/课程总�
 if [[ ! -f "$UPSTREAM" ]]; then
   echo "（未找到上游数据源：$UPSTREAM）"
   echo "（跳过对外数字与讲次引用校验 —— 本地 / 有上游的流水线上会执行）"
-elif ! command -v python3 >/dev/null 2>&1; then
-  echo "（本机无 python3，跳过；有 python3 的环境会执行）"
 else
-  python3 tools/gen_public_content.py --check || {
-    echo "✗ 文档里的 AUTO 数字区块落后于上游，请重跑：python3 tools/gen_public_content.py"
-    exit 1
-  }
-  python3 tools/check_job_map_refs.py || {
-    echo "✗ 就业直达的 lecture_refs 与上游讲次目录对不上（映射不许拍脑袋）"
-    exit 1
-  }
+  # 选一个**能跑**的 python：Windows 上 `python3` 可能是商店占位（exit 49），
+  # `command -v` 会误判为存在。必须实测能 print 才采用，否则回退 `python`。
+  PY=""
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'print(1)' >/dev/null 2>&1; then
+    PY=python3
+  elif command -v python >/dev/null 2>&1 && python -c 'print(1)' >/dev/null 2>&1; then
+    PY=python
+  fi
+  if [[ -z "$PY" ]]; then
+    echo "（本机无可用 python，跳过；有 python 的环境会执行）"
+  else
+    "$PY" tools/gen_public_content.py --check || {
+      echo "✗ 文档里的 AUTO 数字区块落后于上游，请重跑：$PY tools/gen_public_content.py"
+      exit 1
+    }
+    "$PY" tools/check_job_map_refs.py || {
+      echo "✗ 就业直达的 lecture_refs 与上游讲次目录对不上（映射不许拍脑袋）"
+      exit 1
+    }
+  fi
 fi
 
 echo "全部通过。"
