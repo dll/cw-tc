@@ -134,7 +134,7 @@ func (s *Server) adminSetPrice(c *gin.Context) {
 	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
 		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
 		Action: "course.price_change", TargetType: "course", TargetID: c.Param("code"),
-		AfterValue: strconv.FormatInt(req.PriceCents, 10),
+		After: strconv.FormatInt(req.PriceCents, 10), IP: c.ClientIP(),
 	})
 	c.JSON(http.StatusOK, envelope{Code: 0})
 }

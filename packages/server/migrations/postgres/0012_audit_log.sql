@@ -7,8 +7,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
     action TEXT NOT NULL,
     target_type TEXT,
     target_id TEXT,
-    before_value TEXT,
-    after_value TEXT,
+    before JSONB,
+    after JSONB,
+    ip INET,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (actor_type IN ('student','staff','system'))
 );

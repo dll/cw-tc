@@ -7,8 +7,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
     action TEXT NOT NULL,
     target_type TEXT,
     target_id TEXT,
-    before_value TEXT,
-    after_value TEXT,
+    before TEXT,
+    after TEXT,
+    ip TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CHECK (actor_type IN ('student','staff','system'))
 );

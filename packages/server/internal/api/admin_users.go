@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -61,11 +62,12 @@ func (s *Server) adminRevealUser(c *gin.Context) {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "用户不存在"})
 		return
 	}
-	// 写审计（每次 reveal 都留痕，铁律 8 v2.6）
+	// 写审计（每次 reveal 都留痕，铁律 8 v2.6）；事由以 JSON 快照存入 after 列
+	reasonJSON, _ := json.Marshal(map[string]string{"reason": req.Reason})
 	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
 		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
 		Action: "user.reveal_phone", TargetType: "student", TargetID: strconv.FormatInt(id, 10),
-		AfterValue: req.Reason,
+		After: string(reasonJSON), IP: c.ClientIP(),
 	})
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"phone": phone}})
 }
