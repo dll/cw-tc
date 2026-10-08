@@ -72,6 +72,11 @@ func bearerToken(c *gin.Context) string {
 	return ""
 }
 
+// adminSettings GET /admin/settings —— 系统配置页（仅 super；密钥值绝不返回，铁律 8）。
+func (s *Server) adminSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"note": "系统配置页：仅超级管理员可见；密钥只走 shared/.env，不回显"}})
+}
+
 func (s *Server) adminOrders(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))

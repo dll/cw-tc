@@ -183,3 +183,21 @@ export async function publishCourse(code: string): Promise<void> {
 export async function setPrice(code: string, priceCents: number, confirm: boolean): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/price`, { price_cents: priceCents, confirm }))
 }
+
+// —— 审计日志 ——
+export interface AuditItem {
+  id: number
+  actor_type: string
+  actor_id: number
+  actor_role: string
+  action: string
+  target_type: string
+  target_id: string
+  created_at: string
+}
+export async function listAudit(action?: string): Promise<AuditItem[]> {
+  const r = await unwrap<{ items: AuditItem[] }>(
+    http.get('/admin/audit', { params: action ? { action } : undefined }),
+  )
+  return r.items
+}

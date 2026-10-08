@@ -49,6 +49,13 @@ func TestAdminListUsersAndReveal(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("看全号应写审计 1 条，实际 %d", n)
 	}
+	// 审计日志列表
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/audit", "", token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"action":"user.reveal_phone"`) {
+		t.Fatalf("审计日志列表 = %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/audit?action=user.reveal_phone", "", token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"items"`) {
+		t.Fatalf("按动作过滤审计 = %d %s", got.Code, got.Body.String())
+	}
 	// 不存在的用户 → 404
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/users/999/reveal", `{"reason":"x"}`, token); got.Code != http.StatusNotFound {
 		t.Fatalf("看全号不存在用户应 404，实际 %d", got.Code)

@@ -8,6 +8,7 @@ import Users from '@/pages/Users.vue'
 import Broadcast from '@/pages/Broadcast.vue'
 import Staff from '@/pages/Staff.vue'
 import Courses from '@/pages/Courses.vue'
+import Audit from '@/pages/Audit.vue'
 import Placeholder from '@/pages/Placeholder.vue'
 import { hasToken } from '@/api/client'
 
@@ -27,7 +28,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/broadcast', component: Broadcast },
   { path: '/admin/users', component: Users },
   { path: '/admin/staff', component: Staff },
-  { path: '/admin/audit', component: Placeholder, props: { title: '审计日志', detail: '资金与商业动作全部留痕' } },
+  { path: '/admin/audit', component: Audit },
 
   // —— 教师工作台（角色：教师）——
   { path: '/teacher/courses', component: Placeholder, props: { title: '我的课程', detail: '草稿 / 待审 / 已上架' } },
