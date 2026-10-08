@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/course.dart';
+import '../models/exam.dart';
 import '../models/lecture.dart';
 
 /// 后端 API 客户端（M0 骨架）。
@@ -128,6 +129,31 @@ class ApiClient {
     return items
         .map((e) => Lecture.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  /// 开考（`POST /exams`）：返回 session_id + 试卷（不含答案）。
+  Future<ExamSession> startExam({required String courseCode, required String level}) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/api/v1/exams',
+      data: <String, dynamic>{'course_code': courseCode, 'level': level},
+    );
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final sessionId = (data?['session_id'] as num).toInt();
+    final rawPaper = (data?['paper'] as List<dynamic>?) ?? const <dynamic>[];
+    final paper = rawPaper
+        .map((e) => ExamQuestion.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return ExamSession(sessionId: sessionId, paper: paper);
+  }
+
+  /// 交卷判分（`POST /exams/:sessionID/submit`）：通过自动发证。
+  Future<ExamResult> submitExam(int sessionId, Map<String, String> answers) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/api/v1/exams/$sessionId/submit',
+      data: <String, dynamic>{'answers': answers},
+    );
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    return ExamResult.fromJson(data ?? const <String, dynamic>{});
   }
 
   /// 禁止把疑似身份证号 / 手机号放进 URL。

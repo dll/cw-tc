@@ -55,6 +55,11 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 children: <Widget>[
                   Text(course.priceLabel, style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
                   const Spacer(),
+                  OutlinedButton(
+                    onPressed: () => context.push('/exam/${widget.courseCode}/L1'),
+                    child: const Text('测评'),
+                  ),
+                  const SizedBox(width: 8),
                   FilledButton(
                     onPressed: () => context.push('/learn/${widget.courseCode}/1'),
                     child: const Text('开始学习'),

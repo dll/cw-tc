@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'pages/course_square_page.dart';
 import 'pages/course_detail_page.dart';
+import 'pages/exam_page.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'pages/me_page.dart';
@@ -67,9 +68,9 @@ final GoRouter _router = GoRouter(
     ),
     GoRoute(
       path: '/exam/:code/:level',
-      builder: (_, GoRouterState s) => PlaceholderPage(
-        title: '测评页',
-        detail: '课程 ${s.pathParameters['code']} · ${s.pathParameters['level']}',
+      builder: (_, GoRouterState s) => ExamPage(
+        courseCode: s.pathParameters['code']!,
+        level: s.pathParameters['level']!,
       ),
     ),
     GoRoute(

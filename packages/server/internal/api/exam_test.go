@@ -54,8 +54,8 @@ func TestExamRouteStartAndSubmit(t *testing.T) {
 	}
 	r := NewWithIdentityAndDatabase(testConfig(t, true), service, database).Router()
 
-	// 开考
-	start := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/exams", `{"course_id":1,"level":"L1"}`, session.Token)
+	// 开考（用公开标识 course_code）
+	start := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/exams", `{"course_code":"C1","level":"L1"}`, session.Token)
 	if start.Code != http.StatusOK {
 		t.Fatalf("开考 = %d %s", start.Code, start.Body.String())
 	}
@@ -118,6 +118,10 @@ func TestExamRouteRejectsWithoutEntitlement(t *testing.T) {
 	bad := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/exams", `{"course_id":0}`, session.Token)
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("缺参数应 400，实际 %d", bad.Code)
+	}
+	// 不存在的课程码 → 400
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/exams", `{"course_code":"NOPE","level":"L1"}`, session.Token); got.Code != http.StatusBadRequest {
+		t.Fatalf("不存在课程码应 400，实际 %d", got.Code)
 	}
 	// 不存在的会话交卷 → 409
 	noSession := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/exams/999/submit", `{"answers":{}}`, session.Token)

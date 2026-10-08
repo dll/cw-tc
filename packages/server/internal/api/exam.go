@@ -16,15 +16,30 @@ import (
 // startExam POST /exams —— 组卷 + 开考，返回 session_id 与试卷（不含答案）。
 func (s *Server) startExam(c *gin.Context) {
 	var req struct {
-		CourseID int64  `json:"course_id"`
-		Level    string `json:"level"`
+		CourseID   int64  `json:"course_id"`
+		CourseCode string `json:"course_code"`
+		Level      string `json:"level"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.CourseID <= 0 || req.Level == "" {
+	if err := c.ShouldBindJSON(&req); err != nil || req.Level == "" {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
 		return
 	}
 	if s.dbConn == nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "测评服务不可用"})
+		return
+	}
+	// 允许用公开标识 course_code 开考（客户端只有课程码，没有内部 id）
+	if req.CourseID <= 0 && req.CourseCode != "" {
+		var cid int64
+		if err := s.dbConn.QueryRowContext(c.Request.Context(),
+			`SELECT id FROM course WHERE course_code = ?`, req.CourseCode).Scan(&cid); err != nil {
+			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "课程不存在"})
+			return
+		}
+		req.CourseID = cid
+	}
+	if req.CourseID <= 0 {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
 		return
 	}
 	student := c.MustGet(studentContextKey).(identity.Student)
