@@ -211,3 +211,21 @@ export async function listAudit(action?: string): Promise<AuditItem[]> {
   )
   return r.items
 }
+
+// —— 专业分类 ——
+export interface MajorItem {
+  id: number
+  name: string
+  sort: number
+  status: string
+}
+export async function listMajors(): Promise<MajorItem[]> {
+  const r = await unwrap<{ items: MajorItem[] }>(http.get('/admin/majors'))
+  return r.items
+}
+export async function createMajor(name: string, sort: number): Promise<void> {
+  await unwrap<unknown>(http.post('/admin/majors', { name, sort }))
+}
+export async function updateMajor(id: number, input: { name?: string; sort?: number; status?: string }): Promise<void> {
+  await unwrap<unknown>(http.put(`/admin/majors/${id}`, input))
+}

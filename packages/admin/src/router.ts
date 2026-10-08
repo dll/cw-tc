@@ -8,6 +8,7 @@ import Users from '@/pages/Users.vue'
 import Broadcast from '@/pages/Broadcast.vue'
 import Staff from '@/pages/Staff.vue'
 import Courses from '@/pages/Courses.vue'
+import Majors from '@/pages/Majors.vue'
 import Audit from '@/pages/Audit.vue'
 import Placeholder from '@/pages/Placeholder.vue'
 import { hasToken } from '@/api/client'
@@ -20,7 +21,7 @@ const routes: RouteRecordRaw[] = [
 
   // —— 管理端（角色：管理员）——
   { path: '/admin/courses', component: Courses },
-  { path: '/admin/majors', component: Placeholder, props: { title: '专业分类', detail: '平台自有元数据，不来自上游' } },
+  { path: '/admin/majors', component: Majors },
   { path: '/admin/orders', component: Orders },
   { path: '/admin/refunds', component: Refunds },
   { path: '/admin/certs', component: Certs },
