@@ -136,6 +136,8 @@ func (s *Server) Router() *gin.Engine {
 	admin.POST("/staff/:id/disable", s.adminDisableStaff)
 	admin.POST("/courses/transfer", s.adminTransferCourse)
 	admin.POST("/orders/:orderNo/refund", s.adminRefundOrder)
+	admin.GET("/users", s.adminListUsers)
+	admin.POST("/users/:id/reveal", s.adminRevealUser)
 	v1.POST("/payment/callback", s.paymentCallback)
 	v1.GET("/courses", s.listPublicCourses)
 	v1.GET("/courses/:courseCode", s.publicCourseDetail)
