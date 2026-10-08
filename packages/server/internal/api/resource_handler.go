@@ -58,7 +58,14 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		}
 		expires := time.Now().Add(10 * time.Minute)
 		sig := resource.Sign(secret, storageKey, expires)
-		items = append(items, gin.H{"kind": kind, "title": title, "storage_key": storageKey, "size_bytes": sizeBytes.Int64, "expires_at": expires.Unix(), "signature": sig})
+		item := gin.H{"kind": kind, "title": title, "storage_key": storageKey, "size_bytes": sizeBytes.Int64, "expires_at": expires.Unix(), "signature": sig}
+		// 视频/音频直接下发 COS 预签名 URL（Web 播放器无法带 Bearer 头，需自认证 URL）。
+		if s.cosStore != nil && s.cosStore.Enabled() && isCosBackedKey(storageKey) {
+			if u, err := s.cosStore.PresignGet(c.Request.Context(), storageKey, 2*time.Hour); err == nil {
+				item["url"] = u
+			}
+		}
+		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
