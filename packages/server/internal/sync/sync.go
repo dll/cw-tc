@@ -326,7 +326,7 @@ func syncQuestions(ctx context.Context, database *sql.DB, course Course) error {
 			 WHERE question.is_override = false`,
 			courseID, q.ID, q.Level, questionType(q.Type), gradability, q.Stem,
 			optionsJSON(q.Options), nullIfEmpty(answer), nullIfEmpty(q.Explanation),
-			nullIfEmpty(q.Scoring), q.Score, evidenceJSON(q.Lecture)); err != nil {
+			rubricJSON(q.Scoring), q.Score, evidenceJSON(q.Lecture)); err != nil {
 			return fmt.Errorf("写入题目 %s 失败: %w", q.ID, err)
 		}
 		seen = append(seen, q.ID)
@@ -369,6 +369,15 @@ func optionsJSON(options []string) any {
 		cleaned[i] = strings.TrimPrefix(strings.TrimSpace(opt), "- ")
 	}
 	body, _ := json.Marshal(cleaned)
+	return string(body)
+}
+
+// rubricJSON 把采分点文本包成 JSON 对象（rubric 列是 jsonb，不能存裸文本）。
+func rubricJSON(scoring string) any {
+	if scoring == "" {
+		return nil
+	}
+	body, _ := json.Marshal(map[string]string{"scoring": scoring})
 	return string(body)
 }
 
