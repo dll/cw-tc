@@ -23,6 +23,16 @@ func buildFixture(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(courseDir, "02_控制结构"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// 资源文件：讲义 + 课件（供 syncAssets 扫描）
+	if err := os.WriteFile(filepath.Join(courseDir, "01_你好世界", "README.md"), []byte("# 讲义"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(courseDir, "01_你好世界", "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(courseDir, "01_你好世界", "docs", "课件.pptx"), []byte("PPT"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	overview := Overview{
 		Courses: []Course{
 			{
@@ -140,5 +150,35 @@ func TestSyncPrunesRemovedUpstreamLecture(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("上游删讲后应剩 1 讲，实际 %d", count)
+	}
+}
+
+func TestSyncAssetsAndDefaultPrice(t *testing.T) {
+	database, cleanup := syncDB(t)
+	defer cleanup()
+	root := buildFixture(t)
+	if err := Run(context.Background(), database, root); err != nil {
+		t.Fatal(err)
+	}
+	// 默认价格 5 畅币 = 5000 分
+	var price int64
+	if err := database.QueryRow(`SELECT price_cents FROM course WHERE course_code='03-CF' AND source='upstream'`).Scan(&price); err != nil {
+		t.Fatal(err)
+	}
+	if price != defaultPriceCents {
+		t.Fatalf("默认价应为 %d（5 畅币），实际 %d", defaultPriceCents, price)
+	}
+	// 资源落库（README.md + 课件.pptx）
+	var n int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM asset a JOIN lecture l ON a.lecture_id=l.id WHERE l.no=1`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("应写入 2 条资源，实际 %d", n)
+	}
+	var kind string
+	_ = database.QueryRow(`SELECT kind FROM asset WHERE storage_key LIKE '%README.md'`).Scan(&kind)
+	if kind != "markdown" {
+		t.Fatalf("README.md 应为 markdown，实际 %s", kind)
 	}
 }

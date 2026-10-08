@@ -100,6 +100,42 @@ var typeMap = map[string]string{
 	"综合论证":   "synth",
 }
 
+// 定价口径（2026-10-08 明确）：1 畅币 = 10 元人民币 = 1000 分；默认课程价 5 畅币 = 5000 分。
+const defaultPriceCents = 5000
+
+// assetKind 按扩展名映射资源类型（数据字典 §1 asset.kind）。
+// kind 用英文枚举，title 用中文展示名。
+type assetKind struct{ kind, title string }
+
+var assetKindByExt = map[string]assetKind{
+	".md":       {"markdown", "讲义"},
+	".markdown": {"markdown", "讲义"},
+	".html":     {"html", "HTML页"},
+	".htm":      {"html", "HTML页"},
+	".pptx":     {"slide", "课件"},
+	".ppt":      {"slide", "课件"},
+	".pdf":      {"slide", "课件"},
+	".mp4":      {"video", "视频"},
+	".mp3":      {"audio", "音频"},
+	".wav":      {"audio", "音频"},
+	".c":        {"code", "代码"},
+	".h":        {"code", "代码"},
+	".cpp":      {"code", "代码"},
+	".hpp":      {"code", "代码"},
+	".py":       {"code", "代码"},
+	".go":       {"code", "代码"},
+	".java":     {"code", "代码"},
+	".js":       {"code", "代码"},
+	".ts":       {"code", "代码"},
+	".rs":       {"code", "代码"},
+	".sh":       {"code", "代码"},
+	".bat":      {"code", "代码"},
+	".sql":      {"code", "代码"},
+	".txt":      {"code", "代码"},
+	".json":     {"code", "代码"},
+	".srt":      {"code", "字幕"},
+}
+
 // LoadOverview 从源目录读取并解析「课程总览.json」。
 func LoadOverview(sourceDir string) (*Overview, error) {
 	path := filepath.Join(sourceDir, overviewFile)
@@ -145,6 +181,11 @@ func Run(ctx context.Context, database *sql.DB, sourceDir string) error {
 		if err := syncQuestions(ctx, database, course); err != nil {
 			return err
 		}
+		if course.Type == "讲次制" {
+			if err := syncAssets(ctx, database, course, sourceDir); err != nil {
+				return err
+			}
+		}
 	}
 	if err := pruneUpstreamCourses(ctx, database, seenCourses); err != nil {
 		return err
@@ -169,9 +210,9 @@ func upsertCourse(ctx context.Context, database *sql.DB, course Course) error {
 	certNames := buildCertNames(course.Testbank)
 	certPassLines := buildCertPassLines(course.Testbank)
 	_, err := database.ExecContext(ctx,
-		`INSERT INTO course(course_code, source, name, line, lecture_count, dir, cert_names, cert_pass_lines, status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'published')
+		`INSERT INTO course(course_code, source, name, line, lecture_count, dir, cert_names, cert_pass_lines, price_cents, status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'published')
 		 ON CONFLICT(course_code) DO UPDATE SET source='upstream', name=excluded.name, line=excluded.line, lecture_count=excluded.lecture_count, dir=excluded.dir, cert_names=excluded.cert_names, cert_pass_lines=excluded.cert_pass_lines`,
-		course.ID, "upstream", name, line, course.Lectures, course.Dir, certNames, certPassLines)
+		course.ID, "upstream", name, line, course.Lectures, course.Dir, certNames, certPassLines, defaultPriceCents)
 	return err
 }
 
@@ -349,6 +390,64 @@ func pruneUpstreamQuestions(ctx context.Context, database *sql.DB, courseID int6
 	_, err := database.ExecContext(ctx,
 		`DELETE FROM question WHERE course_id = $1 AND is_override = false AND qno NOT IN (`+placeholders+`)`, args...)
 	return err
+}
+
+// syncAssets 扫描讲次目录里的资源文件，写入 asset 表（kind/title/storage_key/size）。
+// storage_key 用相对 sourceDir 的 POSIX 路径，跨机器稳定；只写有映射扩展名的文件。
+func syncAssets(ctx context.Context, database *sql.DB, course Course, sourceDir string) error {
+	var courseID int64
+	if err := database.QueryRowContext(ctx, `SELECT id FROM course WHERE course_code = $1 AND source = 'upstream'`, course.ID).Scan(&courseID); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(course.Path)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		m := lectureDirRe.FindStringSubmatch(entry.Name())
+		if m == nil {
+			continue
+		}
+		no, err := strconv.Atoi(m[1])
+		if err != nil || no < 1 {
+			continue
+		}
+		var lectureID int64
+		if err := database.QueryRowContext(ctx, `SELECT id FROM lecture WHERE course_id = $1 AND no = $2 AND origin = 'upstream'`, courseID, no).Scan(&lectureID); err != nil {
+			continue
+		}
+		lectureDir := filepath.Join(course.Path, entry.Name())
+		sort := 0
+		_ = filepath.WalkDir(lectureDir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			ak, ok := assetKindByExt[strings.ToLower(filepath.Ext(d.Name()))]
+			if !ok {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			rel, err := filepath.Rel(sourceDir, p)
+			if err != nil {
+				return nil
+			}
+			storageKey := filepath.ToSlash(rel)
+			sort++
+			_, _ = database.ExecContext(ctx,
+				`INSERT INTO asset(lecture_id, kind, title, storage_key, size_bytes, sort)
+				 VALUES($1,$2,$3,$4,$5,$6)
+				 ON CONFLICT(storage_key) DO UPDATE SET lecture_id=excluded.lecture_id, kind=excluded.kind, title=excluded.title, size_bytes=excluded.size_bytes, sort=excluded.sort`,
+				lectureID, ak.kind, ak.title, storageKey, info.Size(), sort)
+			return nil
+		})
+	}
+	return nil
 }
 
 // questionType 把上游中文题型映射到平台枚举；未知题型按客观/主观回退。
