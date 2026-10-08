@@ -39,7 +39,9 @@ class MePage extends StatelessWidget {
                   title: Text(title),
                   subtitle: Text(sub),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {},
+                  onTap: () {
+                    if (title == '我的证书') context.push('/certs');
+                  },
                 );
               },
             ),

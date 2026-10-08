@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../models/cert.dart';
 import '../models/course.dart';
 import '../models/exam.dart';
 import '../models/lecture.dart';
@@ -154,6 +155,14 @@ class ApiClient {
     );
     final data = res.data?['data'] as Map<String, dynamic>?;
     return ExamResult.fromJson(data ?? const <String, dynamic>{});
+  }
+
+  /// 我的证书列表（`GET /me/certs`）。
+  Future<List<Cert>> myCerts() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/certs');
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return items.map((e) => Cert.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// 禁止把疑似身份证号 / 手机号放进 URL。
