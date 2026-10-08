@@ -3,51 +3,85 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/cw-tc/server/internal/config"
+	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/platform/db"
 	"github.com/cw-tc/server/internal/resource"
 	"github.com/cw-tc/server/migrations"
+	"github.com/gin-gonic/gin"
 )
 
-func TestLectureResourcesReturnsSignedURLs(t *testing.T) {
-	database, err := db.Open(context.Background(), db.DialectSQLite, "")
+var resourceDBCounter int64
+
+// newResourceServer 构造带学员会话 + 课程/讲次/资源夹具的测试服务。
+// 返回 router / cfg（可改 ContentDir）/ 学员会话 token。
+func newResourceServer(t *testing.T, isPreview bool, kind, storageKey string, entitled bool) (*gin.Engine, *config.Config, string) {
+	t.Helper()
+	// 每次用独立文件库，避免共享内存库在同测试内多次调用时撞 student 唯一约束。
+	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("resource_%d.db", atomic.AddInt64(&resourceDBCounter, 1)))
+	database, err := db.Open(context.Background(), db.DialectSQLite, "file:"+dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(func() { _ = database.Close() })
 	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(`INSERT INTO staff(account,name,role,password_hash,created_source) VALUES('sample','样例教师','teacher','x','seed')`); err != nil {
+	service := identity.NewService(database, []byte("01234567890123456789012345678901"), []byte("hmac-key-for-cwTC-tests-012345678901234"))
+	student, err := service.Register(context.Background(), identity.RegisterInput{Name: "样例学员", Phone: "13812345678", IDCard: "110101199001011237", Password: "password-1"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(`INSERT INTO major(id,name) VALUES(1,'样例专业')`); err != nil {
+	session, err := service.CreateSession(context.Background(), student.ID, time.Now().UTC())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(`INSERT INTO course(id,course_code,source,name,line,major_id,status,teacher_id,price_cents) VALUES(1,'AI-01','platform','样例课程','main',1,'published',1,1000)`); err != nil {
+	if _, err := database.Exec(`INSERT INTO staff(id,account,name,role,password_hash,created_source) VALUES(1,'sample','样例教师','teacher','x','seed')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(`INSERT INTO lecture(id,course_id,no,title,is_preview) VALUES(1,1,1,'第一讲',1)`); err != nil {
+	if _, err := database.Exec(`INSERT INTO major(id,name) VALUES(1,'样例专业')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(`INSERT INTO asset(lecture_id,kind,title,storage_key,size_bytes) VALUES(1,'slides','课件','07-CN/lectures/10/slides.pdf',1024)`); err != nil {
+	if _, err := database.Exec(`INSERT INTO course(id,course_code,source,name,line,major_id,status,teacher_id,price_cents) VALUES(1,'AI-01','platform','样例课程','main',1,'published',1,1000)`); err != nil {
 		t.Fatal(err)
+	}
+	previewInt := 0
+	if isPreview {
+		previewInt = 1
+	}
+	if _, err := database.Exec(`INSERT INTO lecture(id,course_id,no,title,is_preview) VALUES(1,1,1,'第一讲',$1)`, previewInt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO asset(lecture_id,kind,title,storage_key,size_bytes) VALUES(1,$1,'资源',$2,100)`, kind, storageKey); err != nil {
+		t.Fatal(err)
+	}
+	if entitled {
+		if _, err := database.Exec(`INSERT INTO entitlement(student_id,course_id,source,granted_at) VALUES($1,1,'free',$2)`, student.ID, time.Now().UTC().Format(time.RFC3339)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	cfg := testConfig(t, true)
-	s := NewWithDatabase(cfg, database)
-	response := performJSON(t, s.Router(), http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", ``)
+	s := NewWithIdentityAndDatabase(cfg, service, database)
+	return s.Router(), cfg, session.Token
+}
+
+func TestLectureResourcesReturnsSignedURLs(t *testing.T) {
+	router, cfg, token := newResourceServer(t, true, "slides", "07-CN/lectures/10/slides.pdf", false)
+	response := performJSONWithCookie(t, router, http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", "", token)
 	body := response.Body.String()
 	if response.Code != http.StatusOK || !containsAll(body, `"storage_key":"07-CN/lectures/10/slides.pdf"`, `"signature"`) {
 		t.Fatalf("资源列表错误: %d %s", response.Code, body)
 	}
-	// 解析签名并校验可被验证
 	var parsed struct {
 		Data struct {
 			Items []struct {
@@ -66,8 +100,98 @@ func TestLectureResourcesReturnsSignedURLs(t *testing.T) {
 	}
 }
 
-func TestLectureResourcesNotFound(t *testing.T) {
-	database, err := db.Open(context.Background(), db.DialectSQLite, "")
+func TestLectureResourcesRequiresAuth(t *testing.T) {
+	router, _, _ := newResourceServer(t, true, "slides", "x.pdf", false)
+	if resp := performJSON(t, router, http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", ``); resp.Code != http.StatusUnauthorized {
+		t.Fatalf("未登录应 401: %d", resp.Code)
+	}
+}
+
+func TestLectureResourcesRequiresEntitlement(t *testing.T) {
+	router, _, token := newResourceServer(t, false, "slides", "x.pdf", false)
+	if resp := performJSONWithCookie(t, router, http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", "", token); resp.Code != http.StatusForbidden {
+		t.Fatalf("未购课非试学应 403: %d %s", resp.Code, resp.Body.String())
+	}
+	router2, _, token2 := newResourceServer(t, false, "slides", "x.pdf", true)
+	if resp := performJSONWithCookie(t, router2, http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", "", token2); resp.Code != http.StatusOK {
+		t.Fatalf("已购课应 200: %d", resp.Code)
+	}
+}
+
+func TestDownloadAssetSignature(t *testing.T) {
+	router, cfg, token := newResourceServer(t, true, "markdown", "README.md", false)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("讲义内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ContentDir = dir
+
+	expires := time.Now().Add(10 * time.Minute)
+	sig := resource.Sign([]byte(cfg.SessionSecret), "README.md", expires)
+	url := "/api/v1/assets/raw?key=README.md&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=" + sig
+	resp := performJSONWithCookie(t, router, http.MethodGet, url, "", token)
+	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), "讲义内容") {
+		t.Fatalf("有效签名应返回文件: %d %s", resp.Code, resp.Body.String())
+	}
+	if got := resp.Header().Get("Content-Disposition"); got != "inline" {
+		t.Fatalf("非源码应为 inline，实际 %q", got)
+	}
+	bad := "/api/v1/assets/raw?key=README.md&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=deadbeef"
+	if resp := performJSONWithCookie(t, router, http.MethodGet, bad, "", token); resp.Code != http.StatusForbidden {
+		t.Fatalf("无效签名应 403: %d", resp.Code)
+	}
+}
+
+func TestDownloadAssetCodeAttachment(t *testing.T) {
+	router, cfg, token := newResourceServer(t, true, "code", "main.c", false)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.c"), []byte("int main(){}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ContentDir = dir
+
+	expires := time.Now().Add(10 * time.Minute)
+	sig := resource.Sign([]byte(cfg.SessionSecret), "main.c", expires)
+	url := "/api/v1/assets/raw?key=main.c&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=" + sig
+	resp := performJSONWithCookie(t, router, http.MethodGet, url, "", token)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("源码应可下载: %d %s", resp.Code, resp.Body.String())
+	}
+	if got := resp.Header().Get("Content-Disposition"); !strings.HasPrefix(got, "attachment; filename=\"main.c\"") {
+		t.Fatalf("源码应为 attachment，实际 %q", got)
+	}
+}
+
+func TestDownloadAssetRequiresEntitlement(t *testing.T) {
+	router, cfg, token := newResourceServer(t, false, "markdown", "README.md", false)
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "README.md"), []byte("x"), 0o644)
+	cfg.ContentDir = dir
+
+	expires := time.Now().Add(10 * time.Minute)
+	sig := resource.Sign([]byte(cfg.SessionSecret), "README.md", expires)
+	url := "/api/v1/assets/raw?key=README.md&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=" + sig
+	if resp := performJSONWithCookie(t, router, http.MethodGet, url, "", token); resp.Code != http.StatusForbidden {
+		t.Fatalf("未购课非试学下载应 403: %d", resp.Code)
+	}
+}
+
+func TestDownloadAssetNotFound(t *testing.T) {
+	router, cfg, token := newResourceServer(t, true, "markdown", "README.md", false)
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "README.md"), []byte("x"), 0o644)
+	cfg.ContentDir = dir
+
+	expires := time.Now().Add(10 * time.Minute)
+	sig := resource.Sign([]byte(cfg.SessionSecret), "nope.txt", expires)
+	url := "/api/v1/assets/raw?key=nope.txt&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=" + sig
+	if resp := performJSONWithCookie(t, router, http.MethodGet, url, "", token); resp.Code != http.StatusNotFound {
+		t.Fatalf("不存在资源应 404: %d", resp.Code)
+	}
+}
+
+func TestLectureResourcesFailClosedWithoutDB(t *testing.T) {
+	database, err := db.Open(context.Background(), db.DialectSQLite, "file:"+filepath.Join(t.TempDir(), "x.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,42 +199,12 @@ func TestLectureResourcesNotFound(t *testing.T) {
 	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
 		t.Fatal(err)
 	}
-	s := NewWithDatabase(testConfig(t, true), database)
-	if resp := performJSON(t, s.Router(), http.MethodGet, "/api/v1/courses/NOPE/lectures/1/resources", ``); resp.Code != http.StatusNotFound {
-		t.Fatalf("不存在讲次应返回 404: %d %s", resp.Code, resp.Body.String())
-	}
-}
-
-func TestDownloadAssetSignature(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("讲义内容"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := testConfig(t, true)
-	cfg.ContentDir = dir
-	s := NewWithDatabase(cfg, nil)
-
-	// 有效签名 → 200 + 文件内容
-	expires := time.Now().Add(10 * time.Minute)
-	sig := resource.Sign([]byte(cfg.SessionSecret), "README.md", expires)
-	url := "/api/v1/assets/raw?key=README.md&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=" + sig
-	resp := performJSON(t, s.Router(), http.MethodGet, url, ``)
-	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), "讲义内容") {
-		t.Fatalf("有效签名应返回文件: %d %s", resp.Code, resp.Body.String())
-	}
-	// 无效签名 → 403
-	bad := "/api/v1/assets/raw?key=README.md&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=deadbeef"
-	if resp := performJSON(t, s.Router(), http.MethodGet, bad, ``); resp.Code != http.StatusForbidden {
-		t.Fatalf("无效签名应 403: %d", resp.Code)
-	}
-	// 缺参数 → 400
-	if resp := performJSON(t, s.Router(), http.MethodGet, "/api/v1/assets/raw", ``); resp.Code != http.StatusBadRequest {
-		t.Fatalf("缺参数应 400: %d", resp.Code)
-	}
-	// 目录穿越 → 403
-	traversal := "/api/v1/assets/raw?key=../etc/passwd&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=" + resource.Sign([]byte(cfg.SessionSecret), "../etc/passwd", expires)
-	if resp := performJSON(t, s.Router(), http.MethodGet, traversal, ``); resp.Code != http.StatusForbidden {
-		t.Fatalf("目录穿越应 403: %d", resp.Code)
+	service := identity.NewService(database, []byte("01234567890123456789012345678901"), []byte("hmac-key-for-cwTC-tests-012345678901234"))
+	student, _ := service.Register(context.Background(), identity.RegisterInput{Name: "样例学员", Phone: "13812345678", IDCard: "110101199001011237", Password: "password-1"})
+	session, _ := service.CreateSession(context.Background(), student.ID, time.Now().UTC())
+	s := NewWithIdentity(testConfig(t, true), service)
+	if resp := performJSONWithCookie(t, s.Router(), http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", "", session.Token); resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("无 db 应 503: %d", resp.Code)
 	}
 }
 

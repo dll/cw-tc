@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/resource"
 	"github.com/gin-gonic/gin"
 )
@@ -24,14 +25,20 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		return
 	}
 	var courseID, lectureID int64
+	var isPreview bool
 	err = s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT c.id, l.id FROM course c JOIN lecture l ON l.course_id = c.id WHERE c.course_code = $1 AND c.status = 'published' AND l.no = $2`,
-		c.Param("courseCode"), no).Scan(&courseID, &lectureID)
+		`SELECT c.id, l.id, l.is_preview FROM course c JOIN lecture l ON l.course_id = c.id WHERE c.course_code = $1 AND c.status = 'published' AND l.no = $2`,
+		c.Param("courseCode"), no).Scan(&courseID, &lectureID, &isPreview)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "讲次不存在"})
 		return
 	} else if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
+		return
+	}
+	student := c.MustGet(studentContextKey).(identity.Student)
+	if !s.checkResourceAccess(c, student.ID, courseID, isPreview) {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
 	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT kind, title, storage_key, size_bytes FROM asset WHERE lecture_id = $1 ORDER BY sort ASC, id ASC`, lectureID)
@@ -79,6 +86,34 @@ func (s *Server) downloadAsset(c *gin.Context) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "签名无效或已过期"})
 		return
 	}
+	// 防盗链：按 storage_key 反查所属课程与是否试学，校验学习权限。
+	if s.dbConn == nil {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+		return
+	}
+	var kind string
+	var courseID int64
+	var isPreview bool
+	err = s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT a.kind, l.course_id, l.is_preview FROM asset a JOIN lecture l ON l.id = a.lecture_id WHERE a.storage_key = $1`, key).Scan(&kind, &courseID, &isPreview)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不存在"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
+		return
+	}
+	student := c.MustGet(studentContextKey).(identity.Student)
+	if !s.checkResourceAccess(c, student.ID, courseID, isPreview) {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+		return
+	}
+	// 源码可下载，其余仅查看/播放（防盗：非源码不给 attachment 下载头）。
+	if kind == "code" {
+		c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(key)+"\"")
+	} else {
+		c.Header("Content-Disposition", "inline")
+	}
 	// 视频/音频对象在 COS：预签名后 302 重定向（私有桶不能直接 GET，走签名 URL）。
 	// 预签名失败回退文件服务，绝不在签名校验后 500。
 	if s.cosStore != nil && s.cosStore.Enabled() && isCosBackedKey(key) {
@@ -94,6 +129,20 @@ func (s *Server) downloadAsset(c *gin.Context) {
 		return
 	}
 	c.File(filePath)
+}
+
+// checkResourceAccess 校验学员对课程资源有访问权（有效权益，或试学讲次）。
+func (s *Server) checkResourceAccess(c *gin.Context, studentID, courseID int64, isPreview bool) bool {
+	if isPreview {
+		return true // 试学讲次免费
+	}
+	var n int
+	if err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT COUNT(*) FROM entitlement WHERE student_id = $1 AND course_id = $2 AND revoked_at IS NULL`,
+		studentID, courseID).Scan(&n); err != nil {
+		return false
+	}
+	return n > 0
 }
 
 // isCosBackedKey 判断 storage_key 是否属于 COS 承载的大二进制资源（视频/音频）。
