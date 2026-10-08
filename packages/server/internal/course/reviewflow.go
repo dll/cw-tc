@@ -16,7 +16,7 @@ func ReviewCourse(ctx context.Context, db *sql.DB, in ReviewInput) error {
 	}
 	var status string
 	if err := db.QueryRowContext(ctx,
-		`SELECT status FROM course WHERE course_code = ?`, in.CourseCode).Scan(&status); err != nil {
+		`SELECT status FROM course WHERE course_code = $1`, in.CourseCode).Scan(&status); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrCourseNotFound
 		}
@@ -34,7 +34,7 @@ func ReviewCourse(ctx context.Context, db *sql.DB, in ReviewInput) error {
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.ExecContext(ctx,
-		`UPDATE course SET status=?, reviewed_at=?, reviewed_by=?, reject_reason=? WHERE course_code=?`,
+		`UPDATE course SET status=$1, reviewed_at=$2, reviewed_by=$3, reject_reason=$4 WHERE course_code=$5`,
 		in.Verdict, now, in.ReviewerID, rejectReason, in.CourseCode)
 	return err
 }
@@ -47,7 +47,7 @@ func PublishCourse(ctx context.Context, db *sql.DB, courseCode string, adminID i
 	var status, source string
 	var certNames, certLines sql.NullString
 	if err := db.QueryRowContext(ctx,
-		`SELECT status, source, cert_names, cert_pass_lines FROM course WHERE course_code = ?`, courseCode).
+		`SELECT status, source, cert_names, cert_pass_lines FROM course WHERE course_code = $1`, courseCode).
 		Scan(&status, &source, &certNames, &certLines); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrCourseNotFound
@@ -63,6 +63,6 @@ func PublishCourse(ctx context.Context, db *sql.DB, courseCode string, adminID i
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.ExecContext(ctx,
-		`UPDATE course SET status='published', updated_at=? WHERE course_code=?`, now, courseCode)
+		`UPDATE course SET status='published', updated_at=$1 WHERE course_code=$2`, now, courseCode)
 	return err
 }

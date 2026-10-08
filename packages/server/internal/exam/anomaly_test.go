@@ -32,7 +32,7 @@ func TestRecordAnomalyMarksOnlyNotGrades(t *testing.T) {
 
 	// exam_anomaly 记录存在且 verdict=pending
 	var n int
-	if err := database.QueryRow(`SELECT COUNT(*) FROM exam_anomaly WHERE exam_id=? AND verdict='pending'`, sid).Scan(&n); err != nil {
+	if err := database.QueryRow(`SELECT COUNT(*) FROM exam_anomaly WHERE exam_id=$1 AND verdict='pending'`, sid).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 2 {

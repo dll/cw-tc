@@ -21,7 +21,7 @@ func (s *Service) LoginBySMS(ctx context.Context, phone, code string, now time.T
 		return Student{}, ErrDatabaseNotConfigured
 	}
 	var student Student
-	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone FROM student WHERE phone = ? AND status = 'active'`, phone).
+	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone FROM student WHERE phone = $1 AND status = 'active'`, phone).
 		Scan(&student.ID, &student.StudentNo, &student.Name, &student.Phone)
 	if err != nil {
 		return Student{}, ErrInvalidCredentials
@@ -42,7 +42,7 @@ func (s *Service) ResetPasswordBySMS(ctx context.Context, phone, code, newPasswo
 	}
 	var id int64
 	var idCardCipher []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT id, id_card_cipher FROM student WHERE phone = ? AND status = 'active'`, phone).Scan(&id, &idCardCipher); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT id, id_card_cipher FROM student WHERE phone = $1 AND status = 'active'`, phone).Scan(&id, &idCardCipher); err != nil {
 		return ErrInvalidCredentials
 	}
 	idCard, err := UnprotectIDCard(idCardCipher, s.encKey)
@@ -53,7 +53,7 @@ func (s *Service) ResetPasswordBySMS(ctx context.Context, phone, code, newPasswo
 	} else if err := ValidatePassword(newPassword); err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE student SET password_hash = ?, password_updated_at = ? WHERE id = ?`,
+	_, err = s.db.ExecContext(ctx, `UPDATE student SET password_hash = $1, password_updated_at = $2 WHERE id = $3`,
 		hashPassword(newPassword), now.UTC().Format(time.RFC3339), id)
 	return err
 }
@@ -70,7 +70,7 @@ func (s *Service) RebindPhone(ctx context.Context, studentID int64, oldCode, new
 		return ErrDatabaseNotConfigured
 	}
 	var currentPhone string
-	if err := s.db.QueryRowContext(ctx, `SELECT phone FROM student WHERE id = ? AND status = 'active'`, studentID).Scan(&currentPhone); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT phone FROM student WHERE id = $1 AND status = 'active'`, studentID).Scan(&currentPhone); err != nil {
 		return ErrInvalidCredentials
 	}
 	if err := s.sms.Consume(currentPhone, "rebind_old", oldCode, now); err != nil {
@@ -82,7 +82,7 @@ func (s *Service) RebindPhone(ctx context.Context, studentID int64, oldCode, new
 	if s.studentExists(ctx, newPhone) {
 		return ErrPhoneRegistered
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE student SET phone = ?, updated_at = ? WHERE id = ?`, newPhone, now.UTC().Format(time.RFC3339), studentID)
+	_, err := s.db.ExecContext(ctx, `UPDATE student SET phone = $1, updated_at = $2 WHERE id = $3`, newPhone, now.UTC().Format(time.RFC3339), studentID)
 	return err
 }
 

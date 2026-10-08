@@ -42,7 +42,7 @@ func TestAllocateCourseCode(t *testing.T) {
 		t.Fatalf("课程码格式应为 TC-XXXX，实际 %s", code)
 	}
 	// 已占用该码后再分配，不应冲突
-	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,?,'platform','课程','main',1,'published',1)`, code); err != nil {
+	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,$1,'platform','课程','main',1,'published',1)`, code); err != nil {
 		t.Fatal(err)
 	}
 	code2, err := AllocateCourseCode(ctx, database)

@@ -34,20 +34,20 @@ func (s *Server) teacherGradeDetail(c *gin.Context) {
 	var courseID, sessionID int64
 	var level string
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT r.course_id, r.exam_session_id, r.level FROM exam_result r WHERE r.id = ?`, resultID).
+		`SELECT r.course_id, r.exam_session_id, r.level FROM exam_result r WHERE r.id = $1`, resultID).
 		Scan(&courseID, &sessionID, &level); err != nil {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "结果不存在"})
 		return
 	}
 	var owner int64
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT teacher_id FROM course WHERE id = ?`, courseID).Scan(&owner); err != nil || owner != st.ID {
+		`SELECT teacher_id FROM course WHERE id = $1`, courseID).Scan(&owner); err != nil || owner != st.ID {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无权评阅该课程"})
 		return
 	}
 	var paperRaw, answersRaw string
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT paper, COALESCE(answers, '{}') FROM exam_session WHERE id = ?`, sessionID).
+		`SELECT paper, COALESCE(answers, '{}') FROM exam_session WHERE id = $1`, sessionID).
 		Scan(&paperRaw, &answersRaw); err != nil {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "会话不存在"})
 		return
@@ -65,7 +65,7 @@ func (s *Server) teacherGradeDetail(c *gin.Context) {
 
 	// 逐题取题干、可判标记与内部 id（评阅按内部 id 提交）。
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
-		`SELECT id, qno, stem, gradability FROM question WHERE course_id = ? AND level = ?`, courseID, level)
+		`SELECT id, qno, stem, gradability FROM question WHERE course_id = $1 AND level = $2`, courseID, level)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 		return
@@ -122,13 +122,13 @@ func (s *Server) teacherGradeSubmit(c *gin.Context) {
 	// 归属校验。
 	var courseID int64
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT course_id FROM exam_result WHERE id = ?`, resultID).Scan(&courseID); err != nil {
+		`SELECT course_id FROM exam_result WHERE id = $1`, resultID).Scan(&courseID); err != nil {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "结果不存在"})
 		return
 	}
 	var owner int64
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT teacher_id FROM course WHERE id = ?`, courseID).Scan(&owner); err != nil || owner != st.ID {
+		`SELECT teacher_id FROM course WHERE id = $1`, courseID).Scan(&owner); err != nil || owner != st.ID {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无权评阅该课程"})
 		return
 	}

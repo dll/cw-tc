@@ -18,7 +18,7 @@ func TestCreatePlatformCourseAndLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	var source, status string
-	if err := database.QueryRow(`SELECT source, status FROM course WHERE course_code=?`, code).Scan(&source, &status); err != nil {
+	if err := database.QueryRow(`SELECT source, status FROM course WHERE course_code=$1`, code).Scan(&source, &status); err != nil {
 		t.Fatal(err)
 	}
 	if source != "platform" || status != "proposed" {
@@ -33,7 +33,7 @@ func TestCreatePlatformCourseAndLifecycle(t *testing.T) {
 	if err := SubmitCourse(ctx, database, code, 1); err != nil {
 		t.Fatal(err)
 	}
-	_ = database.QueryRow(`SELECT status FROM course WHERE course_code=?`, code).Scan(&status)
+	_ = database.QueryRow(`SELECT status FROM course WHERE course_code=$1`, code).Scan(&status)
 	if status != "submitted" {
 		t.Fatalf("送审后应为 submitted，实际 %s", status)
 	}

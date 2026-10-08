@@ -34,7 +34,7 @@ func TestAddLecturePlatformOnly(t *testing.T) {
 	// 讲次 no 自增
 	id2, _ := AddLecture(ctx, database, LectureInput{CourseID: 1, TeacherID: 1, Title: "第二讲"})
 	var no2 int
-	_ = database.QueryRow(`SELECT no FROM lecture WHERE id=?`, id2).Scan(&no2)
+	_ = database.QueryRow(`SELECT no FROM lecture WHERE id=$1`, id2).Scan(&no2)
 	if no2 != 2 {
 		t.Fatalf("讲次 no 应自增为 2，实际 %d", no2)
 	}

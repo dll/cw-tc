@@ -69,7 +69,7 @@ func TestDisableTeacherWithCourseRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 该教师名下有一门课
-	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,'C1','platform','课程','main',1,'published',?)`, id); err != nil {
+	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,'C1','platform','课程','main',1,'published',$1)`, id); err != nil {
 		t.Fatal(err)
 	}
 	// 停用应被拒（须先移交课程）
@@ -85,7 +85,7 @@ func TestTransferCourse(t *testing.T) {
 
 	teacherA, _ := Create(ctx, database, "ta", "甲老师", RoleTeacher, "Temp@123", 1)
 	teacherB, _ := Create(ctx, database, "tb", "乙老师", RoleTeacher, "Temp@123", 1)
-	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,'C1','platform','课程','main',1,'published',?)`, teacherA); err != nil {
+	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,'C1','platform','课程','main',1,'published',$1)`, teacherA); err != nil {
 		t.Fatal(err)
 	}
 	// 移交给乙老师

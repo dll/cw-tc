@@ -27,7 +27,7 @@ func RefundAbuseExceeded(ctx context.Context, q queryRower, studentID int64, lim
 	var count int
 	if err := q.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM refund r JOIN orders o ON r.order_id = o.id
-		 WHERE o.student_id = ? AND r.initiator = 'student' AND r.kind = 'normal' AND r.finished_at >= ?`,
+		 WHERE o.student_id = $1 AND r.initiator = 'student' AND r.kind = 'normal' AND r.finished_at >= $2`,
 		studentID, threshold).Scan(&count); err != nil {
 		return false, err
 	}

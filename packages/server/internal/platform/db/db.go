@@ -180,13 +180,10 @@ func sqlFiles(fsys fs.FS, dir string) ([]string, error) {
 
 func migrationApplied(ctx context.Context, database *sql.DB, version string) (bool, error) {
 	var n int
+	// 占位符统一用 $1：SQLite(modernc) 与 PostgreSQL(lib/pq) 均支持。
 	if err := database.QueryRowContext(ctx,
-		`SELECT COUNT(1) FROM schema_migrations WHERE version = ?`, version).Scan(&n); err != nil {
-		// PostgreSQL 的占位符是 $1；这里按方言回退一次（SQLite 用 ?）。
-		if err2 := database.QueryRowContext(ctx,
-			`SELECT COUNT(1) FROM schema_migrations WHERE version = $1`, version).Scan(&n); err2 != nil {
-			return false, fmt.Errorf("查询迁移记录失败：%w", err)
-		}
+		`SELECT COUNT(1) FROM schema_migrations WHERE version = $1`, version).Scan(&n); err != nil {
+		return false, fmt.Errorf("查询迁移记录失败：%w", err)
 	}
 	return n > 0, nil
 }

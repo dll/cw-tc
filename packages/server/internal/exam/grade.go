@@ -27,7 +27,7 @@ type Result struct {
 func SubmitExam(ctx context.Context, db *sql.DB, sessionID int64, answers map[string]string) (Result, error) {
 	var studentID, courseID int64
 	var level, paper, status string
-	if err := db.QueryRowContext(ctx, `SELECT student_id, course_id, level, paper, status FROM exam_session WHERE id = ?`, sessionID).
+	if err := db.QueryRowContext(ctx, `SELECT student_id, course_id, level, paper, status FROM exam_session WHERE id = $1`, sessionID).
 		Scan(&studentID, &courseID, &level, &paper, &status); err != nil {
 		return Result{}, ErrSessionNotFound
 	}
@@ -45,7 +45,7 @@ func SubmitExam(ctx context.Context, db *sql.DB, sessionID int64, answers map[st
 		grad   string
 	}
 	qmap := map[string]qinfo{}
-	rows, err := db.QueryContext(ctx, `SELECT qno, answer, gradability FROM question WHERE course_id = ? AND level = ?`, courseID, level)
+	rows, err := db.QueryContext(ctx, `SELECT qno, answer, gradability FROM question WHERE course_id = $1 AND level = $2`, courseID, level)
 	if err != nil {
 		return Result{}, err
 	}
@@ -103,13 +103,13 @@ func SubmitExam(ctx context.Context, db *sql.DB, sessionID int64, answers map[st
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE exam_session SET answers = ?, status = 'graded', submitted_at = ? WHERE id = ?`,
+		`UPDATE exam_session SET answers = $1, status = 'graded', submitted_at = $2 WHERE id = $3`,
 		string(ansJSON), now, sessionID); err != nil {
 		return Result{}, err
 	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO exam_result(exam_session_id, student_id, course_id, level, auto_score, manual_score, total_score, band, is_pass, graded_at, detail)
-		 VALUES(?,?,?,?,?,0,?,?,?,?,?)`,
+		 VALUES($1,$2,$3,$4,$5,0,$6,$7,$8,$9,$10)`,
 		sessionID, studentID, courseID, level, autoScore, autoScore, band, isPass, now, string(detailJSON)); err != nil {
 		return Result{}, err
 	}
@@ -127,7 +127,7 @@ type rowQuerier interface {
 // passLineFor 读取课程的档位合格线（cert_pass_lines 来自上游冻结，不写死）。
 func passLineFor(ctx context.Context, q rowQuerier, courseID int64, level string) float64 {
 	var raw sql.NullString
-	_ = q.QueryRowContext(ctx, `SELECT cert_pass_lines FROM course WHERE id = ?`, courseID).Scan(&raw)
+	_ = q.QueryRowContext(ctx, `SELECT cert_pass_lines FROM course WHERE id = $1`, courseID).Scan(&raw)
 	if !raw.Valid {
 		return 0
 	}

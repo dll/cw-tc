@@ -116,18 +116,18 @@ func seedRefund(t *testing.T, database *sql.DB, i int, initiator, kind string, f
 	t.Helper()
 	orderNo := fmt.Sprintf("O%d", i)
 	if _, err := database.Exec(
-		`INSERT INTO orders(order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, expired_at) VALUES(?,1,1,'样例课程',1000,1000,'paid',?)`,
+		`INSERT INTO orders(order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, expired_at) VALUES($1,1,1,'样例课程',1000,1000,'paid',$2)`,
 		orderNo, finished.Add(1*time.Hour).UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 	var orderID int64
-	_ = database.QueryRow(`SELECT id FROM orders WHERE order_no=?`, orderNo).Scan(&orderID)
+	_ = database.QueryRow(`SELECT id FROM orders WHERE order_no=$1`, orderNo).Scan(&orderID)
 	var basis, basisRef any
 	if kind == "reward" {
 		basis, basisRef = "campaign", "活动-1"
 	}
 	if _, err := database.Exec(
-		`INSERT INTO refund(refund_no, order_id, kind, basis, basis_ref, amount_cents, reason, initiator, status, finished_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO refund(refund_no, order_id, kind, basis, basis_ref, amount_cents, reason, initiator, status, finished_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 		fmt.Sprintf("R%d", i), orderID, kind, basis, basisRef, 1000, "事由", initiator, "success", finished.UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}

@@ -74,7 +74,7 @@ func TestIssueCertificateWritesUniqueRow(t *testing.T) {
 		t.Fatal("证书编号为空")
 	}
 	var issuedAt, expiresAt string
-	if err := database.QueryRow(`SELECT issued_at, expires_at FROM certificate WHERE cert_no=?`, certNo).Scan(&issuedAt, &expiresAt); err != nil {
+	if err := database.QueryRow(`SELECT issued_at, expires_at FROM certificate WHERE cert_no=$1`, certNo).Scan(&issuedAt, &expiresAt); err != nil {
 		t.Fatal(err)
 	}
 	// 有效期 = 签发 + 3 年

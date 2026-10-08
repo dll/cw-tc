@@ -164,7 +164,7 @@ func upsertCourse(ctx context.Context, database *sql.DB, course Course) error {
 	certNames := buildCertNames(course.Testbank)
 	certPassLines := buildCertPassLines(course.Testbank)
 	_, err := database.ExecContext(ctx,
-		`INSERT INTO course(course_code, source, name, line, lecture_count, dir, cert_names, cert_pass_lines, status) VALUES(?,?,?,?,?,?,?,?,'published')
+		`INSERT INTO course(course_code, source, name, line, lecture_count, dir, cert_names, cert_pass_lines, status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'published')
 		 ON CONFLICT(course_code) DO UPDATE SET source='upstream', name=excluded.name, line=excluded.line, lecture_count=excluded.lecture_count, dir=excluded.dir, cert_names=excluded.cert_names, cert_pass_lines=excluded.cert_pass_lines`,
 		course.ID, "upstream", name, line, course.Lectures, course.Dir, certNames, certPassLines)
 	return err
@@ -194,7 +194,7 @@ func buildCertPassLines(tb *Testbank) string {
 func syncLectures(ctx context.Context, database *sql.DB, course Course) error {
 	// 1. 找到（或新建）该 upstream 课程的 course_id。
 	var courseID int64
-	if err := database.QueryRowContext(ctx, `SELECT id FROM course WHERE course_code = ? AND source = 'upstream'`, course.ID).Scan(&courseID); err != nil {
+	if err := database.QueryRowContext(ctx, `SELECT id FROM course WHERE course_code = $1 AND source = 'upstream'`, course.ID).Scan(&courseID); err != nil {
 		return fmt.Errorf("课程 %s 未找到: %w", course.ID, err)
 	}
 
@@ -228,7 +228,7 @@ func syncLectures(ctx context.Context, database *sql.DB, course Course) error {
 	seen := make([]int, 0, len(lectures))
 	for _, lec := range lectures {
 		if _, err := database.ExecContext(ctx,
-			`INSERT INTO lecture(course_id, no, title, origin) VALUES(?,?,?,'upstream')
+			`INSERT INTO lecture(course_id, no, title, origin) VALUES($1,$2,$3,'upstream')
 			 ON CONFLICT(course_id, no) DO UPDATE SET title=excluded.title, origin='upstream'`,
 			courseID, lec.no, lec.title); err != nil {
 			return fmt.Errorf("写入讲次 %d 失败: %w", lec.no, err)
@@ -260,7 +260,7 @@ func pruneUpstreamCourses(ctx context.Context, database *sql.DB, keep []string) 
 // pruneUpstreamLectures 删除上游已删讲次（只动 origin='upstream'，绝不碰 ai_assisted/platform）。
 func pruneUpstreamLectures(ctx context.Context, database *sql.DB, courseID int64, keep []int) error {
 	if len(keep) == 0 {
-		_, err := database.ExecContext(ctx, `DELETE FROM lecture WHERE course_id = ? AND origin = 'upstream'`, courseID)
+		_, err := database.ExecContext(ctx, `DELETE FROM lecture WHERE course_id = $1 AND origin = 'upstream'`, courseID)
 		return err
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",")
@@ -270,7 +270,7 @@ func pruneUpstreamLectures(ctx context.Context, database *sql.DB, courseID int64
 		args = append(args, no)
 	}
 	_, err := database.ExecContext(ctx,
-		`DELETE FROM lecture WHERE course_id = ? AND origin = 'upstream' AND no NOT IN (`+placeholders+`)`, args...)
+		`DELETE FROM lecture WHERE course_id = $1 AND origin = 'upstream' AND no NOT IN (`+placeholders+`)`, args...)
 	return err
 }
 
@@ -289,7 +289,7 @@ func syncQuestions(ctx context.Context, database *sql.DB, course Course) error {
 		return fmt.Errorf("解析题库 %s 失败: %w", path, err)
 	}
 	var courseID int64
-	if err := database.QueryRowContext(ctx, `SELECT id FROM course WHERE course_code = ? AND source = 'upstream'`, course.ID).Scan(&courseID); err != nil {
+	if err := database.QueryRowContext(ctx, `SELECT id FROM course WHERE course_code = $1 AND source = 'upstream'`, course.ID).Scan(&courseID); err != nil {
 		return fmt.Errorf("课程 %s 未找到: %w", course.ID, err)
 	}
 	seen := make([]string, 0, len(bank.Questions))
@@ -304,7 +304,7 @@ func syncQuestions(ctx context.Context, database *sql.DB, course Course) error {
 		}
 		if _, err := database.ExecContext(ctx,
 			`INSERT INTO question(course_id, qno, level, type, gradability, stem, options, answer, analysis, rubric, score, evidence, is_override)
-			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,false)
+			 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false)
 			 ON CONFLICT(course_id, qno) DO UPDATE SET
 			   level=excluded.level, type=excluded.type, gradability=excluded.gradability,
 			   stem=excluded.stem, options=excluded.options, answer=excluded.answer,
@@ -323,7 +323,7 @@ func syncQuestions(ctx context.Context, database *sql.DB, course Course) error {
 // pruneUpstreamQuestions 删除上游已删题目（只动 is_override=false，绝不碰平台改过的题）。
 func pruneUpstreamQuestions(ctx context.Context, database *sql.DB, courseID int64, keep []string) error {
 	if len(keep) == 0 {
-		_, err := database.ExecContext(ctx, `DELETE FROM question WHERE course_id = ? AND is_override = false`, courseID)
+		_, err := database.ExecContext(ctx, `DELETE FROM question WHERE course_id = $1 AND is_override = false`, courseID)
 		return err
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",")
@@ -333,7 +333,7 @@ func pruneUpstreamQuestions(ctx context.Context, database *sql.DB, courseID int6
 		args = append(args, qno)
 	}
 	_, err := database.ExecContext(ctx,
-		`DELETE FROM question WHERE course_id = ? AND is_override = false AND qno NOT IN (`+placeholders+`)`, args...)
+		`DELETE FROM question WHERE course_id = $1 AND is_override = false AND qno NOT IN (`+placeholders+`)`, args...)
 	return err
 }
 

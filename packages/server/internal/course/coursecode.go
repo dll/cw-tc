@@ -21,7 +21,7 @@ func AllocateCourseCode(ctx context.Context, db *sql.DB) (string, error) {
 	for i := 0; i < 20; i++ {
 		code := "TC-" + randomSuffix(4)
 		var n int
-		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM course WHERE course_code = ?`, code).Scan(&n); err != nil {
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM course WHERE course_code = $1`, code).Scan(&n); err != nil {
 			return "", err
 		}
 		if n == 0 {

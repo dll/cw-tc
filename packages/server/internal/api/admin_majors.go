@@ -42,7 +42,7 @@ func (s *Server) adminCreateMajor(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
 		return
 	}
-	res, err := s.dbConn.ExecContext(c.Request.Context(), `INSERT INTO major(name, sort, status) VALUES(?, ?, 'enabled')`, req.Name, req.Sort)
+	res, err := s.dbConn.ExecContext(c.Request.Context(), `INSERT INTO major(name, sort, status) VALUES($1, $2, 'enabled')`, req.Name, req.Sort)
 	if err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10002, Msg: "创建失败"})
 		return
@@ -70,7 +70,7 @@ func (s *Server) adminUpdateMajor(c *gin.Context) {
 	if req.Status == "" {
 		req.Status = "enabled"
 	}
-	if _, err := s.dbConn.ExecContext(c.Request.Context(), `UPDATE major SET name = COALESCE(NULLIF(?, ''), name), sort = ?, status = ? WHERE id = ?`, req.Name, req.Sort, req.Status, id); err != nil {
+	if _, err := s.dbConn.ExecContext(c.Request.Context(), `UPDATE major SET name = COALESCE(NULLIF($1, ''), name), sort = $2, status = $3 WHERE id = $4`, req.Name, req.Sort, req.Status, id); err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10002, Msg: "更新失败"})
 		return
 	}

@@ -37,7 +37,7 @@ func (s *Service) CreatePromo(ctx context.Context, in PromoInput) error {
 		totalLimit = in.TotalLimit
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO promo_code(code, kind, value, total_limit, per_student_limit, valid_from, valid_to, status) VALUES(?,?,?,?,?,?,?,'active')`,
+		`INSERT INTO promo_code(code, kind, value, total_limit, per_student_limit, valid_from, valid_to, status) VALUES($1,$2,$3,$4,$5,$6,$7,'active')`,
 		in.Code, in.Kind, in.Value, totalLimit, in.PerStudentLimit, in.ValidFrom.UTC().Format(time.RFC3339), in.ValidTo.UTC().Format(time.RFC3339))
 	return err
 }
@@ -53,7 +53,7 @@ func (s *Service) RedeemPromo(ctx context.Context, code string, studentID int64,
 	var validFrom, validTo string
 	var status string
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT kind, value, total_limit, per_student_limit, valid_from, valid_to, status FROM promo_code WHERE code = ?`, code).
+		`SELECT kind, value, total_limit, per_student_limit, valid_from, valid_to, status FROM promo_code WHERE code = $1`, code).
 		Scan(&kind, &value, &totalLimit, &perStudentLimit, &validFrom, &validTo, &status); err != nil {
 		return 0, ErrPromoInvalid
 	}
@@ -73,13 +73,13 @@ func (s *Service) RedeemPromo(ctx context.Context, code string, studentID int64,
 	}
 	// 已有核销记录 → 幂等返回同一折扣
 	var existing sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `SELECT discount_cents FROM promo_redemption WHERE promo_code = ? AND student_id = ? AND order_no = ?`, code, studentID, orderNo).Scan(&existing); err == nil && existing.Valid {
+	if err := s.db.QueryRowContext(ctx, `SELECT discount_cents FROM promo_redemption WHERE promo_code = $1 AND student_id = $2 AND order_no = $3`, code, studentID, orderNo).Scan(&existing); err == nil && existing.Valid {
 		return existing.Int64, nil
 	}
 	// 总量限制
 	if totalLimit.Valid {
 		var used int
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM promo_redemption WHERE promo_code = ?`, code).Scan(&used); err != nil {
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM promo_redemption WHERE promo_code = $1`, code).Scan(&used); err != nil {
 			return 0, err
 		}
 		if int64(used) >= totalLimit.Int64 {
@@ -92,7 +92,7 @@ func (s *Service) RedeemPromo(ctx context.Context, code string, studentID int64,
 		limit = perStudentLimit.Int64
 	}
 	var studentUsed int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM promo_redemption WHERE promo_code = ? AND student_id = ?`, code, studentID).Scan(&studentUsed); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM promo_redemption WHERE promo_code = $1 AND student_id = $2`, code, studentID).Scan(&studentUsed); err != nil {
 		return 0, err
 	}
 	if int64(studentUsed) >= limit {
@@ -100,7 +100,7 @@ func (s *Service) RedeemPromo(ctx context.Context, code string, studentID int64,
 	}
 	discount := promoDiscount(kind, value, priceCents)
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO promo_redemption(promo_code, student_id, order_no, discount_cents, at) VALUES(?,?,?,?,?)`,
+		`INSERT INTO promo_redemption(promo_code, student_id, order_no, discount_cents, at) VALUES($1,$2,$3,$4,$5)`,
 		code, studentID, orderNo, discount, now.UTC().Format(time.RFC3339)); err != nil {
 		return 0, fmt.Errorf("记录优惠码核销失败: %w", err)
 	}

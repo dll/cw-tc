@@ -18,7 +18,7 @@ func TestReconcileComputesDiffAndIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 直接把订单置为已支付
-	if _, err := database.Exec(`UPDATE orders SET status='paid', paid_at=? WHERE order_no=?`, time.Now().UTC().Format(time.RFC3339), order.OrderNo); err != nil {
+	if _, err := database.Exec(`UPDATE orders SET status='paid', paid_at=$1 WHERE order_no=$2`, time.Now().UTC().Format(time.RFC3339), order.OrderNo); err != nil {
 		t.Fatal(err)
 	}
 	bizDate := time.Now().UTC().Format("2006-01-02")

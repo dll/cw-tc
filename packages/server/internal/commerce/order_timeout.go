@@ -11,7 +11,7 @@ func (s *Service) CloseExpiredOrders(ctx context.Context, now time.Time) (int64,
 		return 0, ErrOrderNotFound
 	}
 	result, err := s.db.ExecContext(ctx,
-		`UPDATE orders SET status = 'closed', closed_at = ?, updated_at = ? WHERE status = 'pending' AND expired_at < ?`,
+		`UPDATE orders SET status = 'closed', closed_at = $1, updated_at = $2 WHERE status = 'pending' AND expired_at < $3`,
 		now.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339))
 	if err != nil {
 		return 0, err

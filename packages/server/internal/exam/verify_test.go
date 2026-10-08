@@ -14,11 +14,11 @@ func TestVerifyCertFourStates(t *testing.T) {
 	now := time.Now().UTC()
 
 	insert := func(certNo, level, status, expiresAt string) {
-		if _, err := database.Exec(`INSERT INTO certificate(cert_no, student_id, course_id, level, score, band, issued_at, expires_at, status) VALUES(?,1,1,?,88,'good','2026-01-01T00:00:00Z',?,'valid')`, certNo, level, expiresAt); err != nil {
+		if _, err := database.Exec(`INSERT INTO certificate(cert_no, student_id, course_id, level, score, band, issued_at, expires_at, status) VALUES($1,1,1,$2,88,'good','2026-01-01T00:00:00Z',$3,'valid')`, certNo, level, expiresAt); err != nil {
 			t.Fatal(err)
 		}
 		if status == "revoked" {
-			if _, err := database.Exec(`UPDATE certificate SET status='revoked', revoked_reason='admin' WHERE cert_no=?`, certNo); err != nil {
+			if _, err := database.Exec(`UPDATE certificate SET status='revoked', revoked_reason='admin' WHERE cert_no=$1`, certNo); err != nil {
 				t.Fatal(err)
 			}
 		}

@@ -75,7 +75,7 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (Student, e
 	agreements := `[{"doc":"user_agreement","version":"v1.0"},{"doc":"privacy_policy","version":"v1.0"}]`
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO student(student_no, name, phone, phone_verified_at, id_card_hash, id_card_cipher, password_hash, agreement_versions)
-		 VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)`,
+		 VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5, $6, $7)`,
 		studentNo, input.Name, input.Phone, digest, ciphertext, hashPassword(input.Password), agreements)
 	if err != nil {
 		if stringsContains(err.Error(), "student.phone") || stringsContains(err.Error(), "UNIQUE constraint failed: student.phone") {

@@ -23,7 +23,7 @@ func (s *Server) listLectureResources(c *gin.Context) {
 	}
 	var courseID, lectureID int64
 	err = s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT c.id, l.id FROM course c JOIN lecture l ON l.course_id = c.id WHERE c.course_code = ? AND c.status = 'published' AND l.no = ?`,
+		`SELECT c.id, l.id FROM course c JOIN lecture l ON l.course_id = c.id WHERE c.course_code = $1 AND c.status = 'published' AND l.no = $2`,
 		c.Param("courseCode"), no).Scan(&courseID, &lectureID)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "讲次不存在"})
@@ -32,7 +32,7 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
 	}
-	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT kind, title, storage_key, size_bytes FROM asset WHERE lecture_id = ? ORDER BY sort ASC, id ASC`, lectureID)
+	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT kind, title, storage_key, size_bytes FROM asset WHERE lecture_id = $1 ORDER BY sort ASC, id ASC`, lectureID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return

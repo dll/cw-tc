@@ -40,7 +40,7 @@ func CreatePlatformCourse(ctx context.Context, db *sql.DB, in CreateCourseInput)
 	}
 	if _, err := db.ExecContext(ctx,
 		`INSERT INTO course(course_code, source, name, intro, line, lecture_count, major_id, teacher_id, status)
-		 VALUES(?, 'platform', ?, ?, ?, ?, ?, ?, 'proposed')`,
+		 VALUES($1, 'platform', $2, $3, $4, $5, $6, $7, 'proposed')`,
 		code, in.Name, in.Intro, in.Line, in.LectureCount, majorArg, in.TeacherID); err != nil {
 		return "", err
 	}
@@ -65,7 +65,7 @@ func SetPrice(ctx context.Context, db *sql.DB, courseCode string, priceCents int
 		return ErrCourseInput
 	}
 	res, err := db.ExecContext(ctx,
-		`UPDATE course SET price_cents = ?, updated_at = ? WHERE course_code = ?`,
+		`UPDATE course SET price_cents = $1, updated_at = $2 WHERE course_code = $3`,
 		priceCents, time.Now().UTC().Format(time.RFC3339), courseCode)
 	if err != nil {
 		return err
@@ -87,7 +87,7 @@ func transition(ctx context.Context, db *sql.DB, courseCode string, teacherID in
 	var status string
 	var majorNull sql.NullInt64
 	if err := db.QueryRowContext(ctx,
-		`SELECT teacher_id, status, major_id FROM course WHERE course_code = ?`, courseCode).
+		`SELECT teacher_id, status, major_id FROM course WHERE course_code = $1`, courseCode).
 		Scan(&owner, &status, &majorNull); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrCourseNotFound
@@ -109,12 +109,12 @@ func transition(ctx context.Context, db *sql.DB, courseCode string, teacherID in
 	now := time.Now().UTC().Format(time.RFC3339)
 	if to == "submitted" {
 		_, err := db.ExecContext(ctx,
-			`UPDATE course SET status='submitted', submitted_at=?, updated_at=? WHERE course_code=?`,
+			`UPDATE course SET status='submitted', submitted_at=$1, updated_at=$2 WHERE course_code=$3`,
 			now, now, courseCode)
 		return err
 	}
 	_, err := db.ExecContext(ctx,
-		`UPDATE course SET status=?, updated_at=? WHERE course_code=?`,
+		`UPDATE course SET status=$1, updated_at=$2 WHERE course_code=$3`,
 		to, now, courseCode)
 	return err
 }

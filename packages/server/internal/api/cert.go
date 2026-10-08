@@ -17,7 +17,7 @@ func (s *Server) listMyCerts(c *gin.Context) {
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
 		`SELECT c.cert_no, co.course_code, co.name, c.level, c.score, c.band, c.status, c.issued_at, c.expires_at
 		 FROM certificate c JOIN course co ON c.course_id = co.id
-		 WHERE c.student_id = ? ORDER BY c.issued_at DESC`, student.ID)
+		 WHERE c.student_id = $1 ORDER BY c.issued_at DESC`, student.ID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "证书服务不可用"})
 		return

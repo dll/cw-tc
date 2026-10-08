@@ -60,7 +60,7 @@ func AddBlacklist(ctx context.Context, db *sql.DB, targetType TargetType, target
 
 	// 同粒度同值已有生效条目 → 先标记过期，再写新条目。
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE risk_blacklist SET status = 'expired' WHERE target_type = ? AND target_value = ? AND status = 'active'`,
+		`UPDATE risk_blacklist SET status = 'expired' WHERE target_type = $1 AND target_value = $2 AND status = 'active'`,
 		string(targetType), targetValue); err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func AddBlacklist(ctx context.Context, db *sql.DB, targetType TargetType, target
 		createdByArg = createdBy
 	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO risk_blacklist(target_type, target_value, reason, status, expires_at, created_by) VALUES(?,?,?,?,?,?)`,
+		`INSERT INTO risk_blacklist(target_type, target_value, reason, status, expires_at, created_by) VALUES($1,$2,$3,$4,$5,$6)`,
 		string(targetType), targetValue, reason, string(StatusActive), expiresAt.UTC().Format(time.RFC3339), createdByArg)
 	if err != nil {
 		return err
@@ -82,7 +82,7 @@ func AddBlacklist(ctx context.Context, db *sql.DB, targetType TargetType, target
 func IsBlacklisted(ctx context.Context, db *sql.DB, targetType TargetType, targetValue string, now time.Time) (bool, error) {
 	var n int
 	err := db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM risk_blacklist WHERE target_type = ? AND target_value = ? AND status = 'active' AND expires_at > ?`,
+		`SELECT COUNT(*) FROM risk_blacklist WHERE target_type = $1 AND target_value = $2 AND status = 'active' AND expires_at > $3`,
 		string(targetType), targetValue, now.UTC().Format(time.RFC3339)).Scan(&n)
 	return n > 0, err
 }
@@ -93,7 +93,7 @@ func Appeal(ctx context.Context, db *sql.DB, id int64, appealReason string) erro
 		return ErrBlacklistInput
 	}
 	res, err := db.ExecContext(ctx,
-		`UPDATE risk_blacklist SET status = 'appealed', appeal_reason = ?, appealed_at = ? WHERE id = ? AND status = 'active'`,
+		`UPDATE risk_blacklist SET status = 'appealed', appeal_reason = $1, appealed_at = $2 WHERE id = $3 AND status = 'active'`,
 		appealReason, time.Now().UTC().Format(time.RFC3339), id)
 	if err != nil {
 		return err
@@ -112,7 +112,7 @@ func ResolveAppeal(ctx context.Context, db *sql.DB, id int64, accept bool) error
 		next = StatusExpired
 	}
 	res, err := db.ExecContext(ctx,
-		`UPDATE risk_blacklist SET status = ? WHERE id = ? AND status = 'appealed'`, string(next), id)
+		`UPDATE risk_blacklist SET status = $1 WHERE id = $2 AND status = 'appealed'`, string(next), id)
 	if err != nil {
 		return err
 	}

@@ -48,7 +48,7 @@ func AllocateCertNo(ctx context.Context, q certSeqQuerier, courseCode, level str
 	var seq int
 	if err := q.QueryRowContext(ctx,
 		`INSERT INTO cert_no_sequence(course_code, level_digit, year, last_seq)
-		 VALUES(?, ?, ?, 1)
+		 VALUES($1, $2, $3, 1)
 		 ON CONFLICT(course_code, level_digit, year) DO UPDATE SET last_seq = cert_no_sequence.last_seq + 1
 		 RETURNING last_seq`, courseCode, digit, year).Scan(&seq); err != nil {
 		return "", err
@@ -87,7 +87,7 @@ func IssueCertificate(ctx context.Context, db *sql.DB, in CertIssueInput) (strin
 	expiresAt := issuedAt.AddDate(3, 0, 0) // 有效期 3 年（数据字典 §5.4）
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO certificate(cert_no, student_id, course_id, level, score, band, issued_at, expires_at)
-		 VALUES(?,?,?,?,?,?,?,?)`,
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
 		certNo, in.StudentID, in.CourseID, in.Level, in.Score, in.Band,
 		issuedAt.Format(time.RFC3339), expiresAt.Format(time.RFC3339)); err != nil {
 		return "", err

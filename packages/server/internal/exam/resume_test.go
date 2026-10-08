@@ -46,7 +46,7 @@ func TestResumeUsesServerClockNotClient(t *testing.T) {
 	// 把截止时间钉在一个已知值：now + 100s
 	now := time.Now().UTC()
 	deadline := now.Add(100 * time.Second)
-	if _, err := database.Exec(`UPDATE exam_session SET server_deadline_at = ? WHERE id = ?`, deadline.Format(time.RFC3339), sid); err != nil {
+	if _, err := database.Exec(`UPDATE exam_session SET server_deadline_at = $1 WHERE id = $2`, deadline.Format(time.RFC3339), sid); err != nil {
 		t.Fatal(err)
 	}
 

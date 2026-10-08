@@ -36,12 +36,12 @@ func TestSubmitExamAutoGradeAndPass(t *testing.T) {
 	}
 	// 会话应已转 graded，且答案落库
 	var status string
-	_ = database.QueryRow(`SELECT status FROM exam_session WHERE id = ?`, sid).Scan(&status)
+	_ = database.QueryRow(`SELECT status FROM exam_session WHERE id = $1`, sid).Scan(&status)
 	if status != "graded" {
 		t.Fatalf("会话状态应 graded，实际 %s", status)
 	}
 	var n int
-	_ = database.QueryRow(`SELECT COUNT(*) FROM exam_result WHERE exam_session_id = ?`, sid).Scan(&n)
+	_ = database.QueryRow(`SELECT COUNT(*) FROM exam_result WHERE exam_session_id = $1`, sid).Scan(&n)
 	if n != 1 {
 		t.Fatalf("应写 1 条成绩，实际 %d", n)
 	}

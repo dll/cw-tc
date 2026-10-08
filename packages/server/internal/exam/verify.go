@@ -41,7 +41,7 @@ func VerifyCert(ctx context.Context, db *sql.DB, certNo string, now time.Time) (
 		 FROM certificate c
 		 JOIN course co ON co.id = c.course_id
 		 JOIN student st ON st.id = c.student_id
-		 WHERE c.cert_no = ?`, certNo).
+		 WHERE c.cert_no = $1`, certNo).
 		Scan(&r.CertNo, &r.Level, &status, &issuedRaw, &expiresRaw, &revokedReason, &r.CourseName, &r.StudentName)
 	if err == sql.ErrNoRows {
 		return VerifyResult{}, ErrCertNotFound

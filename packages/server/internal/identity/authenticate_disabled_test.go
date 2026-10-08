@@ -29,7 +29,7 @@ func TestAuthenticateRejectsDisabledStudent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`UPDATE student SET status = 'suspended' WHERE id = ?`, student.ID); err != nil {
+	if _, err := database.Exec(`UPDATE student SET status = 'suspended' WHERE id = $1`, student.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.Authenticate(context.Background(), session.Token, now); !errors.Is(err, ErrUnauthenticated) {

@@ -16,7 +16,7 @@ func (s *Server) adminListUsers(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
-		`SELECT id, student_no, name, phone, status, created_at FROM student ORDER BY id DESC LIMIT ? OFFSET ?`, limit, offset)
+		`SELECT id, student_no, name, phone, status, created_at FROM student ORDER BY id DESC LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 		return
@@ -58,7 +58,7 @@ func (s *Server) adminRevealUser(c *gin.Context) {
 	}
 	admin := c.MustGet(staffContextKey).(staff.Staff)
 	var phone string
-	if err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT phone FROM student WHERE id = ?`, id).Scan(&phone); err != nil {
+	if err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT phone FROM student WHERE id = $1`, id).Scan(&phone); err != nil {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "用户不存在"})
 		return
 	}

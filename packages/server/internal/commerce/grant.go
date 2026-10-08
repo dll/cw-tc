@@ -20,7 +20,7 @@ func (s *Service) GrantEntitlement(ctx context.Context, studentID, courseID, gra
 	}
 	var active int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM entitlement WHERE student_id = ? AND course_id = ? AND revoked_at IS NULL`,
+		`SELECT COUNT(*) FROM entitlement WHERE student_id = $1 AND course_id = $2 AND revoked_at IS NULL`,
 		studentID, courseID).Scan(&active); err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func (s *Service) GrantEntitlement(ctx context.Context, studentID, courseID, gra
 		return ErrEntitlementExists
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO entitlement(student_id, course_id, source, granted_by, grant_reason, granted_at) VALUES(?,?,'grant',?,?,?)`,
+		`INSERT INTO entitlement(student_id, course_id, source, granted_by, grant_reason, granted_at) VALUES($1,$2,'grant',$3,$4,$5)`,
 		studentID, courseID, grantedBy, grantReason, time.Now().UTC().Format(time.RFC3339))
 	return err
 }
@@ -39,7 +39,7 @@ func (s *Service) RevokeGrant(ctx context.Context, studentID, courseID int64) er
 		return ErrGrantInput
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE entitlement SET revoked_at = ?, revoke_reason = 'admin' WHERE student_id = ? AND course_id = ? AND revoked_at IS NULL`,
+		`UPDATE entitlement SET revoked_at = $1, revoke_reason = 'admin' WHERE student_id = $2 AND course_id = $3 AND revoked_at IS NULL`,
 		time.Now().UTC().Format(time.RFC3339), studentID, courseID)
 	if err != nil {
 		return err

@@ -64,7 +64,7 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (Refund, error) {
 	var orderID, studentID, courseID int64
 	var amountCents int64
 	var status string
-	if err := tx.QueryRowContext(ctx, `SELECT id, student_id, course_id, amount_cents, status FROM orders WHERE order_no = ?`, in.OrderNo).
+	if err := tx.QueryRowContext(ctx, `SELECT id, student_id, course_id, amount_cents, status FROM orders WHERE order_no = $1`, in.OrderNo).
 		Scan(&orderID, &studentID, &courseID, &amountCents, &status); err != nil {
 		return Refund{}, ErrOrderNotRefundable
 	}
@@ -92,22 +92,22 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (Refund, error) {
 		operatorID = in.OperatorID
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO refund(refund_no, order_id, kind, basis, basis_ref, amount_cents, reason, initiator, operator_id, status, finished_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO refund(refund_no, order_id, kind, basis, basis_ref, amount_cents, reason, initiator, operator_id, status, finished_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		refundNo, orderID, in.Kind, nullIfEmpty(in.Basis), nullIfEmpty(in.BasisRef), in.AmountCents, in.Reason, in.Initiator, operatorID, "success", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		return Refund{}, fmt.Errorf("写入退款记录失败: %w", err)
 	}
 
 	if in.Kind == "normal" {
-		if _, err := tx.ExecContext(ctx, `UPDATE entitlement SET revoked_at = ?, revoke_reason = 'order_refunded' WHERE student_id = ? AND course_id = ? AND revoked_at IS NULL`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE entitlement SET revoked_at = $1, revoke_reason = 'order_refunded' WHERE student_id = $2 AND course_id = $3 AND revoked_at IS NULL`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
 			return Refund{}, err
 		}
 		// 铁律 4 / M3-08：退款撤证联动 —— 同一事务内连带撤销该学员本课的有效证书，
 		// 不得出现「退了款、证书仍有效」。
-		if _, err := tx.ExecContext(ctx, `UPDATE certificate SET status = 'revoked', revoked_reason = 'order_refunded', revoked_at = ? WHERE student_id = ? AND course_id = ? AND status = 'valid'`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE certificate SET status = 'revoked', revoked_reason = 'order_refunded', revoked_at = $1 WHERE student_id = $2 AND course_id = $3 AND status = 'valid'`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
 			return Refund{}, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE orders SET status = 'refunded', refunded_at = ?, updated_at = ? WHERE id = ?`, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE orders SET status = 'refunded', refunded_at = $1, updated_at = $2 WHERE id = $3`, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderID); err != nil {
 		return Refund{}, err
 	}
 	if err := tx.Commit(); err != nil {

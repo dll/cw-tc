@@ -23,7 +23,7 @@ func (s *Service) GetOrder(ctx context.Context, orderNo string) (Order, error) {
 	}
 	var order Order
 	var expired string
-	err := s.db.QueryRowContext(ctx, `SELECT id, order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, expired_at FROM orders WHERE order_no=?`, orderNo).Scan(&order.ID, &order.OrderNo, &order.StudentID, &order.CourseID, &order.CourseName, &order.PriceCents, &order.AmountCents, &order.Status, &expired)
+	err := s.db.QueryRowContext(ctx, `SELECT id, order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, expired_at FROM orders WHERE order_no=$1`, orderNo).Scan(&order.ID, &order.OrderNo, &order.StudentID, &order.CourseID, &order.CourseName, &order.PriceCents, &order.AmountCents, &order.Status, &expired)
 	if err == sql.ErrNoRows {
 		return Order{}, ErrOrderNotFound
 	}
@@ -61,7 +61,7 @@ func (s *Service) ListEntitlements(ctx context.Context, studentID int64) ([]Enti
 	if s.db == nil || studentID <= 0 {
 		return nil, ErrOrderNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, course_id, order_id, source, granted_at FROM entitlement WHERE student_id=? AND revoked_at IS NULL ORDER BY granted_at DESC`, studentID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, course_id, order_id, source, granted_at FROM entitlement WHERE student_id=$1 AND revoked_at IS NULL ORDER BY granted_at DESC`, studentID)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (s *Service) ListEntitlements(ctx context.Context, studentID int64) ([]Enti
 }
 
 func (s *Service) CancelOrder(ctx context.Context, studentID int64, orderNo string) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE orders SET status='closed', closed_at=?, updated_at=? WHERE order_no=? AND student_id=? AND status='pending'`, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderNo, studentID)
+	result, err := s.db.ExecContext(ctx, `UPDATE orders SET status='closed', closed_at=$1, updated_at=$2 WHERE order_no=$3 AND student_id=$4 AND status='pending'`, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderNo, studentID)
 	if err != nil {
 		return err
 	}

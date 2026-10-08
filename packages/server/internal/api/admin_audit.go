@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -14,10 +15,11 @@ func (s *Server) adminAudit(c *gin.Context) {
 	query := `SELECT id, actor_type, actor_id, actor_role, action, target_type, target_id, created_at FROM audit_log`
 	args := make([]any, 0)
 	if action := c.Query("action"); action != "" {
-		query += ` WHERE action = ?`
+		query += ` WHERE action = $1`
 		args = append(args, action)
 	}
-	query += ` ORDER BY id DESC LIMIT ? OFFSET ?`
+	n := len(args) + 1
+	query += fmt.Sprintf(` ORDER BY id DESC LIMIT $%d OFFSET $%d`, n, n+1)
 	args = append(args, limit, offset)
 	rows, err := s.dbConn.QueryContext(c.Request.Context(), query, args...)
 	if err != nil {

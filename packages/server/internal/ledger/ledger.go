@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/cw-tc/server/internal/redact"
 )
@@ -33,10 +34,11 @@ func ListOrders(ctx context.Context, db *sql.DB, status string, limit, offset in
 	      FROM orders o JOIN student s ON o.student_id = s.id`
 	args := []any{}
 	if status != "" {
-		q += ` WHERE o.status = ?`
+		q += ` WHERE o.status = $1`
 		args = append(args, status)
 	}
-	q += ` ORDER BY o.id DESC LIMIT ? OFFSET ?`
+	n := len(args) + 1
+	q += fmt.Sprintf(` ORDER BY o.id DESC LIMIT $%d OFFSET $%d`, n, n+1)
 	args = append(args, limit, offset)
 	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -82,7 +84,7 @@ func ListRefunds(ctx context.Context, db *sql.DB, limit, offset int) ([]RefundRo
 	rows, err := db.QueryContext(ctx,
 		`SELECT r.refund_no, o.order_no, s.phone, r.kind, r.amount_cents, r.reason, r.status, r.created_at
 		 FROM refund r JOIN orders o ON r.order_id = o.id JOIN student s ON o.student_id = s.id
-		 ORDER BY r.id DESC LIMIT ? OFFSET ?`, limit, offset)
+		 ORDER BY r.id DESC LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +122,7 @@ func ListCertificates(ctx context.Context, db *sql.DB, limit, offset int) ([]Cer
 	rows, err := db.QueryContext(ctx,
 		`SELECT c.cert_no, s.phone, co.course_code, c.level, c.score, c.band, c.status, c.issued_at, c.expires_at
 		 FROM certificate c JOIN student s ON c.student_id = s.id JOIN course co ON c.course_id = co.id
-		 ORDER BY c.id DESC LIMIT ? OFFSET ?`, limit, offset)
+		 ORDER BY c.id DESC LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, err
 	}

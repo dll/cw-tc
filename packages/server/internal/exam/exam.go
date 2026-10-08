@@ -35,7 +35,7 @@ func BuildPaper(ctx context.Context, db *sql.DB, courseID int64, level string, l
 		return "", ErrInvalidLevel
 	}
 	rows, err := db.QueryContext(ctx,
-		`SELECT qno, type, stem, options, score FROM question WHERE course_id = ? AND level = ? ORDER BY qno`,
+		`SELECT qno, type, stem, options, score FROM question WHERE course_id = $1 AND level = $2 ORDER BY qno`,
 		courseID, level)
 	if err != nil {
 		return "", err
@@ -83,7 +83,7 @@ func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, le
 	// 权益校验：已付费解锁（或免费授权）才能开考。
 	var ent int
 	if err := db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM entitlement WHERE student_id = ? AND course_id = ? AND revoked_at IS NULL`,
+		`SELECT COUNT(*) FROM entitlement WHERE student_id = $1 AND course_id = $2 AND revoked_at IS NULL`,
 		studentID, courseID).Scan(&ent); err != nil {
 		return 0, err
 	}
@@ -94,7 +94,7 @@ func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, le
 	// 重考冷却（PRD §7.7 C-7 · M3-05）：最近一次已交卷会话在冷却期内 → 拒绝。
 	var lastSubmitted sql.NullString
 	if err := db.QueryRowContext(ctx,
-		`SELECT MAX(submitted_at) FROM exam_session WHERE student_id = ? AND course_id = ? AND level = ? AND status IN ('submitted','graded')`,
+		`SELECT MAX(submitted_at) FROM exam_session WHERE student_id = $1 AND course_id = $2 AND level = $3 AND status IN ('submitted','graded')`,
 		studentID, courseID, level).Scan(&lastSubmitted); err != nil {
 		return 0, err
 	}
@@ -106,7 +106,7 @@ func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, le
 	// 单档单会话（应用层；DB 部分唯一索引由迁移 0019 兜底）。
 	var ongoing int
 	if err := db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM exam_session WHERE student_id = ? AND course_id = ? AND level = ? AND status = 'ongoing'`,
+		`SELECT COUNT(*) FROM exam_session WHERE student_id = $1 AND course_id = $2 AND level = $3 AND status = 'ongoing'`,
 		studentID, courseID, level).Scan(&ongoing); err != nil {
 		return 0, err
 	}
@@ -116,10 +116,10 @@ func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, le
 	// 重考序号 = 该学员该档历史会话数 + 1。
 	var history int
 	_ = db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM exam_session WHERE student_id = ? AND course_id = ? AND level = ?`,
+		`SELECT COUNT(*) FROM exam_session WHERE student_id = $1 AND course_id = $2 AND level = $3`,
 		studentID, courseID, level).Scan(&history)
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO exam_session(student_id, course_id, level, paper, status, started_at, server_deadline_at, retake_seq) VALUES(?,?,?,?,'ongoing',?,?,?)`,
+		`INSERT INTO exam_session(student_id, course_id, level, paper, status, started_at, server_deadline_at, retake_seq) VALUES($1,$2,$3,$4,'ongoing',$5,$6,$7)`,
 		studentID, courseID, level, paper, now.Format(time.RFC3339), now.Add(DefaultExamDuration).Format(time.RFC3339), history+1)
 	if err != nil {
 		return 0, err

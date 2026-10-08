@@ -44,7 +44,7 @@ func TestExamRouteStartAndSubmit(t *testing.T) {
 		{"L1-01-01", "single", "赋值是表达式吗？", "A"},
 		{"L1-01-02", "judge", "指针是地址。", "对"},
 	} {
-		if _, err = database.Exec(`INSERT INTO question(course_id, qno, level, type, gradability, stem, answer, score) VALUES(1,?,'L1',?,'auto',?,?,1.5)`, q.qno, q.typ, q.stem, q.ans); err != nil {
+		if _, err = database.Exec(`INSERT INTO question(course_id, qno, level, type, gradability, stem, answer, score) VALUES(1,$1,'L1',$2,'auto',$3,$4,1.5)`, q.qno, q.typ, q.stem, q.ans); err != nil {
 			t.Fatal(err)
 		}
 	}

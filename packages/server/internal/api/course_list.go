@@ -16,7 +16,7 @@ func (s *Server) listPublicCourses(c *gin.Context) {
 	args := make([]any, 0)
 	if majorStr := c.Query("major_id"); majorStr != "" {
 		if majorID, err := strconv.ParseInt(majorStr, 10, 64); err == nil {
-			query += ` AND major_id = ?`
+			query += ` AND major_id = $1`
 			args = append(args, majorID)
 		}
 	}

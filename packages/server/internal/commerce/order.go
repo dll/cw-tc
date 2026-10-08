@@ -63,7 +63,7 @@ func scanPending(row *sql.Row, order *Order) error {
 
 func (s *Service) pending(ctx context.Context, studentID, courseID int64) (Order, error) {
 	var order Order
-	err := scanPending(s.db.QueryRowContext(ctx, `SELECT id, order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, expired_at FROM orders WHERE student_id=? AND course_id=? AND status='pending'`, studentID, courseID), &order)
+	err := scanPending(s.db.QueryRowContext(ctx, `SELECT id, order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, expired_at FROM orders WHERE student_id=$1 AND course_id=$2 AND status='pending'`, studentID, courseID), &order)
 	return order, err
 }
 
@@ -72,7 +72,7 @@ func (s *Service) CreateOrderFromCourse(ctx context.Context, studentID, courseID
 		return Order{}, ErrOrderInput
 	}
 	var input OrderInput
-	if err := s.db.QueryRowContext(ctx, `SELECT name, price_cents FROM course WHERE id=? AND status='published'`, courseID).Scan(&input.CourseName, &input.PriceCents); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT name, price_cents FROM course WHERE id=$1 AND status='published'`, courseID).Scan(&input.CourseName, &input.PriceCents); err != nil {
 		return Order{}, fmt.Errorf("课程不可下单: %w", err)
 	}
 	input.StudentID, input.CourseID, input.RequestID, input.ExpiresAt = studentID, courseID, requestID, expiresAt
@@ -89,11 +89,11 @@ func (s *Service) CreateOrder(ctx context.Context, in OrderInput) (Order, error)
 	}
 	// 待支付订单已过期：先关闭，再创建新订单，避免唯一索引冲突。
 	if err == nil {
-		_, _ = s.db.ExecContext(ctx, `UPDATE orders SET status='closed', closed_at=?, updated_at=? WHERE id=? AND status='pending'`,
+		_, _ = s.db.ExecContext(ctx, `UPDATE orders SET status='closed', closed_at=$1, updated_at=$2 WHERE id=$3 AND status='pending'`,
 			time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), existing.ID)
 	}
 	orderNo := newOrderNo(in.StudentID)
-	result, err := s.db.ExecContext(ctx, `INSERT INTO orders(order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, request_id, expired_at) VALUES(?,?,?,?,?,?,?,?,?)`, orderNo, in.StudentID, in.CourseID, in.CourseName, in.PriceCents, in.PriceCents, "pending", in.RequestID, in.ExpiresAt.UTC().Format(time.RFC3339))
+	result, err := s.db.ExecContext(ctx, `INSERT INTO orders(order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, request_id, expired_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, orderNo, in.StudentID, in.CourseID, in.CourseName, in.PriceCents, in.PriceCents, "pending", in.RequestID, in.ExpiresAt.UTC().Format(time.RFC3339))
 	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: orders.student_id, orders.course_id") {
 		candidate, retryErr := s.pending(ctx, in.StudentID, in.CourseID)
 		if retryErr == nil {

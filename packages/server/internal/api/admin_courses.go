@@ -11,7 +11,7 @@ func (s *Server) adminCourses(c *gin.Context) {
 	query := `SELECT course_code, source, name, line, status, price_cents, teacher_id, created_at FROM course`
 	args := make([]any, 0)
 	if st := c.Query("status"); st != "" {
-		query += ` WHERE status = ?`
+		query += ` WHERE status = $1`
 		args = append(args, st)
 	}
 	query += ` ORDER BY id DESC`

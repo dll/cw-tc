@@ -28,7 +28,7 @@ func (s *Server) adminGrantEntitlement(c *gin.Context) {
 	if req.CourseID <= 0 && req.CourseCode != "" {
 		var cid int64
 		if err := s.dbConn.QueryRowContext(c.Request.Context(),
-			`SELECT id FROM course WHERE course_code = ?`, req.CourseCode).Scan(&cid); err != nil {
+			`SELECT id FROM course WHERE course_code = $1`, req.CourseCode).Scan(&cid); err != nil {
 			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "课程不存在"})
 			return
 		}

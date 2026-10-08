@@ -38,7 +38,7 @@ func examDB(t *testing.T) *sql.DB {
 		{"L1-01-02", "judge", "auto", "指针是地址。", "对"},
 		{"L1-02-01", "short", "manual", "简述指针作用。", "间接访问内存"},
 	} {
-		if _, err := database.Exec(`INSERT INTO question(course_id, qno, level, type, gradability, stem, answer, score) VALUES(1,?,'L1',?,?,?,?,1.5)`,
+		if _, err := database.Exec(`INSERT INTO question(course_id, qno, level, type, gradability, stem, answer, score) VALUES(1,$1,'L1',$2,$3,$4,$5,1.5)`,
 			q.qno, q.typ, q.grad, q.stem, q.ans); err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +48,7 @@ func examDB(t *testing.T) *sql.DB {
 
 func grantEntitlement(t *testing.T, database *sql.DB, studentID, courseID int64) {
 	t.Helper()
-	if _, err := database.Exec(`INSERT INTO entitlement(student_id, course_id, source, granted_at) VALUES(?,?,'free','2026-01-01T00:00:00Z')`, studentID, courseID); err != nil {
+	if _, err := database.Exec(`INSERT INTO entitlement(student_id, course_id, source, granted_at) VALUES($1,$2,'free','2026-01-01T00:00:00Z')`, studentID, courseID); err != nil {
 		t.Fatal(err)
 	}
 }

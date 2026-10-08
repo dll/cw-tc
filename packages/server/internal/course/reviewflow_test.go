@@ -22,7 +22,7 @@ func TestReviewAndPublishFlow(t *testing.T) {
 		t.Fatalf("审核通过失败: %v", err)
 	}
 	var status string
-	_ = database.QueryRow(`SELECT status FROM course WHERE course_code=?`, code).Scan(&status)
+	_ = database.QueryRow(`SELECT status FROM course WHERE course_code=$1`, code).Scan(&status)
 	if status != "approved" {
 		t.Fatalf("审核通过后应为 approved，实际 %s", status)
 	}
@@ -31,13 +31,13 @@ func TestReviewAndPublishFlow(t *testing.T) {
 		t.Fatalf("缺证书配置应报 ErrCertConfigRequired，实际 %v", err)
 	}
 	// 补齐证书配置后上架
-	if _, err := database.Exec(`UPDATE course SET cert_names='{"L1":"初级"}', cert_pass_lines='{"L1":60}' WHERE course_code=?`, code); err != nil {
+	if _, err := database.Exec(`UPDATE course SET cert_names='{"L1":"初级"}', cert_pass_lines='{"L1":60}' WHERE course_code=$1`, code); err != nil {
 		t.Fatal(err)
 	}
 	if err := PublishCourse(ctx, database, code, 1); err != nil {
 		t.Fatal(err)
 	}
-	_ = database.QueryRow(`SELECT status FROM course WHERE course_code=?`, code).Scan(&status)
+	_ = database.QueryRow(`SELECT status FROM course WHERE course_code=$1`, code).Scan(&status)
 	if status != "published" {
 		t.Fatalf("上架后应为 published，实际 %s", status)
 	}
@@ -62,7 +62,7 @@ func TestReviewRejectedSetsReason(t *testing.T) {
 		t.Fatal(err)
 	}
 	var status, reason string
-	_ = database.QueryRow(`SELECT status, reject_reason FROM course WHERE course_code=?`, code).Scan(&status, &reason)
+	_ = database.QueryRow(`SELECT status, reject_reason FROM course WHERE course_code=$1`, code).Scan(&status, &reason)
 	if status != "rejected" || reason == "" {
 		t.Fatalf("驳回后应 rejected 且带原因，实际 %s / %s", status, reason)
 	}

@@ -11,7 +11,7 @@ import (
 func SaveAnswer(ctx context.Context, db *sql.DB, sessionID int64, qno, answer string) error {
 	var status string
 	var raw sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT status, answers FROM exam_session WHERE id = ?`, sessionID).Scan(&status, &raw); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT status, answers FROM exam_session WHERE id = $1`, sessionID).Scan(&status, &raw); err != nil {
 		return ErrSessionNotFound
 	}
 	if status != "ongoing" {
@@ -23,7 +23,7 @@ func SaveAnswer(ctx context.Context, db *sql.DB, sessionID int64, qno, answer st
 	}
 	answers[qno] = answer
 	body, _ := json.Marshal(answers)
-	_, err := db.ExecContext(ctx, `UPDATE exam_session SET answers = ? WHERE id = ? AND status = 'ongoing'`, string(body), sessionID)
+	_, err := db.ExecContext(ctx, `UPDATE exam_session SET answers = $1 WHERE id = $2 AND status = 'ongoing'`, string(body), sessionID)
 	return err
 }
 
@@ -41,7 +41,7 @@ func Resume(ctx context.Context, db *sql.DB, sessionID int64, now time.Time) (Re
 	var status string
 	var raw sql.NullString
 	var deadlineRaw string
-	if err := db.QueryRowContext(ctx, `SELECT status, answers, server_deadline_at FROM exam_session WHERE id = ?`, sessionID).
+	if err := db.QueryRowContext(ctx, `SELECT status, answers, server_deadline_at FROM exam_session WHERE id = $1`, sessionID).
 		Scan(&status, &raw, &deadlineRaw); err != nil {
 		return ResumeState{}, ErrSessionNotFound
 	}

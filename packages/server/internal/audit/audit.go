@@ -33,7 +33,7 @@ func Record(ctx context.Context, db *sql.DB, in Input) error {
 	}
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO audit_log(actor_type, actor_id, actor_role, action, target_type, target_id, before, after, ip)
-		 VALUES(?,?,?,?,?,?,?,?,?)`,
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
 		in.ActorType, in.ActorID, in.ActorRole, in.Action, in.TargetType, in.TargetID,
 		nullIfEmpty(in.Before), nullIfEmpty(in.After), nullIfEmpty(in.IP))
 	return err

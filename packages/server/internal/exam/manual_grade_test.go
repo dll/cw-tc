@@ -46,7 +46,7 @@ func TestListManualReviewsAndGrade(t *testing.T) {
 	}
 
 	var resultID, qid int64
-	_ = database.QueryRow(`SELECT id FROM exam_result WHERE exam_session_id = ?`, sid).Scan(&resultID)
+	_ = database.QueryRow(`SELECT id FROM exam_result WHERE exam_session_id = $1`, sid).Scan(&resultID)
 	_ = database.QueryRow(`SELECT id FROM question WHERE qno = 'L1-02-01'`).Scan(&qid)
 
 	// 评阅主观题：满分 1.5，总分应 4.5，通过（>= 4.5）
@@ -55,7 +55,7 @@ func TestListManualReviewsAndGrade(t *testing.T) {
 	}
 	var manual, total float64
 	var isPass bool
-	_ = database.QueryRow(`SELECT manual_score, total_score, is_pass FROM exam_result WHERE id = ?`, resultID).Scan(&manual, &total, &isPass)
+	_ = database.QueryRow(`SELECT manual_score, total_score, is_pass FROM exam_result WHERE id = $1`, resultID).Scan(&manual, &total, &isPass)
 	if manual != 1.5 || total != 4.5 {
 		t.Fatalf("主观分/总分错误: manual=%v total=%v", manual, total)
 	}
@@ -66,7 +66,7 @@ func TestListManualReviewsAndGrade(t *testing.T) {
 	if err := GradeManual(ctx, database, resultID, qid, 1, 0.5, "扣分", `[]`); err != nil {
 		t.Fatal(err)
 	}
-	_ = database.QueryRow(`SELECT manual_score FROM exam_result WHERE id = ?`, resultID).Scan(&manual)
+	_ = database.QueryRow(`SELECT manual_score FROM exam_result WHERE id = $1`, resultID).Scan(&manual)
 	if manual != 0.5 {
 		t.Fatalf("重评应覆盖为 0.5，实际 %v", manual)
 	}

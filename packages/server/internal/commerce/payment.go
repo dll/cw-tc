@@ -48,23 +48,23 @@ func (s *PaymentService) HandleCallback(ctx context.Context, in CallbackInput) e
 	var orderID, studentID, courseID int64
 	var status string
 	var amount int64
-	if err = tx.QueryRowContext(ctx, `SELECT id, student_id, course_id, amount_cents, status FROM orders WHERE order_no=?`, in.OrderNo).Scan(&orderID, &studentID, &courseID, &amount, &status); err != nil || amount != in.AmountCents {
+	if err = tx.QueryRowContext(ctx, `SELECT id, student_id, course_id, amount_cents, status FROM orders WHERE order_no=$1`, in.OrderNo).Scan(&orderID, &studentID, &courseID, &amount, &status); err != nil || amount != in.AmountCents {
 		return ErrCallbackInvalid
 	}
 	var exists int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM payment_txn WHERE idempotency_key=? OR (channel=? AND channel_txn_id=?)`, in.IdempotencyKey, in.Channel, in.ChannelTxnID).Scan(&exists); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM payment_txn WHERE idempotency_key=$1 OR (channel=$2 AND channel_txn_id=$3)`, in.IdempotencyKey, in.Channel, in.ChannelTxnID).Scan(&exists); err != nil {
 		return err
 	}
 	if exists > 0 {
 		return tx.Commit()
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO payment_txn(order_id, channel, channel_txn_id, amount_cents, raw_status, idempotency_key, callback_payload, verified_at) VALUES(?,?,?,?,?,?,?,?)`, orderID, in.Channel, in.ChannelTxnID, in.AmountCents, "success", in.IdempotencyKey, "[REDACTED]", time.Now().UTC().Format(time.RFC3339)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO payment_txn(order_id, channel, channel_txn_id, amount_cents, raw_status, idempotency_key, callback_payload, verified_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, orderID, in.Channel, in.ChannelTxnID, in.AmountCents, "success", in.IdempotencyKey, "[REDACTED]", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE orders SET status='paid', paid_at=?, updated_at=? WHERE id=? AND status='pending'`, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE orders SET status='paid', paid_at=$1, updated_at=$2 WHERE id=$3 AND status='pending'`, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderID); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO entitlement(student_id, course_id, source, order_id, granted_at) VALUES(?,?,?,?,?) ON CONFLICT(student_id, course_id) WHERE revoked_at IS NULL DO NOTHING`, studentID, courseID, "order", orderID, time.Now().UTC().Format(time.RFC3339))
+	_, err = tx.ExecContext(ctx, `INSERT INTO entitlement(student_id, course_id, source, order_id, granted_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(student_id, course_id) WHERE revoked_at IS NULL DO NOTHING`, studentID, courseID, "order", orderID, time.Now().UTC().Format(time.RFC3339))
 	if err != nil && strings.Contains(err.Error(), "constraint") {
 		return fmt.Errorf("开通权益失败: %w", err)
 	}

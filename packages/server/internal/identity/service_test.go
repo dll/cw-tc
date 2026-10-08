@@ -34,7 +34,7 @@ func TestRegisterPersistsProtectedIdentityAndRejectsDuplicates(t *testing.T) {
 		t.Fatalf("注册结果异常: %#v", student)
 	}
 	var plain, hash string
-	if err := database.QueryRow(`SELECT id_card_cipher, id_card_hash FROM student WHERE id = ?`, student.ID).Scan(&plain, &hash); err != nil {
+	if err := database.QueryRow(`SELECT id_card_cipher, id_card_hash FROM student WHERE id = $1`, student.ID).Scan(&plain, &hash); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(plain, "110101199001011237") || hash == "" {

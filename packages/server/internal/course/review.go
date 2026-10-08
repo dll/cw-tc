@@ -85,14 +85,14 @@ func SubmitReview(ctx context.Context, db *sql.DB, in ReviewInput) (bool, error)
 	// round = 现有最大 + 1（追加，不覆盖）
 	var round int
 	if err := db.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(round), 0) FROM course_review WHERE course_code = ?`, in.CourseCode).Scan(&round); err != nil {
+		`SELECT COALESCE(MAX(round), 0) FROM course_review WHERE course_code = $1`, in.CourseCode).Scan(&round); err != nil {
 		return false, err
 	}
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO course_review(course_code, round, content_version, reviewer_id, reviewer_role,
 			score_material, score_objective, score_case, score_lesson_plan, score_slides, score_lab,
 			dimension_notes, issue_list, verdict, reviewed_at)
-		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
 		in.CourseCode, round+1, in.ContentVersion, in.ReviewerID, in.ReviewerRole,
 		in.ScoreMaterial, in.ScoreObjective, in.ScoreCase, in.ScoreLessonPlan, in.ScoreSlides, in.ScoreLab,
 		in.DimensionNotes, in.IssueList, in.Verdict, time.Now().UTC().Format(time.RFC3339))
@@ -121,7 +121,7 @@ func ListReviews(ctx context.Context, db *sql.DB, courseCode string) ([]Review, 
 	}
 	rows, err := db.QueryContext(ctx,
 		`SELECT id, round, content_version, reviewer_id, reviewer_role, total_score, verdict, reviewed_at
-		 FROM course_review WHERE course_code = ? ORDER BY round DESC`, courseCode)
+		 FROM course_review WHERE course_code = $1 ORDER BY round DESC`, courseCode)
 	if err != nil {
 		return nil, err
 	}

@@ -15,7 +15,7 @@ func (s *Service) ChangePassword(ctx context.Context, studentID int64, oldPasswo
 	}
 	var stored []byte
 	var idCardCipher []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT password_hash, id_card_cipher FROM student WHERE id = ?`, studentID).Scan(&stored, &idCardCipher); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT password_hash, id_card_cipher FROM student WHERE id = $1`, studentID).Scan(&stored, &idCardCipher); err != nil {
 		return ErrInvalidCredentials
 	}
 	if len(stored) != 32 || subtle.ConstantTimeCompare(hashPassword(oldPassword), stored) != 1 {
@@ -29,7 +29,7 @@ func (s *Service) ChangePassword(ctx context.Context, studentID int64, oldPasswo
 	} else if err := ValidatePassword(newPassword); err != nil {
 		return err
 	}
-	updated, err := s.db.ExecContext(ctx, `UPDATE student SET password_hash = ?, password_updated_at = ? WHERE id = ?`,
+	updated, err := s.db.ExecContext(ctx, `UPDATE student SET password_hash = $1, password_updated_at = $2 WHERE id = $3`,
 		hashPassword(newPassword), time.Now().UTC().Format(time.RFC3339), studentID)
 	if err != nil {
 		return fmt.Errorf("更新密码失败: %w", err)

@@ -43,14 +43,14 @@ func (s *Server) listCourseLectures(c *gin.Context) {
 		return
 	}
 	var courseID int64
-	if err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT id FROM course WHERE course_code = ? AND status = 'published'`, c.Param("courseCode")).Scan(&courseID); err == sql.ErrNoRows {
+	if err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT id FROM course WHERE course_code = $1 AND status = 'published'`, c.Param("courseCode")).Scan(&courseID); err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "课程不存在"})
 		return
 	} else if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
 	}
-	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT no, title, is_preview FROM lecture WHERE course_id = ? ORDER BY no ASC`, courseID)
+	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT no, title, is_preview FROM lecture WHERE course_id = $1 ORDER BY no ASC`, courseID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return

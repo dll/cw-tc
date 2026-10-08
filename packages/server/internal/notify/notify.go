@@ -38,14 +38,14 @@ func CreateBroadcast(ctx context.Context, db *sql.DB, in BroadcastInput) (int64,
 		return 0, ErrBroadcastInput
 	}
 	var existing sql.NullInt64
-	if err := db.QueryRowContext(ctx, `SELECT id FROM broadcast WHERE idempotency_key = ?`, in.IdempotencyKey).Scan(&existing); err != nil && err != sql.ErrNoRows {
+	if err := db.QueryRowContext(ctx, `SELECT id FROM broadcast WHERE idempotency_key = $1`, in.IdempotencyKey).Scan(&existing); err != nil && err != sql.ErrNoRows {
 		return 0, err
 	}
 	if existing.Valid {
 		return existing.Int64, nil
 	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO broadcast(operator_id, target, target_value, title, body, link, idempotency_key) VALUES(?,?,?,?,?,?,?)`,
+		`INSERT INTO broadcast(operator_id, target, target_value, title, body, link, idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7)`,
 		in.OperatorID, in.Target, in.TargetValue, in.Title, in.Body, in.Link, in.IdempotencyKey)
 	if err != nil {
 		return 0, err
@@ -63,7 +63,7 @@ func ConfirmBroadcast(ctx context.Context, db *sql.DB, broadcastID, operatorID i
 	var sentAt sql.NullString
 	var recipientsCount int
 	if err := db.QueryRowContext(ctx,
-		`SELECT operator_id, target, target_value, title, body, link, sent_at, recipients_count FROM broadcast WHERE id = ?`,
+		`SELECT operator_id, target, target_value, title, body, link, sent_at, recipients_count FROM broadcast WHERE id = $1`,
 		broadcastID).Scan(&op, &target, &targetValue, &title, &body, &link, &sentAt, &recipientsCount); err != nil {
 		if err == sql.ErrNoRows {
 			return 0, ErrBroadcastNotFound
@@ -87,13 +87,13 @@ func ConfirmBroadcast(ctx context.Context, db *sql.DB, broadcastID, operatorID i
 	defer tx.Rollback()
 	for _, sid := range ids {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO notification(student_id, type, title, body, link, broadcast_id) VALUES(?,'broadcast',?,?,?,?)`,
+			`INSERT INTO notification(student_id, type, title, body, link, broadcast_id) VALUES($1,'broadcast',$2,$3,$4,$5)`,
 			sid, title, body, link, broadcastID); err != nil {
 			return 0, err
 		}
 	}
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE broadcast SET sent_at=?, recipients_count=? WHERE id=?`,
+		`UPDATE broadcast SET sent_at=$1, recipients_count=$2 WHERE id=$3`,
 		time.Now().UTC().Format(time.RFC3339), len(ids), broadcastID); err != nil {
 		return 0, err
 	}
@@ -112,10 +112,10 @@ func recipients(ctx context.Context, db *sql.DB, target, targetValue string) ([]
 		rows, err = db.QueryContext(ctx, `SELECT id FROM student`)
 	case "course":
 		rows, err = db.QueryContext(ctx,
-			`SELECT DISTINCT e.student_id FROM entitlement e JOIN course c ON e.course_id = c.id WHERE c.course_code = ? AND e.revoked_at IS NULL`, targetValue)
+			`SELECT DISTINCT e.student_id FROM entitlement e JOIN course c ON e.course_id = c.id WHERE c.course_code = $1 AND e.revoked_at IS NULL`, targetValue)
 	case "major":
 		rows, err = db.QueryContext(ctx,
-			`SELECT DISTINCT e.student_id FROM entitlement e JOIN course c ON e.course_id = c.id WHERE c.major_id = ? AND e.revoked_at IS NULL`, targetValue)
+			`SELECT DISTINCT e.student_id FROM entitlement e JOIN course c ON e.course_id = c.id WHERE c.major_id = $1 AND e.revoked_at IS NULL`, targetValue)
 	default:
 		return nil, ErrTargetInvalid
 	}
@@ -142,11 +142,11 @@ func ListNotifications(ctx context.Context, db *sql.DB, studentID int64, unreadO
 	if limit <= 0 {
 		limit = 20
 	}
-	q := `SELECT id, type, title, body, link, read_at, broadcast_id, created_at FROM notification WHERE student_id = ?`
+	q := `SELECT id, type, title, body, link, read_at, broadcast_id, created_at FROM notification WHERE student_id = $1`
 	if unreadOnly {
 		q += ` AND read_at IS NULL`
 	}
-	q += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	q += ` ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	rows, err := db.QueryContext(ctx, q, studentID, limit, offset)
 	if err != nil {
 		return nil, err
@@ -176,7 +176,7 @@ func MarkRead(ctx context.Context, db *sql.DB, notificationID, studentID int64) 
 		return ErrNotificationNotFound
 	}
 	res, err := db.ExecContext(ctx,
-		`UPDATE notification SET read_at = ? WHERE id = ? AND student_id = ? AND read_at IS NULL`,
+		`UPDATE notification SET read_at = $1 WHERE id = $2 AND student_id = $3 AND read_at IS NULL`,
 		time.Now().UTC().Format(time.RFC3339), notificationID, studentID)
 	if err != nil {
 		return err

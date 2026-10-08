@@ -19,7 +19,7 @@ func (s *Service) AnonymizeAccount(ctx context.Context, studentID int64) error {
 	synthetic := fmt.Sprintf("deleted-%d", studentID)
 	digest := sha256.Sum256([]byte(synthetic))
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE student SET status = 'anonymized', name = '已注销', phone = ?, id_card_cipher = X'', id_card_hash = ?, updated_at = ? WHERE id = ? AND status <> 'anonymized'`,
+		`UPDATE student SET status = 'anonymized', name = '已注销', phone = $1, id_card_cipher = X'', id_card_hash = $2, updated_at = $3 WHERE id = $4 AND status <> 'anonymized'`,
 		synthetic, digest[:], time.Now().UTC().Format(time.RFC3339), studentID)
 	return err
 }

@@ -28,14 +28,14 @@ func RecordAnomaly(ctx context.Context, db *sql.DB, sessionID int64, kind Anomal
 		return ErrAnomalyKind
 	}
 	var exists int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM exam_session WHERE id = ?`, sessionID).Scan(&exists); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM exam_session WHERE id = $1`, sessionID).Scan(&exists); err != nil {
 		return err
 	}
 	if exists == 0 {
 		return ErrSessionNotFound
 	}
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO exam_anomaly(exam_id, kind, detail, at, verdict) VALUES(?,?,?,?,'pending')`,
+		`INSERT INTO exam_anomaly(exam_id, kind, detail, at, verdict) VALUES($1,$2,$3,$4,'pending')`,
 		sessionID, string(kind), detail, time.Now().UTC().Format(time.RFC3339))
 	return err
 }

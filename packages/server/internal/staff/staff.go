@@ -41,7 +41,7 @@ func Create(ctx context.Context, db *sql.DB, account, name string, role Role, pa
 		return 0, ErrRoleInvalid
 	}
 	var exists int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM staff WHERE account = ?`, account).Scan(&exists); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM staff WHERE account = $1`, account).Scan(&exists); err != nil {
 		return 0, err
 	}
 	if exists > 0 {
@@ -52,7 +52,7 @@ func Create(ctx context.Context, db *sql.DB, account, name string, role Role, pa
 		createdByArg = createdBy
 	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO staff(account, name, role, password_hash, created_source, created_by) VALUES(?,?,?,?,'admin',?)`,
+		`INSERT INTO staff(account, name, role, password_hash, created_source, created_by) VALUES($1,$2,$3,$4,'admin',$5)`,
 		account, name, string(role), hashPassword(password), createdByArg)
 	if err != nil {
 		return 0, err
@@ -66,14 +66,14 @@ func Disable(ctx context.Context, db *sql.DB, staffID int64) error {
 		return ErrStaffInput
 	}
 	var courses int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM course WHERE teacher_id = ?`, staffID).Scan(&courses); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM course WHERE teacher_id = $1`, staffID).Scan(&courses); err != nil {
 		return err
 	}
 	if courses > 0 {
 		return ErrHasActiveCourse
 	}
 	res, err := db.ExecContext(ctx,
-		`UPDATE staff SET status = 'disabled', updated_at = ? WHERE id = ? AND status = 'active'`,
+		`UPDATE staff SET status = 'disabled', updated_at = $1 WHERE id = $2 AND status = 'active'`,
 		time.Now().UTC().Format(time.RFC3339), staffID)
 	if err != nil {
 		return err
@@ -98,14 +98,14 @@ func ChangePassword(ctx context.Context, db *sql.DB, staffID int64, oldPassword,
 		return ErrStaffInput
 	}
 	var stored []byte
-	if err := db.QueryRowContext(ctx, `SELECT password_hash FROM staff WHERE id = ?`, staffID).Scan(&stored); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT password_hash FROM staff WHERE id = $1`, staffID).Scan(&stored); err != nil {
 		return ErrStaffNotFound
 	}
 	if len(stored) != sha256.Size || subtle.ConstantTimeCompare(hashPassword(oldPassword), stored) != 1 {
 		return ErrInvalidCredentials
 	}
 	res, err := db.ExecContext(ctx,
-		`UPDATE staff SET password_hash = ?, password_changed_at = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE staff SET password_hash = $1, password_changed_at = $2, updated_at = $3 WHERE id = $4`,
 		hashPassword(newPassword), now.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339), staffID)
 	if err != nil {
 		return err
@@ -127,7 +127,7 @@ func SeedStaff(ctx context.Context, db *sql.DB, account, name string, role Role,
 		return 0, false, ErrRoleInvalid
 	}
 	var id int64
-	err := db.QueryRowContext(ctx, `SELECT id FROM staff WHERE account = ?`, account).Scan(&id)
+	err := db.QueryRowContext(ctx, `SELECT id FROM staff WHERE account = $1`, account).Scan(&id)
 	if err == nil {
 		return id, false, nil // 已存在，幂等跳过
 	}
@@ -135,7 +135,7 @@ func SeedStaff(ctx context.Context, db *sql.DB, account, name string, role Role,
 		return 0, false, err
 	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO staff(account, name, role, password_hash, created_source) VALUES(?,?,?,?,'seed')`,
+		`INSERT INTO staff(account, name, role, password_hash, created_source) VALUES($1,$2,$3,$4,'seed')`,
 		account, name, string(role), hashPassword(password))
 	if err != nil {
 		return 0, false, err
@@ -158,14 +158,14 @@ func TransferCourse(ctx context.Context, db *sql.DB, courseID, toTeacherID int64
 		return ErrStaffInput
 	}
 	var role, status string
-	if err := db.QueryRowContext(ctx, `SELECT role, status FROM staff WHERE id = ?`, toTeacherID).Scan(&role, &status); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT role, status FROM staff WHERE id = $1`, toTeacherID).Scan(&role, &status); err != nil {
 		return ErrStaffNotFound
 	}
 	if role != string(RoleTeacher) || status != "active" {
 		return ErrStaffNotFound
 	}
 	res, err := db.ExecContext(ctx,
-		`UPDATE course SET teacher_id = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE course SET teacher_id = $1, updated_at = $2 WHERE id = $3`,
 		toTeacherID, time.Now().UTC().Format(time.RFC3339), courseID)
 	if err != nil {
 		return err

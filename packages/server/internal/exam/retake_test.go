@@ -22,7 +22,7 @@ func TestRetakeCooldown(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seq int
-	_ = database.QueryRow(`SELECT retake_seq FROM exam_session WHERE id=?`, sid1).Scan(&seq)
+	_ = database.QueryRow(`SELECT retake_seq FROM exam_session WHERE id=$1`, sid1).Scan(&seq)
 	if seq != 1 {
 		t.Fatalf("首次 retake_seq 应为 1，实际 %d", seq)
 	}
@@ -33,7 +33,7 @@ func TestRetakeCooldown(t *testing.T) {
 	}
 
 	// 把最近交卷时间拨到 25 小时前 → 冷却结束，可重考
-	if _, err := database.Exec(`UPDATE exam_session SET submitted_at=? WHERE id=?`,
+	if _, err := database.Exec(`UPDATE exam_session SET submitted_at=$1 WHERE id=$2`,
 		time.Now().Add(-25*time.Hour).UTC().Format(time.RFC3339), sid1); err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestRetakeCooldown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("冷却结束后应可重考: %v", err)
 	}
-	_ = database.QueryRow(`SELECT retake_seq FROM exam_session WHERE id=?`, sid2).Scan(&seq)
+	_ = database.QueryRow(`SELECT retake_seq FROM exam_session WHERE id=$1`, sid2).Scan(&seq)
 	if seq != 2 {
 		t.Fatalf("第二次 retake_seq 应为 2，实际 %d", seq)
 	}

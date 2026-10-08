@@ -16,7 +16,7 @@ func (s *Server) publicCourseDetail(c *gin.Context) {
 	var intro sql.NullString
 	var price, original sql.NullInt64
 	var majorID sql.NullInt64
-	err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT course_code, name, intro, price_cents, original_price_cents, major_id FROM course WHERE course_code=? AND status='published'`, c.Param("courseCode")).Scan(&code, &name, &intro, &price, &original, &majorID)
+	err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT course_code, name, intro, price_cents, original_price_cents, major_id FROM course WHERE course_code=$1 AND status='published'`, c.Param("courseCode")).Scan(&code, &name, &intro, &price, &original, &majorID)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "课程不存在"})
 		return

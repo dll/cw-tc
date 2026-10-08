@@ -60,7 +60,7 @@ func TestStaffAuthenticateExpiredToken(t *testing.T) {
 	}
 	_ = id
 	// 把会话改为已过期
-	if _, err := database.Exec(`UPDATE staff_session SET expires_at = ?`, now.Add(-1*time.Hour).UTC().Format(time.RFC3339)); err != nil {
+	if _, err := database.Exec(`UPDATE staff_session SET expires_at = $1`, now.Add(-1*time.Hour).UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Authenticate(ctx, database, token, now); err != ErrUnauthenticated {

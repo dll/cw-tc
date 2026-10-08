@@ -15,7 +15,7 @@ import (
 func (s *Server) teacherCourses(c *gin.Context) {
 	st := c.MustGet(staffContextKey).(staff.Staff)
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
-		`SELECT course_code, name, line, status, price_cents, major_id, created_at FROM course WHERE teacher_id = ? ORDER BY id DESC`, st.ID)
+		`SELECT course_code, name, line, status, price_cents, major_id, created_at FROM course WHERE teacher_id = $1 ORDER BY id DESC`, st.ID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 		return
@@ -62,7 +62,7 @@ func (s *Server) teacherCreateCourse(c *gin.Context) {
 	code := newPlatformCourseCode()
 	_, err := s.dbConn.ExecContext(c.Request.Context(),
 		`INSERT INTO course(course_code, source, name, intro, line, major_id, status, teacher_id, created_at, updated_at)
-		 VALUES(?, 'platform', ?, ?, ?, ?, 'proposed', ?, ?, ?)`,
+		 VALUES($1, 'platform', $2, $3, $4, $5, 'proposed', $6, $7, $8)`,
 		code, req.Name, req.Intro, line, req.MajorID, st.ID, time.Now().UTC(), time.Now().UTC())
 	if err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10002, Msg: "创建失败"})
@@ -76,7 +76,7 @@ func (s *Server) teacherSubmitCourse(c *gin.Context) {
 	st := c.MustGet(staffContextKey).(staff.Staff)
 	code := c.Param("code")
 	res, err := s.dbConn.ExecContext(c.Request.Context(),
-		`UPDATE course SET status = 'submitted', submitted_at = ? WHERE course_code = ? AND teacher_id = ? AND status IN ('proposed','rejected')`,
+		`UPDATE course SET status = 'submitted', submitted_at = $1 WHERE course_code = $2 AND teacher_id = $3 AND status IN ('proposed','rejected')`,
 		time.Now().UTC(), code, st.ID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})

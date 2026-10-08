@@ -36,7 +36,7 @@ func Login(ctx context.Context, db *sql.DB, account, password string, now time.T
 	var stored []byte
 	var changedAt sql.NullString
 	if err := db.QueryRowContext(ctx,
-		`SELECT id, account, name, role, password_hash, status, password_changed_at FROM staff WHERE account = ?`, account).
+		`SELECT id, account, name, role, password_hash, status, password_changed_at FROM staff WHERE account = $1`, account).
 		Scan(&st.ID, &st.Account, &st.Name, &roleStr, &stored, &status, &changedAt); err != nil {
 		return Staff{}, "", ErrInvalidCredentials
 	}
@@ -64,7 +64,7 @@ func Authenticate(ctx context.Context, db *sql.DB, token string, now time.Time) 
 	var staffID int64
 	var expiresAt string
 	if err := db.QueryRowContext(ctx,
-		`SELECT staff_id, expires_at FROM staff_session WHERE token_hash = ? AND revoked_at IS NULL`, digest[:]).
+		`SELECT staff_id, expires_at FROM staff_session WHERE token_hash = $1 AND revoked_at IS NULL`, digest[:]).
 		Scan(&staffID, &expiresAt); err != nil {
 		return Staff{}, ErrUnauthenticated
 	}
@@ -75,7 +75,7 @@ func Authenticate(ctx context.Context, db *sql.DB, token string, now time.Time) 
 	var st Staff
 	var roleStr string
 	if err := db.QueryRowContext(ctx,
-		`SELECT id, account, name, role FROM staff WHERE id = ? AND status = 'active'`, staffID).
+		`SELECT id, account, name, role FROM staff WHERE id = $1 AND status = 'active'`, staffID).
 		Scan(&st.ID, &st.Account, &st.Name, &roleStr); err != nil {
 		return Staff{}, ErrUnauthenticated
 	}
@@ -92,7 +92,7 @@ func createSession(ctx context.Context, db *sql.DB, staffID int64, now time.Time
 	digest := sha256.Sum256([]byte(token))
 	expires := now.Add(12 * time.Hour) // 后台会话 12 小时
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO staff_session(staff_id, token_hash, issued_at, expires_at) VALUES(?,?,?,?)`,
+		`INSERT INTO staff_session(staff_id, token_hash, issued_at, expires_at) VALUES($1,$2,$3,$4)`,
 		staffID, digest[:], now.UTC().Format(time.RFC3339), expires.UTC().Format(time.RFC3339))
 	return token, err
 }

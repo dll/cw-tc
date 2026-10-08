@@ -28,7 +28,7 @@ func (s *Service) loginWithClock(ctx context.Context, phone, password string, no
 	var student Student
 	var stored []byte
 	var lockedUntil sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone, password_hash, locked_until FROM student WHERE phone = ? AND status = 'active'`, phone).
+	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone, password_hash, locked_until FROM student WHERE phone = $1 AND status = 'active'`, phone).
 		Scan(&student.ID, &student.StudentNo, &student.Name, &student.Phone, &stored, &lockedUntil)
 	if err != nil {
 		return Student{}, ErrInvalidCredentials
@@ -47,15 +47,15 @@ func (s *Service) loginWithClock(ctx context.Context, phone, password string, no
 }
 
 func (s *Service) recordFailedLogin(ctx context.Context, studentID int64, now time.Time) {
-	_, _ = s.db.ExecContext(ctx, `UPDATE student SET failed_login_count = failed_login_count + 1, updated_at = ? WHERE id = ?`, now.UTC().Format(time.RFC3339), studentID)
+	_, _ = s.db.ExecContext(ctx, `UPDATE student SET failed_login_count = failed_login_count + 1, updated_at = $1 WHERE id = $2`, now.UTC().Format(time.RFC3339), studentID)
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT failed_login_count FROM student WHERE id = ?`, studentID).Scan(&count); err == nil && count >= maxFailedLogins {
-		_, _ = s.db.ExecContext(ctx, `UPDATE student SET locked_until = ? WHERE id = ?`, now.Add(lockDuration).UTC().Format(time.RFC3339), studentID)
+	if err := s.db.QueryRowContext(ctx, `SELECT failed_login_count FROM student WHERE id = $1`, studentID).Scan(&count); err == nil && count >= maxFailedLogins {
+		_, _ = s.db.ExecContext(ctx, `UPDATE student SET locked_until = $1 WHERE id = $2`, now.Add(lockDuration).UTC().Format(time.RFC3339), studentID)
 	}
 }
 
 func (s *Service) resetFailedLogin(ctx context.Context, studentID int64, now time.Time) {
-	_, _ = s.db.ExecContext(ctx, `UPDATE student SET failed_login_count = 0, locked_until = NULL, last_login_at = ? WHERE id = ?`, now.UTC().Format(time.RFC3339), studentID)
+	_, _ = s.db.ExecContext(ctx, `UPDATE student SET failed_login_count = 0, locked_until = NULL, last_login_at = $1 WHERE id = $2`, now.UTC().Format(time.RFC3339), studentID)
 }
 
 func (s *Service) studentExists(ctx context.Context, phone string) bool {
@@ -63,7 +63,7 @@ func (s *Service) studentExists(ctx context.Context, phone string) bool {
 		return false
 	}
 	var id int64
-	return s.db.QueryRowContext(ctx, `SELECT id FROM student WHERE phone = ?`, phone).Scan(&id) == nil
+	return s.db.QueryRowContext(ctx, `SELECT id FROM student WHERE phone = $1`, phone).Scan(&id) == nil
 }
 
 var _ *sql.DB

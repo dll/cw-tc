@@ -26,11 +26,11 @@ func AddLecture(ctx context.Context, db *sql.DB, in LectureInput) (int64, error)
 	}
 	var no int
 	if err := db.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(no), 0) FROM lecture WHERE course_id = ?`, in.CourseID).Scan(&no); err != nil {
+		`SELECT COALESCE(MAX(no), 0) FROM lecture WHERE course_id = $1`, in.CourseID).Scan(&no); err != nil {
 		return 0, err
 	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO lecture(course_id, no, title, is_preview, origin) VALUES(?,?,?,?,'platform')`,
+		`INSERT INTO lecture(course_id, no, title, is_preview, origin) VALUES($1,$2,$3,$4,'platform')`,
 		in.CourseID, no+1, in.Title, in.IsPreview)
 	if err != nil {
 		return 0, err
@@ -65,7 +65,7 @@ func AddQuestion(ctx context.Context, db *sql.DB, in QuestionInput) (int64, erro
 	}
 	var dup int
 	if err := db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM question WHERE course_id = ? AND qno = ?`, in.CourseID, in.QNo).Scan(&dup); err != nil {
+		`SELECT COUNT(*) FROM question WHERE course_id = $1 AND qno = $2`, in.CourseID, in.QNo).Scan(&dup); err != nil {
 		return 0, err
 	}
 	if dup > 0 {
@@ -73,7 +73,7 @@ func AddQuestion(ctx context.Context, db *sql.DB, in QuestionInput) (int64, erro
 	}
 	res, err := db.ExecContext(ctx,
 		`INSERT INTO question(course_id, qno, level, type, gradability, stem, options, answer, analysis, score)
-		 VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 		in.CourseID, in.QNo, in.Level, in.Type, in.Gradability, in.Stem, in.Options, in.Answer, in.Analysis, in.Score)
 	if err != nil {
 		return 0, err
@@ -89,7 +89,7 @@ func checkPlatformOwnership(ctx context.Context, db *sql.DB, courseID, teacherID
 	var source string
 	var teacher sql.NullInt64
 	if err := db.QueryRowContext(ctx,
-		`SELECT source, teacher_id FROM course WHERE id = ?`, courseID).Scan(&source, &teacher); err != nil {
+		`SELECT source, teacher_id FROM course WHERE id = $1`, courseID).Scan(&source, &teacher); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrCourseNotFound
 		}

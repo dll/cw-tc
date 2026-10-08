@@ -28,7 +28,7 @@ func TestTeacherGradeRoutes(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO major(id, name) VALUES(1,'样例专业')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id, cert_pass_lines) VALUES(1,'C1','platform','样例课程','main',1,'published',?,'{"L1":3.0}')`, teacherID); err != nil {
+	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id, cert_pass_lines) VALUES(1,'C1','platform','样例课程','main',1,'published',$1,'{"L1":3.0}')`, teacherID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.Exec(`INSERT INTO student(id, student_no, name, phone, id_card_hash, id_card_cipher, agreement_versions) VALUES(1,'S00000001','样例学员','13812345678',X'01',X'02','[]')`); err != nil {

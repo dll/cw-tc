@@ -30,7 +30,7 @@ func (s *Service) CreateSession(ctx context.Context, studentID int64, now time.T
 	digest := sha256.Sum256([]byte(token))
 	expires := now.Add(7 * 24 * time.Hour)
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO student_session(student_id, token_hash, issued_at, expires_at) VALUES (?, ?, ?, ?)`,
+		`INSERT INTO student_session(student_id, token_hash, issued_at, expires_at) VALUES ($1, $2, $3, $4)`,
 		studentID, digest[:], now.UTC().Format(time.RFC3339), expires.UTC().Format(time.RFC3339))
 	if err != nil {
 		return Session{}, fmt.Errorf("创建会话失败: %w", err)
@@ -46,7 +46,7 @@ func (s *Service) RevokeAllSessions(ctx context.Context, studentID int64) error 
 	if s.db == nil || studentID <= 0 {
 		return ErrSessionNotFound
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE student_session SET revoked_at = CURRENT_TIMESTAMP WHERE student_id = ? AND revoked_at IS NULL`, studentID)
+	_, err := s.db.ExecContext(ctx, `UPDATE student_session SET revoked_at = CURRENT_TIMESTAMP WHERE student_id = $1 AND revoked_at IS NULL`, studentID)
 	return err
 }
 
@@ -55,7 +55,7 @@ func (s *Service) RevokeSession(ctx context.Context, token string) error {
 		return ErrSessionNotFound
 	}
 	digest := sha256.Sum256([]byte(token))
-	result, err := s.db.ExecContext(ctx, `UPDATE student_session SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = ? AND revoked_at IS NULL`, digest[:])
+	result, err := s.db.ExecContext(ctx, `UPDATE student_session SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = $1 AND revoked_at IS NULL`, digest[:])
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (s *Service) VerifySession(ctx context.Context, token string, now time.Time
 	var studentID int64
 	var expiresAt string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT student_id, expires_at FROM student_session WHERE token_hash = ? AND revoked_at IS NULL`, digest[:]).Scan(&studentID, &expiresAt)
+		`SELECT student_id, expires_at FROM student_session WHERE token_hash = $1 AND revoked_at IS NULL`, digest[:]).Scan(&studentID, &expiresAt)
 	if err != nil {
 		return 0, ErrSessionNotFound
 	}

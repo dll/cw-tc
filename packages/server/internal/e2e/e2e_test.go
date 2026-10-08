@@ -46,7 +46,7 @@ func e2eDB(t *testing.T) *sql.DB {
 		{"L1-01-01", "single", "auto", "赋值是表达式吗？", "A"},
 		{"L1-01-02", "judge", "auto", "指针是地址。", "对"},
 	} {
-		if _, err := database.Exec(`INSERT INTO question(course_id, qno, level, type, gradability, stem, answer, score) VALUES(1,?,'L1',?,?,?,?,1.5)`,
+		if _, err := database.Exec(`INSERT INTO question(course_id, qno, level, type, gradability, stem, answer, score) VALUES(1,$1,'L1',$2,$3,$4,$5,1.5)`,
 			q.qno, q.typ, q.grad, q.stem, q.ans); err != nil {
 			t.Fatal(err)
 		}

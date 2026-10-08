@@ -32,7 +32,7 @@ func (s *Server) startExam(c *gin.Context) {
 	if req.CourseID <= 0 && req.CourseCode != "" {
 		var cid int64
 		if err := s.dbConn.QueryRowContext(c.Request.Context(),
-			`SELECT id FROM course WHERE course_code = ?`, req.CourseCode).Scan(&cid); err != nil {
+			`SELECT id FROM course WHERE course_code = $1`, req.CourseCode).Scan(&cid); err != nil {
 			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "课程不存在"})
 			return
 		}
@@ -104,13 +104,13 @@ func issueCertForSession(ctx context.Context, db *sql.DB, sessionID int64, res e
 	var studentID, courseID int64
 	var level string
 	if err := db.QueryRowContext(ctx,
-		`SELECT student_id, course_id, level FROM exam_session WHERE id = ?`, sessionID).
+		`SELECT student_id, course_id, level FROM exam_session WHERE id = $1`, sessionID).
 		Scan(&studentID, &courseID, &level); err != nil {
 		return "", err
 	}
 	var courseCode string
 	if err := db.QueryRowContext(ctx,
-		`SELECT course_code FROM course WHERE id = ?`, courseID).Scan(&courseCode); err != nil {
+		`SELECT course_code FROM course WHERE id = $1`, courseID).Scan(&courseCode); err != nil {
 		return "", err
 	}
 	return exam.IssueCertificate(ctx, db, exam.CertIssueInput{
