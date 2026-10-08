@@ -119,10 +119,15 @@ func SubmitExam(ctx context.Context, db *sql.DB, sessionID int64, answers map[st
 	return Result{SessionID: sessionID, AutoScore: autoScore, TotalScore: autoScore, IsPass: isPass, Band: band}, nil
 }
 
+// rowQuerier 抽象 *sql.DB 与 *sql.Tx 共有的单行查询能力。
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // passLineFor 读取课程的档位合格线（cert_pass_lines 来自上游冻结，不写死）。
-func passLineFor(ctx context.Context, db *sql.DB, courseID int64, level string) float64 {
+func passLineFor(ctx context.Context, q rowQuerier, courseID int64, level string) float64 {
 	var raw sql.NullString
-	_ = db.QueryRowContext(ctx, `SELECT cert_pass_lines FROM course WHERE id = ?`, courseID).Scan(&raw)
+	_ = q.QueryRowContext(ctx, `SELECT cert_pass_lines FROM course WHERE id = ?`, courseID).Scan(&raw)
 	if !raw.Valid {
 		return 0
 	}

@@ -246,3 +246,34 @@ export async function createTeacherCourse(input: {
 export async function submitCourse(code: string): Promise<void> {
   await unwrap<unknown>(http.post(`/teacher/courses/${code}/submit`, {}))
 }
+
+// —— 阅卷台 ——
+export interface GradeListItem {
+  ResultID: number
+  ExamSessionID: number
+  StudentID: number
+  CourseID: number
+  CourseName: string
+  Level: string
+  AutoScore: number
+  ManualScore: number
+  TotalScore: number
+}
+export interface GradeQuestion {
+  qno: string
+  question_id: number
+  stem: string
+  score: number
+  gradability: string
+  answer: string
+}
+export async function listGradeReviews(): Promise<GradeListItem[]> {
+  const r = await unwrap<{ items: GradeListItem[] }>(http.get('/teacher/grade'))
+  return r.items
+}
+export async function gradeDetail(resultId: number): Promise<{ result_id: number; items: GradeQuestion[] }> {
+  return unwrap<{ result_id: number; items: GradeQuestion[] }>(http.get(`/teacher/grade/${resultId}`))
+}
+export async function submitGrade(resultId: number, questionId: number, input: { score: number; comment?: string; points?: string }): Promise<void> {
+  await unwrap<unknown>(http.post(`/teacher/grade/${resultId}/questions/${questionId}`, input))
+}
