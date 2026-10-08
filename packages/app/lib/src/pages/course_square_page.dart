@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../api/api_client.dart';
 import '../models/course.dart';
@@ -72,34 +73,38 @@ class _CourseCard extends StatelessWidget {
     final theme = Theme.of(context);
     return Card(
       margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(course.name, style: theme.textTheme.titleMedium),
-                  if (course.intro != null && course.intro!.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 4),
-                    Text(
-                      course.intro!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
-                    ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.push('/courses/${course.courseCode}'),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(course.name, style: theme.textTheme.titleMedium),
+                    if (course.intro != null && course.intro!.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 4),
+                      Text(
+                        course.intro!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              course.priceLabel,
-              style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.primary),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Text(
+                course.priceLabel,
+                style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.primary),
+              ),
+            ],
+          ),
         ),
       ),
     );

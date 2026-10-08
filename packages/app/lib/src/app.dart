@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'pages/course_square_page.dart';
+import 'pages/course_detail_page.dart';
 import 'pages/home_page.dart';
 import 'pages/me_page.dart';
 import 'pages/placeholder_page.dart';
@@ -48,6 +49,10 @@ final GoRouter _router = GoRouter(
     ),
 
     // —— 整页业务路由（不进底部导航；信息架构按 PRD v2 §8.1 固定）——
+    GoRoute(
+      path: '/courses/:code',
+      builder: (_, GoRouterState s) => CourseDetailPage(courseCode: s.pathParameters['code']!),
+    ),
     GoRoute(
       path: '/learn/:code/:no',
       builder: (_, GoRouterState s) => PlaceholderPage(

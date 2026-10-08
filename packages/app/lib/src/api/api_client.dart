@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/course.dart';
+import '../models/lecture.dart';
 
 /// 后端 API 客户端（M0 骨架）。
 ///
@@ -60,6 +61,23 @@ class ApiClient {
     final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
     return items
         .map((e) => Course.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 课程详情（`GET /api/v1/courses/:courseCode`，公开只读）。
+  Future<Course> courseDetail(String courseCode) async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/courses/$courseCode');
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    return Course.fromJson(data ?? const <String, dynamic>{});
+  }
+
+  /// 课程讲次列表（`GET /api/v1/courses/:courseCode/lectures`，公开只读）。
+  Future<List<Lecture>> lectures(String courseCode) async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/courses/$courseCode/lectures');
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return items
+        .map((e) => Lecture.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
