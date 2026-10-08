@@ -27,6 +27,12 @@ func TestAdminStaffAndRefundRoutes(t *testing.T) {
 	if _, err = database.Exec(`INSERT INTO major(id, name) VALUES(1,'样例专业')`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = database.Exec(`INSERT INTO staff(id, account, name, role, password_hash, created_source) VALUES(99,'t','教师','teacher',X'01','seed')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id, price_cents) VALUES(1,'C1','platform','课程','main',1,'published',99,1000)`); err != nil {
+		t.Fatal(err)
+	}
 	r := NewWithDatabase(testConfig(t, true), database).Router()
 
 	login := performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"admin","password":"Temp@123"}`)
@@ -69,5 +75,17 @@ func TestAdminStaffAndRefundRoutes(t *testing.T) {
 	}
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/orders/NOPE/refund", `{"kind":"normal","amount_cents":100,"reason":"退款","confirm":true}`, token); got.Code != http.StatusConflict {
 		t.Fatalf("退款不存在订单应 409，实际 %d", got.Code)
+	}
+	// 改价：未二次确认 → 400；确认 → 200 且写审计
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/C1/price", `{"price_cents":2000}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("改价未确认应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/C1/price", `{"price_cents":2000,"confirm":true}`, token); got.Code != http.StatusOK {
+		t.Fatalf("改价应 200 = %d %s", got.Code, got.Body.String())
+	}
+	var n int
+	_ = database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='course.price_change'`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("改价应写审计 1 条，实际 %d", n)
 	}
 }

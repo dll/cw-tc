@@ -85,3 +85,18 @@ func TestCourseAdminEdgeCases(t *testing.T) {
 		t.Fatalf("重复送审应幂等返回 nil，实际 %v", err)
 	}
 }
+
+func TestSetPriceEdges(t *testing.T) {
+	database := courseDB(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	// 不存在的课程
+	if err := SetPrice(ctx, database, "TC-NOPE", 100); err != ErrCourseNotFound {
+		t.Fatalf("改价不存在课程应报 ErrCourseNotFound，实际 %v", err)
+	}
+	// 非法参数
+	if err := SetPrice(ctx, database, "", -1); err != ErrCourseInput {
+		t.Fatalf("非法改价参数应报 ErrCourseInput，实际 %v", err)
+	}
+}

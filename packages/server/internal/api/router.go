@@ -130,6 +130,7 @@ func (s *Server) Router() *gin.Engine {
 	admin.DELETE("/entitlements/:studentID/:courseID", s.adminRevokeEntitlement)
 	admin.POST("/courses/:code/review", s.adminReviewCourse)
 	admin.POST("/courses/:code/publish", s.adminPublishCourse)
+	admin.POST("/courses/:code/price", s.adminSetPrice)
 	admin.POST("/broadcasts", s.adminCreateBroadcast)
 	admin.POST("/broadcasts/:id/confirm", s.adminConfirmBroadcast)
 	admin.POST("/staff", s.adminCreateStaff)

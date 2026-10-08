@@ -59,6 +59,24 @@ func SubmitCourse(ctx context.Context, db *sql.DB, courseCode string, teacherID 
 		map[string]bool{"proposed": true, "building": true}, true)
 }
 
+// SetPrice 管理员改价（铁律 8 高危操作：二次确认在 API 层，写审计在调用方）。
+func SetPrice(ctx context.Context, db *sql.DB, courseCode string, priceCents int64) error {
+	if db == nil || courseCode == "" || priceCents < 0 {
+		return ErrCourseInput
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE course SET price_cents = ?, updated_at = ? WHERE course_code = ?`,
+		priceCents, time.Now().UTC().Format(time.RFC3339), courseCode)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrCourseNotFound
+	}
+	return nil
+}
+
 // transition 统一状态机跃迁：校验归属 + 前置状态合法性 + 送审前必填 major_id。
 func transition(ctx context.Context, db *sql.DB, courseCode string, teacherID int64,
 	to string, from map[string]bool, needMajor bool) error {

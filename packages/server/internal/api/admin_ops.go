@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/cw-tc/server/internal/audit"
 	"github.com/cw-tc/server/internal/commerce"
 	"github.com/cw-tc/server/internal/course"
 	"github.com/cw-tc/server/internal/notify"
@@ -93,6 +94,33 @@ func (s *Server) adminPublishCourse(c *gin.Context) {
 		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: err.Error()})
 		return
 	}
+	c.JSON(http.StatusOK, envelope{Code: 0})
+}
+
+// adminSetPrice POST /admin/courses/:code/price —— 改价（二次确认 + 写审计，铁律 8）。
+func (s *Server) adminSetPrice(c *gin.Context) {
+	var req struct {
+		PriceCents int64 `json:"price_cents"`
+		Confirm    bool  `json:"confirm"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.PriceCents < 0 {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	if !req.Confirm {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "高危操作需二次确认"})
+		return
+	}
+	admin := c.MustGet(staffContextKey).(staff.Staff)
+	if err := course.SetPrice(c.Request.Context(), s.dbConn, c.Param("code"), req.PriceCents); err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: err.Error()})
+		return
+	}
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "course.price_change", TargetType: "course", TargetID: c.Param("code"),
+		AfterValue: strconv.FormatInt(req.PriceCents, 10),
+	})
 	c.JSON(http.StatusOK, envelope{Code: 0})
 }
 
