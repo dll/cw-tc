@@ -69,6 +69,13 @@ func TestAdminLoginAndLedgerRoutes(t *testing.T) {
 	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/certs", "", token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"items"`) {
 		t.Fatalf("证书台账 = %d %s", got.Code, got.Body.String())
 	}
+	// 课程管理列表
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses", "", token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"course_code":"C1"`) {
+		t.Fatalf("课程管理列表 = %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses?status=published", "", token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"items"`) {
+		t.Fatalf("按状态过滤课程 = %d %s", got.Code, got.Body.String())
+	}
 	// 登录错误路径：坏 JSON → 400，错密码 → 401
 	if got := performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{`); got.Code != http.StatusBadRequest {
 		t.Fatalf("坏 JSON 应 400，实际 %d", got.Code)

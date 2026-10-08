@@ -7,6 +7,7 @@ import Certs from '@/pages/Certs.vue'
 import Users from '@/pages/Users.vue'
 import Broadcast from '@/pages/Broadcast.vue'
 import Staff from '@/pages/Staff.vue'
+import Courses from '@/pages/Courses.vue'
 import Placeholder from '@/pages/Placeholder.vue'
 import { hasToken } from '@/api/client'
 
@@ -17,7 +18,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/admin/courses' },
 
   // —— 管理端（角色：管理员）——
-  { path: '/admin/courses', component: Placeholder, props: { title: '课程管理', detail: '上架/下架 · 课程设置面板 · 审核教师提交' } },
+  { path: '/admin/courses', component: Courses },
   { path: '/admin/majors', component: Placeholder, props: { title: '专业分类', detail: '平台自有元数据，不来自上游' } },
   { path: '/admin/orders', component: Orders },
   { path: '/admin/refunds', component: Refunds },

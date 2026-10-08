@@ -158,3 +158,28 @@ export async function createStaff(input: {
 export async function disableStaff(id: number): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/staff/${id}/disable`, {}))
 }
+
+// —— 课程管理 ——
+export interface AdminCourse {
+  course_code: string
+  source: string
+  name: string
+  line: string
+  status: string
+  price_cents: number
+  teacher_id: number | null
+  created_at: string
+}
+export async function listAdminCourses(): Promise<AdminCourse[]> {
+  const r = await unwrap<{ items: AdminCourse[] }>(http.get('/admin/courses'))
+  return r.items
+}
+export async function reviewCourse(code: string, input: Record<string, unknown>): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/courses/${code}/review`, input))
+}
+export async function publishCourse(code: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/courses/${code}/publish`, {}))
+}
+export async function setPrice(code: string, priceCents: number, confirm: boolean): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/courses/${code}/price`, { price_cents: priceCents, confirm }))
+}
