@@ -6,9 +6,9 @@ import 'pages/course_detail_page.dart';
 import 'pages/cert_list_page.dart';
 import 'pages/exam_page.dart';
 import 'pages/home_page.dart';
+import 'pages/learn_page.dart';
 import 'pages/login_page.dart';
 import 'pages/me_page.dart';
-import 'pages/placeholder_page.dart';
 import 'pages/verify_page.dart';
 import 'shell.dart';
 
@@ -67,9 +67,9 @@ final GoRouter _router = GoRouter(
     ),
     GoRoute(
       path: '/learn/:code/:no',
-      builder: (_, GoRouterState s) => PlaceholderPage(
-        title: '学习页',
-        detail: '课程 ${s.pathParameters['code']} · 第 ${s.pathParameters['no']} 讲',
+      builder: (_, GoRouterState s) => LearnPage(
+        courseCode: s.pathParameters['code']!,
+        no: int.tryParse(s.pathParameters['no'] ?? '1') ?? 1,
       ),
     ),
     GoRoute(

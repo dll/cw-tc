@@ -1,0 +1,37 @@
+/// 讲次资源（对应 `GET /courses/:code/lectures/:no/resources` 返回项）。
+class LectureResource {
+  const LectureResource({
+    required this.kind,
+    required this.title,
+    required this.storageKey,
+    required this.sizeBytes,
+    required this.expiresAt,
+    required this.signature,
+  });
+
+  final String kind; // 讲义 / 课件 / 视频 等
+  final String title;
+  final String storageKey;
+  final int sizeBytes;
+  final int expiresAt; // unix 秒
+  final String signature;
+
+  factory LectureResource.fromJson(Map<String, dynamic> json) {
+    return LectureResource(
+      kind: json['kind'] as String,
+      title: json['title'] as String,
+      storageKey: json['storage_key'] as String,
+      sizeBytes: (json['size_bytes'] as num?)?.toInt() ?? 0,
+      expiresAt: (json['expires_at'] as num?)?.toInt() ?? 0,
+      signature: json['signature'] as String,
+    );
+  }
+
+  /// 人类可读的大小。
+  String get sizeLabel {
+    if (sizeBytes <= 0) return '';
+    if (sizeBytes < 1024) return '$sizeBytes B';
+    if (sizeBytes < 1024 * 1024) return '${(sizeBytes / 1024).toStringAsFixed(1)} KB';
+    return '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
