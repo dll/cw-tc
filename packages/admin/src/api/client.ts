@@ -124,3 +124,37 @@ export async function listUsers(): Promise<UserItem[]> {
 export async function revealUser(id: number, reason: string): Promise<{ phone: string }> {
   return unwrap<{ phone: string }>(http.post(`/admin/users/${id}/reveal`, { reason }))
 }
+
+// —— 广播 ——
+export async function createBroadcast(input: {
+  target: string
+  target_value?: string
+  title: string
+  body: string
+  link?: string
+  idempotency_key: string
+}): Promise<{ broadcast_id: number }> {
+  return unwrap<{ broadcast_id: number }>(http.post('/admin/broadcasts', input))
+}
+export async function confirmBroadcast(id: number): Promise<{ recipients: number }> {
+  return unwrap<{ recipients: number }>(http.post(`/admin/broadcasts/${id}/confirm`, {}))
+}
+
+// —— staff 管理 ——
+export interface StaffItem {
+  id: number
+  account: string
+  name: string
+  role: string
+}
+export async function createStaff(input: {
+  account: string
+  name: string
+  role: string
+  password: string
+}): Promise<{ id: number }> {
+  return unwrap<{ id: number }>(http.post('/admin/staff', input))
+}
+export async function disableStaff(id: number): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/staff/${id}/disable`, {}))
+}

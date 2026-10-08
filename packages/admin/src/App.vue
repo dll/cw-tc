@@ -17,6 +17,7 @@ const menus = [
     { path: '/admin/kb', label: '知识库重建' },
     { path: '/admin/broadcast', label: '广播通知' },
     { path: '/admin/users', label: '用户管理' },
+    { path: '/admin/staff', label: '内部人员' },
     { path: '/admin/audit', label: '审计日志' },
   ] },
   { group: '教师工作台', items: [

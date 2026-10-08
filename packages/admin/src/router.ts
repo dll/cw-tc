@@ -5,6 +5,8 @@ import Orders from '@/pages/Orders.vue'
 import Refunds from '@/pages/Refunds.vue'
 import Certs from '@/pages/Certs.vue'
 import Users from '@/pages/Users.vue'
+import Broadcast from '@/pages/Broadcast.vue'
+import Staff from '@/pages/Staff.vue'
 import Placeholder from '@/pages/Placeholder.vue'
 import { hasToken } from '@/api/client'
 
@@ -21,8 +23,9 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/refunds', component: Refunds },
   { path: '/admin/certs', component: Certs },
   { path: '/admin/kb', component: Placeholder, props: { title: '知识库重建', detail: '切片数与向量数须为真实统计' } },
-  { path: '/admin/broadcast', component: Placeholder, props: { title: '广播通知', detail: '发送前预览触达人数' } },
+  { path: '/admin/broadcast', component: Broadcast },
   { path: '/admin/users', component: Users },
+  { path: '/admin/staff', component: Staff },
   { path: '/admin/audit', component: Placeholder, props: { title: '审计日志', detail: '资金与商业动作全部留痕' } },
 
   // —— 教师工作台（角色：教师）——
