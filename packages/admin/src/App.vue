@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 // M1 起按登录角色（管理员 / 教师）过滤可见项。
 const route = useRoute()
 const title = computed(() => (route.path.startsWith('/teacher') ? '教师工作台' : '管理后台'))
+const isLogin = computed(() => route.path === '/login')
 
 const menus = [
   { group: '管理端', items: [
@@ -27,7 +28,8 @@ const menus = [
 </script>
 
 <template>
-  <el-container class="layout">
+  <router-view v-if="isLogin" />
+  <el-container v-else class="layout">
     <el-aside width="220px" class="aside">
       <div class="brand">第三课堂</div>
       <div class="brand-sub">{{ title }}</div>
