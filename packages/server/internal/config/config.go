@@ -53,6 +53,9 @@ const (
 	EnvDBDriver  = "CWTC_DB_DRIVER"
 	EnvDBDSN     = "CWTC_DB_DSN"
 
+	// 资源文件根目录（签名下载服务从此目录按 storage_key 取文件）
+	EnvContentDir = "CWTC_CONTENT_DIR"
+
 	// 初始账号种子（`seed-admin` 命令读取；密码不写死、缺失则跳过该账号）
 	EnvAdminAccount   = "CWTC_ADMIN_ACCOUNT"
 	EnvAdminPassword  = "CWTC_ADMIN_PASSWORD"
@@ -111,6 +114,9 @@ type Config struct {
 	DeployEnv string
 	DBDriver  string
 	DBDSN     string
+
+	// 资源文件根目录（签名下载服务从此目录取文件）
+	ContentDir string
 }
 
 // Getenv 抽象环境读取，便于测试注入。
@@ -154,6 +160,8 @@ func LoadFrom(get Getenv) (*Config, error) {
 		DeployEnv: strings.ToLower(strings.TrimSpace(get(EnvDeployEnv))),
 		DBDriver:  strings.ToLower(strings.TrimSpace(get(EnvDBDriver))),
 		DBDSN:     strings.TrimSpace(get(EnvDBDSN)),
+
+		ContentDir: strings.TrimSpace(get(EnvContentDir)),
 
 		// 默认值：监听本机回环，避免通配绑定被公网直连伪造 XFF（对照 ccit 约定）。
 		PublicStatusEnabled: boolDefault(get(EnvPublicStatusEnabled), true),

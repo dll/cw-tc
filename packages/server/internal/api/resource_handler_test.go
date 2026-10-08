@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,5 +78,38 @@ func TestLectureResourcesNotFound(t *testing.T) {
 	s := NewWithDatabase(testConfig(t, true), database)
 	if resp := performJSON(t, s.Router(), http.MethodGet, "/api/v1/courses/NOPE/lectures/1/resources", ``); resp.Code != http.StatusNotFound {
 		t.Fatalf("不存在讲次应返回 404: %d %s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestDownloadAssetSignature(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("讲义内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, true)
+	cfg.ContentDir = dir
+	s := NewWithDatabase(cfg, nil)
+
+	// 有效签名 → 200 + 文件内容
+	expires := time.Now().Add(10 * time.Minute)
+	sig := resource.Sign([]byte(cfg.SessionSecret), "README.md", expires)
+	url := "/api/v1/assets/raw?key=README.md&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=" + sig
+	resp := performJSON(t, s.Router(), http.MethodGet, url, ``)
+	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), "讲义内容") {
+		t.Fatalf("有效签名应返回文件: %d %s", resp.Code, resp.Body.String())
+	}
+	// 无效签名 → 403
+	bad := "/api/v1/assets/raw?key=README.md&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=deadbeef"
+	if resp := performJSON(t, s.Router(), http.MethodGet, bad, ``); resp.Code != http.StatusForbidden {
+		t.Fatalf("无效签名应 403: %d", resp.Code)
+	}
+	// 缺参数 → 400
+	if resp := performJSON(t, s.Router(), http.MethodGet, "/api/v1/assets/raw", ``); resp.Code != http.StatusBadRequest {
+		t.Fatalf("缺参数应 400: %d", resp.Code)
+	}
+	// 目录穿越 → 403
+	traversal := "/api/v1/assets/raw?key=../etc/passwd&expires=" + strconv.FormatInt(expires.Unix(), 10) + "&sig=" + resource.Sign([]byte(cfg.SessionSecret), "../etc/passwd", expires)
+	if resp := performJSON(t, s.Router(), http.MethodGet, traversal, ``); resp.Code != http.StatusForbidden {
+		t.Fatalf("目录穿越应 403: %d", resp.Code)
 	}
 }

@@ -3,7 +3,9 @@ package api
 import (
 	"database/sql"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cw-tc/server/internal/resource"
@@ -56,4 +58,32 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"items": items}})
+}
+
+// downloadAsset GET /api/v1/assets/raw?key=&expires=&sig= —— 校验签名后返回资源文件。
+// 只从 ContentDir 内取文件，防目录穿越；签名过期或不符一律 403。
+func (s *Server) downloadAsset(c *gin.Context) {
+	if s.cfg == nil || s.cfg.ContentDir == "" {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不可用"})
+		return
+	}
+	key := c.Query("key")
+	expiresUnix, err := strconv.ParseInt(c.Query("expires"), 10, 64)
+	sig := c.Query("sig")
+	if key == "" || sig == "" || err != nil {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	expires := time.Unix(expiresUnix, 0)
+	if !resource.Verify([]byte(s.cfg.SessionSecret), key, expires, sig) {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "签名无效或已过期"})
+		return
+	}
+	base := filepath.Clean(s.cfg.ContentDir)
+	filePath := filepath.Join(base, filepath.FromSlash(key))
+	if !strings.HasPrefix(filepath.Clean(filePath), base+string(filepath.Separator)) {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "非法路径"})
+		return
+	}
+	c.File(filePath)
 }

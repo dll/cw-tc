@@ -131,9 +131,7 @@ var assetKindByExt = map[string]assetKind{
 	".sh":       {"code", "代码"},
 	".bat":      {"code", "代码"},
 	".sql":      {"code", "代码"},
-	".txt":      {"code", "代码"},
-	".json":     {"code", "代码"},
-	".srt":      {"code", "字幕"},
+	".txt":      {"code", "运行示例"},
 }
 
 // LoadOverview 从源目录读取并解析「课程总览.json」。
