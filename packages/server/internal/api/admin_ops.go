@@ -17,9 +17,24 @@ func (s *Server) adminGrantEntitlement(c *gin.Context) {
 	var req struct {
 		StudentID   int64  `json:"student_id"`
 		CourseID    int64  `json:"course_id"`
+		CourseCode  string `json:"course_code"`
 		GrantReason string `json:"grant_reason"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.StudentID <= 0 || req.CourseID <= 0 || req.GrantReason == "" {
+	if err := c.ShouldBindJSON(&req); err != nil || req.StudentID <= 0 || req.GrantReason == "" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	// 允许用公开标识 course_code 授权（客户端只有课程码，没有内部 id）
+	if req.CourseID <= 0 && req.CourseCode != "" {
+		var cid int64
+		if err := s.dbConn.QueryRowContext(c.Request.Context(),
+			`SELECT id FROM course WHERE course_code = ?`, req.CourseCode).Scan(&cid); err != nil {
+			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "课程不存在"})
+			return
+		}
+		req.CourseID = cid
+	}
+	if req.CourseID <= 0 {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
 		return
 	}

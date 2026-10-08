@@ -124,6 +124,16 @@ export async function listUsers(): Promise<UserItem[]> {
 export async function revealUser(id: number, reason: string): Promise<{ phone: string }> {
   return unwrap<{ phone: string }>(http.post(`/admin/users/${id}/reveal`, { reason }))
 }
+export async function grantEntitlement(input: {
+  student_id: number
+  course_code: string
+  grant_reason: string
+}): Promise<void> {
+  await unwrap<unknown>(http.post('/admin/entitlements', input))
+}
+export async function revokeEntitlement(studentId: number, courseId: number): Promise<void> {
+  await unwrap<unknown>(http.delete(`/admin/entitlements/${studentId}/${courseId}`))
+}
 
 // —— 广播 ——
 export async function createBroadcast(input: {

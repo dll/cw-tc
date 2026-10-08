@@ -55,6 +55,14 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_id":1}`, token); got.Code != http.StatusBadRequest {
 		t.Fatalf("缺事由应 400，实际 %d", got.Code)
 	}
+	// course_code 不存在 → 400
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_code":"NOPE","grant_reason":"x"}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("course_code 不存在应 400，实际 %d", got.Code)
+	}
+	// course_code 解析成功但重复 → 409（覆盖解析成功分支）
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_code":"C1","grant_reason":"x"}`, token); got.Code != http.StatusConflict {
+		t.Fatalf("course_code 重复授权应 409，实际 %d", got.Code)
+	}
 
 	// 广播草稿 + 二次确认发送
 	bc := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/broadcasts", `{"target":"all","title":"公告","body":"正文","idempotency_key":"k1"}`, token)
