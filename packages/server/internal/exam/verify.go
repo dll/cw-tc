@@ -3,6 +3,7 @@ package exam
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -75,4 +76,51 @@ func maskName(name string) string {
 		out += "*"
 	}
 	return out
+}
+
+// OwnCert 学员本人证书完整信息（含完整姓名，仅本人可查）。
+type OwnCert struct {
+	CertNo      string
+	CourseName  string
+	Level       string
+	LevelName   string // 由 course.cert_names 映射的档位名（如「初级」）
+	StudentName string // 完整姓名（本人查看自己的证书，不脱敏）
+	IssuedAt    time.Time
+	ExpiresAt   time.Time
+}
+
+// GetOwnCert 取学员本人的一张证书（校验归属，非本人返回 ErrCertNotFound）。
+func GetOwnCert(ctx context.Context, db *sql.DB, studentID int64, certNo string) (OwnCert, error) {
+	var r OwnCert
+	var certNames sql.NullString
+	var issuedRaw, expiresRaw string
+	err := db.QueryRowContext(ctx,
+		`SELECT c.cert_no, c.level, co.name, co.cert_names, st.name, c.issued_at, c.expires_at
+		 FROM certificate c
+		 JOIN course co ON co.id = c.course_id
+		 JOIN student st ON st.id = c.student_id
+		 WHERE c.cert_no = $1 AND c.student_id = $2`, certNo, studentID).
+		Scan(&r.CertNo, &r.Level, &r.CourseName, &certNames, &r.StudentName, &issuedRaw, &expiresRaw)
+	if err == sql.ErrNoRows {
+		return OwnCert{}, ErrCertNotFound
+	}
+	if err != nil {
+		return OwnCert{}, err
+	}
+	r.LevelName = certNameForLevel(certNames.String, r.Level)
+	r.IssuedAt, _ = time.Parse(time.RFC3339, issuedRaw)
+	r.ExpiresAt, _ = time.Parse(time.RFC3339, expiresRaw)
+	return r, nil
+}
+
+// certNameForLevel 从 course.cert_names JSON（如 `{"L1":"初级"}`）取档位名；取不到回退档位码。
+func certNameForLevel(certNamesJSON, level string) string {
+	var m map[string]string
+	if err := json.Unmarshal([]byte(certNamesJSON), &m); err != nil {
+		return level
+	}
+	if name, ok := m[level]; ok && name != "" {
+		return name
+	}
+	return level
 }

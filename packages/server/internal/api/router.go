@@ -121,6 +121,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/me/notifications", authRequired(s.identity), s.listNotifications)
 	v1.POST("/me/notifications/:id/read", authRequired(s.identity), s.markNotificationRead)
 	v1.GET("/me/certs", authRequired(s.identity), s.listMyCerts)
+	v1.GET("/me/certs/:certNo", authRequired(s.identity), s.downloadMyCert)
 	v1.POST("/admin/login", s.adminLogin)
 	admin := v1.Group("/admin", s.staffRequired)
 	admin.POST("/change-password", s.adminChangePassword)

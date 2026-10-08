@@ -42,3 +42,41 @@ func TestListMyCertsRoute(t *testing.T) {
 		t.Fatalf("我的证书 = %d %s", got.Code, got.Body.String())
 	}
 }
+
+func TestDownloadMyCertRoute(t *testing.T) {
+	database, err := db.Open(context.Background(), db.DialectSQLite, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
+		t.Fatal(err)
+	}
+	service := identity.NewService(database, []byte("01234567890123456789012345678901"), []byte("hmac-key-for-cwTC-tests-012345678901234"))
+	student, _ := service.Register(context.Background(), identity.RegisterInput{Name: "样例学员", Phone: "13812345678", IDCard: "110101199001011237", Password: "password-1"})
+	session, _ := service.CreateSession(context.Background(), student.ID, time.Now().UTC())
+	if _, err = database.Exec(`INSERT INTO staff(id, account, name, role, password_hash, created_source) VALUES(1,'t','教师','teacher',X'01','seed')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(`INSERT INTO major(id, name) VALUES(1,'样例专业')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id, cert_names) VALUES(1,'C1','platform','课程','main',1,'published',1,'{"L1":"初级"}')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(`INSERT INTO certificate(id, cert_no, student_id, course_id, level, score, band, issued_at, expires_at, status) VALUES(1,'CW-CN-A202600001',1,1,'L1',88,'pass','2026-01-01T00:00:00Z','2029-01-01T00:00:00Z','valid')`); err != nil {
+		t.Fatal(err)
+	}
+	r := NewWithIdentityAndDatabase(testConfig(t, true), service, database).Router()
+
+	got := performJSONWithCookie(t, r, http.MethodGet, "/api/v1/me/certs/CW-CN-A202600001", "", session.Token)
+	if got.Code != http.StatusOK || !containsAll(got.Body.String(), "畅网智能科技有限公司", "样例学员", "CW-CN-A202600001", "初级") {
+		t.Fatalf("证书下载页 = %d %s", got.Code, got.Body.String())
+	}
+	// 归属校验：另一学员访问他人证书 → 404
+	other, _ := service.Register(context.Background(), identity.RegisterInput{Name: "他人", Phone: "13812345679", IDCard: "110101199003076755", Password: "password-2"})
+	otherSess, _ := service.CreateSession(context.Background(), other.ID, time.Now().UTC())
+	if got := performJSONWithCookie(t, r, http.MethodGet, "/api/v1/me/certs/CW-CN-A202600001", "", otherSess.Token); got.Code != http.StatusNotFound {
+		t.Fatalf("他人访问证书应 404: %d", got.Code)
+	}
+}
