@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router'
 // M1 起按登录角色（管理员 / 教师）过滤可见项。
 const route = useRoute()
 const title = computed(() => (route.path.startsWith('/teacher') ? '教师工作台' : '管理后台'))
-const isLogin = computed(() => route.path === '/login')
+const isLogin = computed(() => route.path === '/login' || route.path === '/change-password')
 
 const menus = [
   { group: '管理端', items: [

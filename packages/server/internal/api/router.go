@@ -123,6 +123,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/me/certs", authRequired(s.identity), s.listMyCerts)
 	v1.POST("/admin/login", s.adminLogin)
 	admin := v1.Group("/admin", s.staffRequired)
+	admin.POST("/change-password", s.adminChangePassword)
 	admin.GET("/courses", s.adminCourses)
 	admin.GET("/orders", s.adminOrders)
 	admin.GET("/refunds", s.adminRefunds)

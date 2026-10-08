@@ -57,11 +57,15 @@ export interface AdminLoginResult {
   account: string
   name: string
   role: string
+  must_change_password: boolean
 }
 export async function login(account: string, password: string): Promise<AdminLoginResult> {
   const res = await unwrap<AdminLoginResult>(http.post('/admin/login', { account, password }))
   saveToken(res.token)
   return res
+}
+export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
+  await unwrap<unknown>(http.post('/admin/change-password', { old_password: oldPassword, new_password: newPassword }))
 }
 
 // —— 台账（只读列表）——

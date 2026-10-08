@@ -135,3 +135,34 @@ func TestSeedAdminIdempotent(t *testing.T) {
 		t.Fatalf("种子账号应可登录: %v", err)
 	}
 }
+
+func TestChangePasswordAndMustChangeFlag(t *testing.T) {
+	database := staffDB(t)
+	defer database.Close()
+	ctx := context.Background()
+	id, created, err := SeedAdmin(ctx, database, "boss", "", "初始密码-1")
+	if err != nil || !created {
+		t.Fatalf("种子失败: created=%v err=%v", created, err)
+	}
+	// 首登应标记 must_change
+	st, _, err := Login(ctx, database, "boss", "初始密码-1", time.Now().UTC())
+	if err != nil || !st.MustChangePassword {
+		t.Fatalf("首登应 must_change=true，实际 %v err=%v", st.MustChangePassword, err)
+	}
+	// 改密
+	if err := ChangePassword(ctx, database, id, "初始密码-1", "新密码-2", time.Now().UTC()); err != nil {
+		t.Fatalf("改密失败: %v", err)
+	}
+	// 旧密码失效，新密码可登录且不再强制改密
+	if _, _, err := Login(ctx, database, "boss", "初始密码-1", time.Now().UTC()); err == nil {
+		t.Fatalf("旧密码应失效")
+	}
+	st2, _, err := Login(ctx, database, "boss", "新密码-2", time.Now().UTC())
+	if err != nil || st2.MustChangePassword {
+		t.Fatalf("改密后应可登录且 must_change=false，实际 %v err=%v", st2.MustChangePassword, err)
+	}
+	// 旧密码错误改密 → ErrInvalidCredentials
+	if err := ChangePassword(ctx, database, id, "错误旧密码", "x", time.Now().UTC()); err != ErrInvalidCredentials {
+		t.Fatalf("旧密码错误应报 ErrInvalidCredentials，实际 %v", err)
+	}
+}

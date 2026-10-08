@@ -19,10 +19,11 @@ var (
 
 // Staff 内部人员身份（登录后）。
 type Staff struct {
-	ID      int64
-	Account string
-	Name    string
-	Role    Role
+	ID                 int64
+	Account            string
+	Name               string
+	Role               Role
+	MustChangePassword bool // 仍是初始密码（password_changed_at 为空）→ 首登强制改密
 }
 
 // Login 内部人员登录：校验口令（常数时间比较）+ 发会话。
@@ -33,9 +34,10 @@ func Login(ctx context.Context, db *sql.DB, account, password string, now time.T
 	var st Staff
 	var roleStr, status string
 	var stored []byte
+	var changedAt sql.NullString
 	if err := db.QueryRowContext(ctx,
-		`SELECT id, account, name, role, password_hash, status FROM staff WHERE account = ?`, account).
-		Scan(&st.ID, &st.Account, &st.Name, &roleStr, &stored, &status); err != nil {
+		`SELECT id, account, name, role, password_hash, status, password_changed_at FROM staff WHERE account = ?`, account).
+		Scan(&st.ID, &st.Account, &st.Name, &roleStr, &stored, &status, &changedAt); err != nil {
 		return Staff{}, "", ErrInvalidCredentials
 	}
 	if status != "active" {
@@ -45,6 +47,7 @@ func Login(ctx context.Context, db *sql.DB, account, password string, now time.T
 		return Staff{}, "", ErrInvalidCredentials
 	}
 	st.Role = Role(roleStr)
+	st.MustChangePassword = !changedAt.Valid || changedAt.String == ""
 	token, err := createSession(ctx, db, st.ID, now)
 	if err != nil {
 		return Staff{}, "", err

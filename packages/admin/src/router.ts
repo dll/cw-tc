@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 import Login from '@/pages/Login.vue'
+import ChangePassword from '@/pages/ChangePassword.vue'
 import Orders from '@/pages/Orders.vue'
 import Refunds from '@/pages/Refunds.vue'
 import Certs from '@/pages/Certs.vue'
@@ -19,6 +20,7 @@ import { hasToken } from '@/api/client'
 /// 权限由后端 RBAC + 资源归属校验把关（前端只做菜单可见性，不作为安全边界）。
 const routes: RouteRecordRaw[] = [
   { path: '/login', component: Login },
+  { path: '/change-password', component: ChangePassword },
   { path: '/', redirect: '/admin/courses' },
 
   // —— 管理端（角色：管理员）——

@@ -5,6 +5,7 @@ package staff
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"errors"
 	"time"
@@ -88,6 +89,32 @@ func Disable(ctx context.Context, db *sql.DB, staffID int64) error {
 func hashPassword(password string) []byte {
 	sum := sha256.Sum256([]byte(password))
 	return sum[:]
+}
+
+// ChangePassword 修改内部人员口令并标记已改密（首登强制改密闭环）。
+// 旧口令校验通过才允许改；改后 password_changed_at 落当前时间。
+func ChangePassword(ctx context.Context, db *sql.DB, staffID int64, oldPassword, newPassword string, now time.Time) error {
+	if db == nil || staffID <= 0 || oldPassword == "" || newPassword == "" {
+		return ErrStaffInput
+	}
+	var stored []byte
+	if err := db.QueryRowContext(ctx, `SELECT password_hash FROM staff WHERE id = ?`, staffID).Scan(&stored); err != nil {
+		return ErrStaffNotFound
+	}
+	if len(stored) != sha256.Size || subtle.ConstantTimeCompare(hashPassword(oldPassword), stored) != 1 {
+		return ErrInvalidCredentials
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE staff SET password_hash = ?, password_changed_at = ?, updated_at = ? WHERE id = ?`,
+		hashPassword(newPassword), now.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339), staffID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrStaffNotFound
+	}
+	return nil
 }
 
 // SeedAdmin 幂等创建初始超管（created_source='seed'，created_by 为空，首登强制改密）。

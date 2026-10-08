@@ -34,7 +34,26 @@ func (s *Server) adminLogin(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"token": token, "account": st.Account, "name": st.Name, "role": string(st.Role),
+		"must_change_password": st.MustChangePassword,
 	}})
+}
+
+// adminChangePassword POST /admin/change-password —— 内部人员改密（首登强制改密闭环）。
+func (s *Server) adminChangePassword(c *gin.Context) {
+	st := c.MustGet(staffContextKey).(staff.Staff)
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.OldPassword == "" || req.NewPassword == "" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	if err := staff.ChangePassword(c.Request.Context(), s.dbConn, st.ID, req.OldPassword, req.NewPassword, time.Now().UTC()); err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10701, Msg: "旧密码错误"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0})
 }
 
 // staffRequired 内部人员鉴权：校验 Bearer token，注入 staff 到上下文。
