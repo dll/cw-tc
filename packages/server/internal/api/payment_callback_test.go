@@ -43,7 +43,7 @@ func TestPaymentCallbackRouteCompletesFirstOrder(t *testing.T) {
 	cfg := testConfig(t, true)
 	cfg.WXPayAPIv3Key = "callback-test-secret"
 	r := NewWithIdentityAndDatabase(cfg, service, database).Router()
-	created := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/orders", `{"course_id":1}`, session.Token)
+	created := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/orders", `{"course_code":"C1"}`, session.Token)
 	orderNo := extractJSONField(t, created.Body.String(), "order_no")
 	signature := commerce.SignCallback([]byte("callback-test-secret"), orderNo, "txn-http-1", "1000")
 	callback := performJSON(t, r, http.MethodPost, "/api/v1/payment/callback", `{"order_no":"`+orderNo+`","channel":"mock","channel_txn_id":"txn-http-1","idempotency_key":"idem-http-1","amount_cents":1000,"signature":"`+signature+`"}`)
