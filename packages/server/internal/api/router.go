@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/cw-tc/server/internal/config"
+	"github.com/cw-tc/server/internal/cosstore"
 	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/platform/clock"
 	"github.com/cw-tc/server/internal/platform/db"
@@ -32,6 +33,7 @@ type Server struct {
 	database db.Pinger
 	dbConn   *sql.DB
 	sms      *identity.SMSService
+	cosStore *cosstore.Store
 }
 
 // New 构造 Server。
@@ -42,7 +44,11 @@ func New(cfg *config.Config) *Server {
 	if cfg != nil && cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	return &Server{cfg: cfg}
+	s := &Server{cfg: cfg}
+	if cfg != nil {
+		s.cosStore = cosstore.New(cfg.CosSecretID, cfg.CosSecretKey, cfg.CosBucket, cfg.CosRegion)
+	}
+	return s
 }
 
 type sqlPinger struct{ database *sql.DB }

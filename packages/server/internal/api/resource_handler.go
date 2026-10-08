@@ -79,6 +79,14 @@ func (s *Server) downloadAsset(c *gin.Context) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "签名无效或已过期"})
 		return
 	}
+	// 视频/音频对象在 COS：预签名后 302 重定向（私有桶不能直接 GET，走签名 URL）。
+	// 预签名失败回退文件服务，绝不在签名校验后 500。
+	if s.cosStore != nil && s.cosStore.Enabled() && isCosBackedKey(key) {
+		if u, err := s.cosStore.PresignGet(c.Request.Context(), key, 10*time.Minute); err == nil {
+			c.Redirect(http.StatusFound, u)
+			return
+		}
+	}
 	base := filepath.Clean(s.cfg.ContentDir)
 	filePath := filepath.Join(base, filepath.FromSlash(key))
 	if !strings.HasPrefix(filepath.Clean(filePath), base+string(filepath.Separator)) {
@@ -86,4 +94,14 @@ func (s *Server) downloadAsset(c *gin.Context) {
 		return
 	}
 	c.File(filePath)
+}
+
+// isCosBackedKey 判断 storage_key 是否属于 COS 承载的大二进制资源（视频/音频）。
+func isCosBackedKey(key string) bool {
+	switch strings.ToLower(filepath.Ext(key)) {
+	case ".mp4", ".mov", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac":
+		return true
+	default:
+		return false
+	}
 }

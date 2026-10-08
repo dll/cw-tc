@@ -56,6 +56,13 @@ const (
 	// 资源文件根目录（签名下载服务从此目录按 storage_key 取文件）
 	EnvContentDir = "CWTC_CONTENT_DIR"
 
+	// 对象存储 COS（视频/音频资源；未配置 = 该功能 fail-closed，走文件服务）
+	EnvCosSecretID  = "CWTC_COS_SECRET_ID"
+	EnvCosSecretKey = "CWTC_COS_SECRET_KEY"
+	EnvCosBucket    = "CWTC_COS_BUCKET"
+	EnvCosRegion    = "CWTC_COS_REGION"
+	EnvCosBaseURL   = "CWTC_COS_BASE_URL"
+
 	// 初始账号种子（`seed-admin` 命令读取；密码不写死、缺失则跳过该账号）
 	EnvAdminAccount   = "CWTC_ADMIN_ACCOUNT"
 	EnvAdminPassword  = "CWTC_ADMIN_PASSWORD"
@@ -117,6 +124,13 @@ type Config struct {
 
 	// 资源文件根目录（签名下载服务从此目录取文件）
 	ContentDir string
+
+	// 对象存储 COS
+	CosSecretID  string
+	CosSecretKey string
+	CosBucket    string
+	CosRegion    string
+	CosBaseURL   string
 }
 
 // Getenv 抽象环境读取，便于测试注入。
@@ -162,6 +176,12 @@ func LoadFrom(get Getenv) (*Config, error) {
 		DBDSN:     strings.TrimSpace(get(EnvDBDSN)),
 
 		ContentDir: strings.TrimSpace(get(EnvContentDir)),
+
+		CosSecretID:  strings.TrimSpace(get(EnvCosSecretID)),
+		CosSecretKey: strings.TrimSpace(get(EnvCosSecretKey)),
+		CosBucket:    strings.TrimSpace(get(EnvCosBucket)),
+		CosRegion:    strings.TrimSpace(get(EnvCosRegion)),
+		CosBaseURL:   strings.TrimSpace(get(EnvCosBaseURL)),
 
 		// 默认值：监听本机回环，避免通配绑定被公网直连伪造 XFF（对照 ccit 约定）。
 		PublicStatusEnabled: boolDefault(get(EnvPublicStatusEnabled), true),

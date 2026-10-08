@@ -113,3 +113,16 @@ func TestDownloadAssetSignature(t *testing.T) {
 		t.Fatalf("目录穿越应 403: %d", resp.Code)
 	}
 }
+
+func TestIsCosBackedKey(t *testing.T) {
+	for _, k := range []string{"a/讲解.mp4", "b.mov", "c.mp3", "d.wav", "e.MP4", "f.m4a"} {
+		if !isCosBackedKey(k) {
+			t.Errorf("isCosBackedKey(%q) 应为 true", k)
+		}
+	}
+	for _, k := range []string{"a/README.md", "b.pptx", "c.html", "d.c", "e.pdf", ""} {
+		if isCosBackedKey(k) {
+			t.Errorf("isCosBackedKey(%q) 应为 false", k)
+		}
+	}
+}
