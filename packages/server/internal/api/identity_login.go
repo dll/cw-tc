@@ -36,6 +36,7 @@ func (s *Server) login(c *gin.Context) {
 	}
 	c.SetCookie("cw_tc_sid", session.Token, int(timeUntil(session.ExpiresAt)), "/", "", true, true)
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+		"token":      session.Token,
 		"student_no": student.StudentNo,
 		"name":       student.Name,
 		"phone":      redact.Phone(student.Phone),

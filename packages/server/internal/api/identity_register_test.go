@@ -40,4 +40,9 @@ func TestRegisterEndpointReturnsStudentWithoutSensitiveFields(t *testing.T) {
 	if strings.Contains(string(raw), "id_card") || strings.Contains(string(raw), "password") {
 		t.Fatalf("注册响应不得返回敏感字段: %s", raw)
 	}
+	// 注册即登录：应返回 token（移动端存安全存储、走 Bearer）
+	data, _ := envelope["data"].(map[string]any)
+	if data == nil || data["token"] == nil || data["token"] == "" {
+		t.Fatalf("注册响应应返回 token: %s", raw)
+	}
 }

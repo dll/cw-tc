@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'pages/course_square_page.dart';
 import 'pages/course_detail_page.dart';
 import 'pages/home_page.dart';
+import 'pages/login_page.dart';
 import 'pages/me_page.dart';
 import 'pages/placeholder_page.dart';
 import 'shell.dart';
@@ -52,6 +53,10 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/courses/:code',
       builder: (_, GoRouterState s) => CourseDetailPage(courseCode: s.pathParameters['code']!),
+    ),
+    GoRoute(
+      path: '/login',
+      builder: (_, __) => const LoginPage(),
     ),
     GoRoute(
       path: '/learn/:code/:no',

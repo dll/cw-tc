@@ -51,6 +51,55 @@ class ApiClient {
     return res.data ?? <String, dynamic>{};
   }
 
+  /// 密码登录（`POST /api/v1/auth/login`）：返回 token 并写入安全存储。
+  Future<String> login({required String phone, required String password}) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/api/v1/auth/login',
+      data: <String, dynamic>{'phone': phone, 'password': password},
+    );
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final token = data?['token'] as String? ?? '';
+    if (token.isNotEmpty) {
+      await _storage.write(key: _tokenKey, value: token);
+    }
+    return token;
+  }
+
+  /// 注册（`POST /api/v1/auth/register`）：注册即登录，返回 token 并写入安全存储。
+  Future<String> register({
+    required String name,
+    required String phone,
+    required String idCard,
+    required String password,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/api/v1/auth/register',
+      data: <String, dynamic>{
+        'name': name,
+        'phone': phone,
+        'id_card': idCard,
+        'password': password,
+      },
+    );
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final token = data?['token'] as String? ?? '';
+    if (token.isNotEmpty) {
+      await _storage.write(key: _tokenKey, value: token);
+    }
+    return token;
+  }
+
+  /// 登出：清除本地会话凭据。
+  Future<void> logout() async {
+    await _storage.delete(key: _tokenKey);
+  }
+
+  /// 是否已登录（本地有会话凭据）。
+  Future<bool> hasSession() async {
+    final token = await _storage.read(key: _tokenKey);
+    return token != null && token.isNotEmpty;
+  }
+
   /// 课程广场列表（`GET /api/v1/courses`，公开只读）。
   Future<List<Course>> courses({int? majorId}) async {
     final res = await _dio.get<Map<String, dynamic>>(

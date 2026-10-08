@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 /// 个人中心（PRD v2 §8.1 `/me`）——基础骨架。
 ///
@@ -19,10 +20,12 @@ class MePage extends StatelessWidget {
       appBar: AppBar(title: const Text('我的')),
       body: Column(
         children: <Widget>[
-          const ListTile(
-            leading: CircleAvatar(child: Icon(Icons.person)),
-            title: Text('未登录'),
-            subtitle: Text('手机号注册 / 登录'),
+          ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.person)),
+            title: const Text('未登录'),
+            subtitle: const Text('手机号注册 / 登录'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/login'),
           ),
           const Divider(height: 1),
           Expanded(

@@ -43,7 +43,15 @@ func (s *Server) register(c *gin.Context) {
 		c.JSON(http.StatusOK, envelope{Code: code, Msg: "注册失败"})
 		return
 	}
+	// 注册即登录：创建会话，返回 token（移动端存安全存储、走 Bearer）。
+	session, err := s.identity.CreateSession(c.Request.Context(), student.ID, timeNowUTC())
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "会话服务暂不可用"})
+		return
+	}
+	c.SetCookie("cw_tc_sid", session.Token, int(timeUntil(session.ExpiresAt)), "/", "", true, true)
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+		"token":      session.Token,
 		"student_no": student.StudentNo,
 		"name":       student.Name,
 		"phone":      redact.Phone(student.Phone),
