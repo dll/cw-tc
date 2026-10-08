@@ -128,6 +128,11 @@ func Run(ctx context.Context, database *sql.DB, sourceDir string) error {
 		if !course.Exists || (course.Type != "讲次制" && course.Type != "案例制") {
 			continue
 		}
+		// 上游 JSON 里的 path 是本机（Windows）绝对路径，服务器上不可用；
+		// 统一按 sourceDir + dir 解析，保证同步在任意部署机上可重跑。
+		if course.Dir != "" {
+			course.Path = filepath.Join(sourceDir, course.Dir)
+		}
 		if err := upsertCourse(ctx, database, course); err != nil {
 			return err
 		}
