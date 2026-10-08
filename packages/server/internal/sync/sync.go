@@ -302,6 +302,11 @@ func pruneUpstreamCourses(ctx context.Context, database *sql.DB, keep []string) 
 			args = append(args, code)
 		}
 	}
+	// 先删资源再删讲次再删课程（asset 外键引用 lecture，lecture 外键引用 course）。
+	if _, err := database.ExecContext(ctx,
+		`DELETE FROM asset WHERE lecture_id IN (SELECT id FROM lecture WHERE origin='upstream' AND course_id IN (SELECT id FROM course WHERE source='upstream' AND `+notIn+`))`, args...); err != nil {
+		return err
+	}
 	if _, err := database.ExecContext(ctx,
 		`DELETE FROM lecture WHERE origin='upstream' AND course_id IN (SELECT id FROM course WHERE source='upstream' AND `+notIn+`)`, args...); err != nil {
 		return err
@@ -312,7 +317,11 @@ func pruneUpstreamCourses(ctx context.Context, database *sql.DB, keep []string) 
 
 // pruneUpstreamLectures 删除上游已删讲次（只动 origin='upstream'，绝不碰 ai_assisted/platform）。
 func pruneUpstreamLectures(ctx context.Context, database *sql.DB, courseID int64, keep []int) error {
+	// 先删资源（asset 外键引用 lecture），再删讲次。
 	if len(keep) == 0 {
+		if _, err := database.ExecContext(ctx, `DELETE FROM asset WHERE lecture_id IN (SELECT id FROM lecture WHERE course_id = $1 AND origin = 'upstream')`, courseID); err != nil {
+			return err
+		}
 		_, err := database.ExecContext(ctx, `DELETE FROM lecture WHERE course_id = $1 AND origin = 'upstream'`, courseID)
 		return err
 	}
@@ -321,6 +330,10 @@ func pruneUpstreamLectures(ctx context.Context, database *sql.DB, courseID int64
 	args = append(args, courseID)
 	for _, no := range keep {
 		args = append(args, no)
+	}
+	if _, err := database.ExecContext(ctx,
+		`DELETE FROM asset WHERE lecture_id IN (SELECT id FROM lecture WHERE course_id = $1 AND origin = 'upstream' AND no NOT IN (`+placeholders+`))`, args...); err != nil {
+		return err
 	}
 	_, err := database.ExecContext(ctx,
 		`DELETE FROM lecture WHERE course_id = $1 AND origin = 'upstream' AND no NOT IN (`+placeholders+`)`, args...)
