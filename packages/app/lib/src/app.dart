@@ -9,6 +9,7 @@ import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'pages/me_page.dart';
 import 'pages/placeholder_page.dart';
+import 'pages/verify_page.dart';
 import 'shell.dart';
 
 /// 第三课堂学生端（Android / Web 同一份代码，PRD v2 §10.3）。
@@ -80,7 +81,7 @@ final GoRouter _router = GoRouter(
     ),
     GoRoute(
       path: '/verify',
-      builder: (_, __) => const PlaceholderPage(title: '证书验真', detail: '公开页，无需登录'),
+      builder: (_, __) => const VerifyPage(),
     ),
   ],
 );

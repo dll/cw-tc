@@ -5,6 +5,7 @@ import '../models/cert.dart';
 import '../models/course.dart';
 import '../models/exam.dart';
 import '../models/lecture.dart';
+import '../models/verify_result.dart';
 
 /// 后端 API 客户端（M0 骨架）。
 ///
@@ -163,6 +164,13 @@ class ApiClient {
     final data = res.data?['data'] as Map<String, dynamic>?;
     final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
     return items.map((e) => Cert.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 证书验真（`GET /verify/:certNo`，公开）。
+  Future<VerifyResult> verifyCert(String certNo) async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/verify/$certNo');
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    return VerifyResult.fromJson(data ?? const <String, dynamic>{});
   }
 
   /// 禁止把疑似身份证号 / 手机号放进 URL。
