@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/cw-tc/server/internal/platform/db"
 	"github.com/cw-tc/server/migrations"
@@ -99,5 +100,38 @@ func TestTransferCourse(t *testing.T) {
 	// 移交给非教师（超管）→ 拒绝
 	if err := TransferCourse(ctx, database, 1, 1); err != ErrStaffNotFound {
 		t.Fatalf("移交给非教师应报 ErrStaffNotFound，实际 %v", err)
+	}
+}
+
+func TestSeedAdminIdempotent(t *testing.T) {
+	database := staffDB(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	// 首次创建
+	id, created, err := SeedAdmin(ctx, database, "boss", "", "初始密码-1")
+	if err != nil || !created {
+		t.Fatalf("首次种子应 created=true，实际 created=%v err=%v", created, err)
+	}
+	if id <= 0 {
+		t.Fatalf("种子 id 非法: %d", id)
+	}
+	var role string
+	_ = database.QueryRow(`SELECT role FROM staff WHERE account='boss'`).Scan(&role)
+	if role != string(RoleAdminSuper) {
+		t.Fatalf("种子角色应为 admin_super，实际 %s", role)
+	}
+	// 幂等：再次种子跳过
+	id2, created2, err := SeedAdmin(ctx, database, "boss", "", "另一密码")
+	if err != nil || created2 || id2 != id {
+		t.Fatalf("二次种子应幂等跳过: created=%v id2=%d(想 %d) err=%v", created2, id2, id, err)
+	}
+	// 空密码拒绝
+	if _, _, err := SeedAdmin(ctx, database, "boss2", "", ""); err != ErrStaffInput {
+		t.Fatalf("空密码应报 ErrStaffInput，实际 %v", err)
+	}
+	// 能登录（说明密码哈希一致）
+	if _, _, err := Login(ctx, database, "boss", "初始密码-1", time.Now().UTC()); err != nil {
+		t.Fatalf("种子账号应可登录: %v", err)
 	}
 }

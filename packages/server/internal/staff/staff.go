@@ -90,6 +90,33 @@ func hashPassword(password string) []byte {
 	return sum[:]
 }
 
+// SeedAdmin 幂等创建初始超管（created_source='seed'，created_by 为空，首登强制改密）。
+// 已存在同名账号则跳过（created=false）；密码空串拒绝 —— **绝不设默认密码**（PRD §8.2）。
+func SeedAdmin(ctx context.Context, db *sql.DB, account, name, password string) (int64, bool, error) {
+	if db == nil || account == "" || password == "" {
+		return 0, false, ErrStaffInput
+	}
+	if name == "" {
+		name = "超级管理员"
+	}
+	var id int64
+	err := db.QueryRowContext(ctx, `SELECT id FROM staff WHERE account = ?`, account).Scan(&id)
+	if err == nil {
+		return id, false, nil // 已存在，幂等跳过
+	}
+	if err != sql.ErrNoRows {
+		return 0, false, err
+	}
+	res, err := db.ExecContext(ctx,
+		`INSERT INTO staff(account, name, role, password_hash, created_source) VALUES(?,?,'admin_super',?,'seed')`,
+		account, name, hashPassword(password))
+	if err != nil {
+		return 0, false, err
+	}
+	newID, _ := res.LastInsertId()
+	return newID, true, nil
+}
+
 // TransferCourse 课程移交：把课程 teacher_id 改到另一位在职教师名下（停用教师前必须，铁律 8）。
 func TransferCourse(ctx context.Context, db *sql.DB, courseID, toTeacherID int64) error {
 	if db == nil || courseID <= 0 || toTeacherID <= 0 {

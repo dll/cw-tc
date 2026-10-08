@@ -19,6 +19,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "seed-admin" {
+		if err := runSeedAdmin(); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel(),
 	})))

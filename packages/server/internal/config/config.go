@@ -53,6 +53,11 @@ const (
 	EnvDBDriver  = "CWTC_DB_DRIVER"
 	EnvDBDSN     = "CWTC_DB_DSN"
 
+	// 初始超管种子（`seed-admin` 命令读取；密码不写死、缺失则拒绝）
+	EnvAdminAccount  = "CWTC_ADMIN_ACCOUNT"
+	EnvAdminPassword = "CWTC_ADMIN_PASSWORD"
+	EnvAdminName     = "CWTC_ADMIN_NAME"
+
 	// 行为开关
 	EnvPublicStatusEnabled = "CWTC_PUBLIC_STATUS_ENABLED"
 	EnvLogRedactSensitive  = "CWTC_LOG_REDACT_SENSITIVE"
