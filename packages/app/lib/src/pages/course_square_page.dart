@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../api/api_client.dart';
 import '../models/course.dart';
+import '../models/major.dart';
 
 /// 课程广场（PRD v2 §7.2 B-1）。
 ///
@@ -20,44 +21,118 @@ class CourseSquarePage extends StatefulWidget {
 class _CourseSquarePageState extends State<CourseSquarePage> {
   late final ApiClient _api = widget.api ?? ApiClient();
   late Future<List<Course>> _future;
+  List<Major> _majors = const <Major>[];
+  int? _selectedMajorId;
 
   @override
   void initState() {
     super.initState();
     _future = _api.courses();
+    _loadMajors();
   }
 
-  Future<void> _reload() async {
-    setState(() => _future = _api.courses());
+  Future<void> _loadMajors() async {
+    try {
+      final majors = await _api.majors();
+      if (!mounted) return;
+      setState(() => _majors = majors);
+    } catch (_) {
+      // 专业分类加载失败不阻塞课程列表。
+    }
+  }
+
+  void _selectMajor(int? id) {
+    setState(() {
+      _selectedMajorId = id;
+      _future = _api.courses(majorId: id);
+    });
+  }
+
+  void _reload() {
+    setState(() => _future = _api.courses(majorId: _selectedMajorId));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('课程广场')),
-      body: FutureBuilder<List<Course>>(
-        future: _future,
-        builder: (BuildContext context, AsyncSnapshot<List<Course>> snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return _ErrorState(onRetry: _reload, message: '课程列表加载失败');
-          }
-          final courses = snapshot.data ?? const <Course>[];
-          if (courses.isEmpty) {
-            return _EmptyState(onRetry: _reload);
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(12),
-            itemCount: courses.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (BuildContext context, int index) {
-              final course = courses[index];
-              return _CourseCard(course: course);
-            },
-          );
-        },
+      body: Column(
+        children: <Widget>[
+          if (_majors.isNotEmpty)
+            _MajorFilterBar(
+              majors: _majors,
+              selected: _selectedMajorId,
+              onSelect: _selectMajor,
+            ),
+          Expanded(
+            child: FutureBuilder<List<Course>>(
+              future: _future,
+              builder:
+                  (BuildContext context, AsyncSnapshot<List<Course>> snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return _ErrorState(onRetry: _reload, message: '课程列表加载失败');
+                }
+                final courses = snapshot.data ?? const <Course>[];
+                if (courses.isEmpty) {
+                  return _EmptyState(onRetry: _reload);
+                }
+                return ListView.separated(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: courses.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (BuildContext context, int index) {
+                    return _CourseCard(course: courses[index]);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MajorFilterBar extends StatelessWidget {
+  const _MajorFilterBar({
+    required this.majors,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<Major> majors;
+  final int? selected;
+  final ValueChanged<int?> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: const Text('全部'),
+              selected: selected == null,
+              onSelected: (_) => onSelect(null),
+            ),
+          ),
+          for (final m in majors)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(m.name),
+                selected: selected == m.id,
+                onSelected: (_) => onSelect(m.id),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -86,6 +161,14 @@ class _CourseCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(course.name, style: theme.textTheme.titleMedium),
+                    if (course.majorName != null) ...<Widget>[
+                      const SizedBox(height: 4),
+                      Text(
+                        course.majorName!,
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.primary),
+                      ),
+                    ],
                     if (course.intro != null && course.intro!.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 4),
                       Text(

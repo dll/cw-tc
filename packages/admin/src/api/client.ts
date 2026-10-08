@@ -186,6 +186,8 @@ export interface AdminCourse {
   price_cents: number
   teacher_id: number | null
   created_at: string
+  major_id: number | null
+  major_name: string | null
 }
 export async function listAdminCourses(): Promise<AdminCourse[]> {
   const r = await unwrap<{ items: AdminCourse[] }>(http.get('/admin/courses'))
@@ -199,6 +201,9 @@ export async function publishCourse(code: string): Promise<void> {
 }
 export async function setPrice(code: string, priceCents: number, confirm: boolean): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/price`, { price_cents: priceCents, confirm }))
+}
+export async function setCourseMajor(code: string, majorId: number): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/courses/${code}/major`, { major_id: majorId }))
 }
 
 // —— 审计日志 ——

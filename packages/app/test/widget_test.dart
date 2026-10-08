@@ -1,6 +1,7 @@
 import 'package:cw_tc_app/src/api/api_client.dart';
 import 'package:cw_tc_app/src/app.dart';
 import 'package:cw_tc_app/src/models/course.dart';
+import 'package:cw_tc_app/src/models/major.dart';
 import 'package:cw_tc_app/src/pages/course_square_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,9 @@ class _FakeApiClient extends ApiClient {
 
   @override
   Future<List<Course>> courses({int? majorId}) async => _courses;
+
+  @override
+  Future<List<Major>> majors() async => const <Major>[];
 }
 
 void main() {

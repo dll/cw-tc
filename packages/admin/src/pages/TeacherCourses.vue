@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listTeacherCourses, createTeacherCourse, submitCourse, type AdminCourse } from '@/api/client'
+import { listTeacherCourses, createTeacherCourse, submitCourse, listMajors, type AdminCourse, type MajorItem } from '@/api/client'
 
 const rows = ref<AdminCourse[]>([])
 const loading = ref(false)
+const majors = ref<MajorItem[]>([])
 
 const statusLabel: Record<string, string> = {
   proposed: '草稿', building: '建设中', submitted: '待审', rejected: '已驳回',
@@ -19,7 +20,13 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+async function loadMajors() {
+  majors.value = await listMajors().catch(() => [])
+}
+onMounted(() => {
+  load()
+  loadMajors()
+})
 
 const dialogVisible = ref(false)
 const form = ref({ name: '', line: 'main', major_id: null as number | null, intro: '' })
@@ -87,6 +94,11 @@ async function onSubmit(row: AdminCourse) {
           <el-select v-model="form.line">
             <el-option label="主线" value="main" />
             <el-option label="辅线" value="aux" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="专业分类（送审前必填）">
+          <el-select v-model="form.major_id" placeholder="请选择专业分类" style="width: 100%">
+            <el-option v-for="m in majors" :key="m.id" :label="m.name" :value="m.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="简介">

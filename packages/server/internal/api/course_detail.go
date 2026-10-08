@@ -16,7 +16,8 @@ func (s *Server) publicCourseDetail(c *gin.Context) {
 	var intro sql.NullString
 	var price, original sql.NullInt64
 	var majorID sql.NullInt64
-	err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT course_code, name, intro, price_cents, original_price_cents, major_id FROM course WHERE course_code=$1 AND status='published'`, c.Param("courseCode")).Scan(&code, &name, &intro, &price, &original, &majorID)
+	var majorName sql.NullString
+	err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT c.course_code, c.name, c.intro, c.price_cents, c.original_price_cents, c.major_id, m.name FROM course c LEFT JOIN major m ON m.id = c.major_id WHERE c.course_code=$1 AND c.status='published'`, c.Param("courseCode")).Scan(&code, &name, &intro, &price, &original, &majorID, &majorName)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "课程不存在"})
 		return
@@ -25,7 +26,7 @@ func (s *Server) publicCourseDetail(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
 	}
-	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"course_code": code, "name": name, "intro": nullableString(intro), "price_cents": price.Int64, "original_price_cents": nullableInt(original), "major_id": nullableInt(majorID)}})
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"course_code": code, "name": name, "intro": nullableString(intro), "price_cents": price.Int64, "original_price_cents": nullableInt(original), "major_id": nullableInt(majorID), "major_name": nullableString(majorName)}})
 }
 
 func nullableString(value sql.NullString) any {

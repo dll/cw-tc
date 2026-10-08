@@ -6,6 +6,7 @@ import '../models/course.dart';
 import '../models/exam.dart';
 import '../models/lecture.dart';
 import '../models/lecture_resource.dart';
+import '../models/major.dart';
 import '../models/verify_result.dart';
 
 /// 后端 API 客户端（M0 骨架）。
@@ -124,6 +125,16 @@ class ApiClient {
     final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
     return items
         .map((e) => Course.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 专业分类列表（`GET /api/v1/majors`，公开只读，启用的）。
+  Future<List<Major>> majors() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/majors');
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return items
+        .map((e) => Major.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 

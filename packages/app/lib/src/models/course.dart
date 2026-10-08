@@ -7,6 +7,7 @@ class Course {
     required this.priceCents,
     this.originalPriceCents,
     this.majorId,
+    this.majorName,
   });
 
   final String courseCode;
@@ -15,6 +16,7 @@ class Course {
   final int priceCents;
   final int? originalPriceCents;
   final int? majorId;
+  final String? majorName;
 
   factory Course.fromJson(Map<String, dynamic> json) {
     return Course(
@@ -24,6 +26,7 @@ class Course {
       priceCents: (json['price_cents'] as num?)?.toInt() ?? 0,
       originalPriceCents: (json['original_price_cents'] as num?)?.toInt(),
       majorId: (json['major_id'] as num?)?.toInt(),
+      majorName: json['major_name'] as String?,
     );
   }
 
