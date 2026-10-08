@@ -74,6 +74,12 @@ const (
 	EnvTeacherPasswd  = "CWTC_TEACHER_PASSWORD"
 	EnvTeacherName    = "CWTC_TEACHER_NAME"
 
+	// 默认学员种子（手机号即登录账号，铁律 3；缺密码则跳过）
+	EnvStudentAccount  = "CWTC_STUDENT_ACCOUNT"
+	EnvStudentPassword = "CWTC_STUDENT_PASSWORD"
+	EnvStudentName     = "CWTC_STUDENT_NAME"
+	EnvStudentIDCard   = "CWTC_STUDENT_ID_CARD"
+
 	// 行为开关
 	EnvPublicStatusEnabled = "CWTC_PUBLIC_STATUS_ENABLED"
 	EnvLogRedactSensitive  = "CWTC_LOG_REDACT_SENSITIVE"

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -122,5 +123,49 @@ func TestRunSeedAdminDirect(t *testing.T) {
 	t.Setenv(config.EnvAdminPassword, "")
 	if err := runSeedAdmin(); err == nil {
 		t.Fatalf("缺超管密码应返回错误")
+	}
+}
+
+func TestSeedStudent(t *testing.T) {
+	dsn := "file:" + filepath.Join(t.TempDir(), "seed.db")
+	db, closeDB, err := openDatabase(context.Background(), &config.Config{DBDriver: "sqlite", DBDSN: dsn, DeployEnv: "development"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeDB()
+	encKey := "01234567890123456789012345678901" // 恰好 32 字符
+	hmacKey := "hmac-key-for-cwtc-tests-012345678901234"
+	get := func(k string) string {
+		switch k {
+		case config.EnvStudentAccount:
+			return "13866666666"
+		case config.EnvStudentPassword:
+			return "pw-student1" // 含字母+数字（ValidatePassword 要求）
+		}
+		return ""
+	}
+	// 创建
+	r, err := seedStudent(context.Background(), db, encKey, hmacKey, get)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r == nil || !r.Created || r.Role != "student" || r.Account != "13866666666" || r.ID <= 0 {
+		t.Fatalf("应创建学员: %+v", r)
+	}
+	// 幂等
+	r2, err := seedStudent(context.Background(), db, encKey, hmacKey, get)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r2 == nil || r2.Created {
+		t.Fatalf("二次应幂等跳过: %+v", r2)
+	}
+	// 缺账号 → 跳过（nil）
+	if r3, _ := seedStudent(context.Background(), db, encKey, hmacKey, func(string) string { return "" }); r3 != nil {
+		t.Fatalf("缺账号应跳过: %+v", r3)
+	}
+	// 缺加密密钥 → 报错
+	if _, err := seedStudent(context.Background(), db, "", "", get); err == nil {
+		t.Fatal("缺加密密钥应报错")
 	}
 }

@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"strings"
 
 	"github.com/cw-tc/server/internal/config"
+	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/staff"
 )
 
@@ -82,7 +84,56 @@ func seedAdmin(get config.Getenv) ([]seedResult, error) {
 		}
 		results = append(results, seedResult{Account: account, Name: name, Role: string(a.role), ID: id, Created: created})
 	}
+	// 种子默认学员（可选）：手机号即登录账号（铁律 3），缺账号/密码则跳过。
+	stu, err := seedStudent(context.Background(), database, get(config.EnvIDCardEncKey), get(config.EnvIDCardHMACKey), get)
+	if err != nil {
+		return nil, err
+	}
+	if stu != nil {
+		results = append(results, *stu)
+	}
 	return results, nil
+}
+
+// seedStudent 种子默认学员：CWTC_STUDENT_ACCOUNT(手机号) + CWTC_STUDENT_PASSWORD。
+// 缺账号或密码返回 nil（跳过）；缺加密密钥但已配置学员则报错（需真实密钥加密身份证号）。
+// 身份证号缺省用固定样例号（铁律 3：样例号硬约束，校验位合法）。
+func seedStudent(ctx context.Context, db *sql.DB, encKey, hmacKey string, get config.Getenv) (*seedResult, error) {
+	phone := strings.TrimSpace(get(config.EnvStudentAccount))
+	password := get(config.EnvStudentPassword)
+	if phone == "" || password == "" {
+		return nil, nil // 未配置，跳过
+	}
+	if encKey == "" || hmacKey == "" {
+		return nil, fmt.Errorf("种子默认学员需配置身份证加密密钥（%s / %s）", config.EnvIDCardEncKey, config.EnvIDCardHMACKey)
+	}
+	name := strings.TrimSpace(get(config.EnvStudentName))
+	if name == "" {
+		name = "测试学员"
+	}
+	idCard := strings.TrimSpace(get(config.EnvStudentIDCard))
+	if idCard == "" {
+		idCard = "110101199001011237" // 固定样例号（校验位合法）
+	}
+	svc := identity.NewService(db, []byte(encKey), []byte(hmacKey))
+	// 幂等：先查手机号是否已存在（student_no 是 phone+idcard 的哈希，重复注册会先撞 student_no 唯一约束，
+	// 而非 phone 唯一约束，直接依赖 Register 的错误映射会漏判）。
+	var existingID int64
+	err := db.QueryRowContext(ctx, `SELECT id FROM student WHERE phone = $1`, phone).Scan(&existingID)
+	if err == nil {
+		return &seedResult{Account: phone, Name: name, Role: "student", ID: existingID, Created: false}, nil // 幂等跳过
+	}
+	if err != sql.ErrNoRows {
+		return nil, err
+	}
+	stu, err := svc.Register(ctx, identity.RegisterInput{Name: name, Phone: phone, IDCard: idCard, Password: password})
+	if err == identity.ErrPhoneRegistered {
+		return &seedResult{Account: phone, Name: name, Role: "student", Created: false}, nil // 幂等跳过
+	}
+	if err != nil {
+		return nil, fmt.Errorf("创建默认学员 %s 失败: %w", phone, err)
+	}
+	return &seedResult{Account: phone, Name: name, Role: "student", ID: stu.ID, Created: true}, nil
 }
 
 // runSeedAdmin 执行 seed-admin 子命令；错误通过返回值表达（由 main 决定退出码）。
