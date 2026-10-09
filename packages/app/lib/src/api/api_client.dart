@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -256,6 +258,20 @@ class ApiClient {
       },
     );
     return res.data ?? '';
+  }
+
+  /// 拉取二进制资源（课件 PPTX）为 base64，供端内渲染。
+  Future<String> fetchResourceBase64(LectureResource r) async {
+    final res = await _dio.get<List<int>>(
+      '/api/v1/assets/raw',
+      queryParameters: <String, dynamic>{
+        'key': r.storageKey,
+        'expires': r.expiresAt,
+        'sig': r.signature,
+      },
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return base64Encode(res.data ?? const <int>[]);
   }
 
   /// 禁止把疑似身份证号 / 手机号放进 URL。

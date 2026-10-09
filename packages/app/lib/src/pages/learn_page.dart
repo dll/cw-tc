@@ -5,6 +5,7 @@ import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
 import 'audio_player_page.dart';
 import 'resource_viewer_page.dart';
+import 'slide_viewer_page.dart';
 import 'video_player_page.dart';
 
 /// 学习页（PRD v2 §7.4 B-4）：某讲的资源清单（讲义 / 课件 / 视频）。
@@ -117,7 +118,16 @@ class _LearnPageState extends State<LearnPage> {
       );
       return;
     }
-    // 课件（slide）播放后续接（WebView/浏览器打开 PPTX）。
+    // 课件（PPTX）端内渲染（pptxjs 经 WebView）。
+    if (r.kind == 'slide') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SlideViewerPage(resource: r, api: _api),
+        ),
+      );
+      return;
+    }
+    // 其余未知类型兜底提示。
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('该资源暂不支持端内播放')),
     );
