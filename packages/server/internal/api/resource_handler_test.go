@@ -220,3 +220,57 @@ func TestIsCosBackedKey(t *testing.T) {
 		}
 	}
 }
+
+// TestLectureResourcesVideoFirst 验证视频资源始终排在清单第一位（即使 sort 不是最小）。
+func TestLectureResourcesVideoFirst(t *testing.T) {
+	database, err := db.Open(context.Background(), db.DialectSQLite, "file:"+filepath.Join(t.TempDir(), "order.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
+		t.Fatal(err)
+	}
+	service := identity.NewService(database, []byte("01234567890123456789012345678901"), []byte("hmac-key-for-cwTC-tests-012345678901234"))
+	student, err := service.Register(context.Background(), identity.RegisterInput{Name: "样例学员", Phone: "13812345679", IDCard: "110101199001011237", Password: "password-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := service.CreateSession(context.Background(), student.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO staff(id,account,name,role,password_hash,created_source) VALUES(1,'sample','样例教师','teacher','x','seed')`,
+		`INSERT INTO major(id,name) VALUES(1,'样例专业')`,
+		`INSERT INTO course(id,course_code,source,name,line,major_id,status,teacher_id,price_cents) VALUES(1,'AI-01','platform','样例课程','main',1,'published',1,1000)`,
+		`INSERT INTO lecture(id,course_id,no,title,is_preview) VALUES(1,1,1,'第一讲',0)`,
+		// 视频 sort=5 不是最小，但应排第一；markdown/code sort 更小。
+		`INSERT INTO asset(lecture_id,kind,title,storage_key,size_bytes,sort) VALUES(1,'markdown','讲义','x.md',100,1)`,
+		`INSERT INTO asset(lecture_id,kind,title,storage_key,size_bytes,sort) VALUES(1,'video','视频','x.mp4',100,5)`,
+		`INSERT INTO asset(lecture_id,kind,title,storage_key,size_bytes,sort) VALUES(1,'code','代码','x.go',100,2)`,
+		fmt.Sprintf(`INSERT INTO entitlement(student_id,course_id,source,granted_at) VALUES(%d,1,'free','%s')`, student.ID, time.Now().UTC().Format(time.RFC3339)),
+	} {
+		if _, err := database.Exec(stmt); err != nil {
+			t.Fatalf("夹具失败: %v\n%s", err, stmt)
+		}
+	}
+	s := NewWithIdentityAndDatabase(testConfig(t, true), service, database)
+	resp := performJSONWithCookie(t, s.Router(), http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", "", session.Token)
+	var body struct {
+		Data struct {
+			Items []struct {
+				Kind string `json:"kind"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("解析响应失败: %v\n%s", err, resp.Body.String())
+	}
+	if len(body.Data.Items) != 3 {
+		t.Fatalf("应返回 3 个资源，实际 %d: %s", len(body.Data.Items), resp.Body.String())
+	}
+	if body.Data.Items[0].Kind != "video" {
+		t.Fatalf("视频应排第一位，实际第一是 %q", body.Data.Items[0].Kind)
+	}
+}

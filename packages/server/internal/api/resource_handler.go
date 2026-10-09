@@ -41,7 +41,7 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
-	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT kind, title, storage_key, size_bytes FROM asset WHERE lecture_id = $1 ORDER BY sort ASC, id ASC`, lectureID)
+	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT kind, title, storage_key, size_bytes FROM asset WHERE lecture_id = $1 ORDER BY CASE WHEN kind = 'video' THEN 0 ELSE 1 END, sort ASC, id ASC`, lectureID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
