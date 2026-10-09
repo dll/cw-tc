@@ -99,15 +99,17 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                                 : _controller.play();
                           }),
                         ),
-                        IconButton(
-                          icon: Icon(
-                            _muted ? Icons.volume_off : Icons.volume_up,
-                            size: 32,
-                          ),
+                        // 音量：图标 + 文字，明显可点（默认静音自动播放后需要出声入口）。
+                        TextButton.icon(
                           onPressed: () => setState(() {
                             _muted = !_muted;
                             _controller.setVolume(_muted ? 0 : 1);
                           }),
+                          icon: Icon(
+                            _muted ? Icons.volume_off : Icons.volume_up,
+                            size: 28,
+                          ),
+                          label: Text(_muted ? '已静音 · 点此出声' : '静音'),
                         ),
                       ],
                     ),
