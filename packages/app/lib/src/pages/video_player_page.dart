@@ -16,7 +16,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   late final VideoPlayerController _controller;
   bool _ready = false;
   bool _failed = false;
-  bool _muted = true;
+  bool _muted = false;
   String _errorDetail = '';
 
   @override
@@ -26,8 +26,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _controller.initialize().then((_) {
       if (!mounted) return;
       setState(() => _ready = true);
-      // Web 浏览器自动播放策略：未静音的视频不允许无手势自动播放，先静音再播。
-      _controller.setVolume(0);
+      // 默认有声音直接播；若浏览器拦截未静音自动播放，则停在第一帧，用户点播放即出声。
+      _controller.setVolume(1);
       _controller.play();
     }).catchError((Object e) {
       if (!mounted) return;

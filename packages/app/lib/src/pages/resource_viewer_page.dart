@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
+import 'html_viewer_stub.dart'
+    if (dart.library.html) 'html_viewer_web.dart';
 
 /// 资源阅读页：文本类资源端内展示。
 ///
 /// - markdown → 渲染 Markdown（讲义）
-/// - html → WebView 渲染（HTML 课件）
+/// - html → iframe（Web）/ WebView（Android）渲染
 /// - code → 纯文本（可复制）
 class ResourceViewerPage extends StatefulWidget {
   const ResourceViewerPage({super.key, required this.resource, this.api});
@@ -62,7 +63,7 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
             case 'markdown':
               return Markdown(data: content, selectable: true);
             case 'html':
-              return _HtmlViewer(html: content);
+              return HtmlViewer(html: content);
             default:
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -75,32 +76,5 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
         },
       ),
     );
-  }
-}
-
-/// HTML 资源用 WebView 渲染（保持原始排版/样式）。
-class _HtmlViewer extends StatefulWidget {
-  const _HtmlViewer({required this.html});
-
-  final String html;
-
-  @override
-  State<_HtmlViewer> createState() => _HtmlViewerState();
-}
-
-class _HtmlViewerState extends State<_HtmlViewer> {
-  late final WebViewController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..loadHtmlString(widget.html);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return WebViewWidget(controller: _controller);
   }
 }
