@@ -41,8 +41,10 @@ dependencies:
   # 音频播放（学习页分段音频）
   audioplayers: ^6.1.0
 
+  # Markdown 渲染（讲义 md 端内渲染）
+  flutter_markdown: ^0.7.3
+
   # 以下依赖按里程碑加入，版本沿用 wxx 已验证的组合（此处先留说明，不提前引入）：
-  #   M1  Markdown 渲染 flutter_markdown_plus: ^1.0.0
   #   M1  缓存/临时目录 path_provider: ^2.1.0
   #   M4  笔记导出 PDF  （打印/分享能力，届时选型）
 

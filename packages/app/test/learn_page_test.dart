@@ -80,7 +80,8 @@ void main() {
     await tester.tap(find.text('README.md'));
     await tester.pumpAndSettle();
 
-    expect(find.text('# 讲义内容'), findsOneWidget);
+    // markdown 渲染后 # 讲义内容 → H1「讲义内容」
+    expect(find.text('讲义内容'), findsOneWidget);
   });
 
   testWidgets('点击视频资源进入播放页', (WidgetTester tester) async {

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
 
-/// 资源阅读页：拉取文本类资源（讲义 Markdown / 代码 / HTML）原文并端内展示。
+/// 资源阅读页：文本类资源端内展示。
 ///
-/// 二进制资源（课件 PPTX/PDF、视频、音频）不进本页——它们需对象存储/网关落地后
-/// 在系统浏览器或播放器打开，LearnPage 侧用 SnackBar 提示。
+/// - markdown → 渲染 Markdown（讲义）
+/// - html → WebView 渲染（HTML 课件）
+/// - code → 纯文本（可复制）
 class ResourceViewerPage extends StatefulWidget {
   const ResourceViewerPage({super.key, required this.resource, this.api});
 
@@ -55,15 +58,49 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
             );
           }
           final content = snapshot.data ?? '';
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: SelectableText(
-              content,
-              style: const TextStyle(fontSize: 15, height: 1.6),
-            ),
-          );
+          switch (widget.resource.kind) {
+            case 'markdown':
+              return Markdown(data: content, selectable: true);
+            case 'html':
+              return _HtmlViewer(html: content);
+            default:
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(
+                  content,
+                  style: const TextStyle(fontSize: 15, height: 1.6),
+                ),
+              );
+          }
         },
       ),
     );
+  }
+}
+
+/// HTML 资源用 WebView 渲染（保持原始排版/样式）。
+class _HtmlViewer extends StatefulWidget {
+  const _HtmlViewer({required this.html});
+
+  final String html;
+
+  @override
+  State<_HtmlViewer> createState() => _HtmlViewerState();
+}
+
+class _HtmlViewerState extends State<_HtmlViewer> {
+  late final WebViewController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..loadHtmlString(widget.html);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WebViewWidget(controller: _controller);
   }
 }
