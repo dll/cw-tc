@@ -188,6 +188,7 @@ export interface AdminCourse {
   created_at: string
   major_id: number | null
   major_name: string | null
+  free_preview_lectures: number
 }
 export async function listAdminCourses(): Promise<AdminCourse[]> {
   const r = await unwrap<{ items: AdminCourse[] }>(http.get('/admin/courses'))
@@ -204,6 +205,9 @@ export async function setPrice(code: string, priceCents: number, confirm: boolea
 }
 export async function setCourseMajor(code: string, majorId: number): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/major`, { major_id: majorId }))
+}
+export async function setCourseFreePreview(code: string, count: number): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/courses/${code}/free-preview`, { count }))
 }
 
 // —— 审计日志 ——

@@ -26,9 +26,10 @@ func (s *Server) listLectureResources(c *gin.Context) {
 	}
 	var courseID, lectureID int64
 	var isPreview bool
+	var freePreviewLectures int
 	err = s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT c.id, l.id, l.is_preview FROM course c JOIN lecture l ON l.course_id = c.id WHERE c.course_code = $1 AND c.status = 'published' AND l.no = $2`,
-		c.Param("courseCode"), no).Scan(&courseID, &lectureID, &isPreview)
+		`SELECT c.id, l.id, l.is_preview, c.free_preview_lectures FROM course c JOIN lecture l ON l.course_id = c.id WHERE c.course_code = $1 AND c.status = 'published' AND l.no = $2`,
+		c.Param("courseCode"), no).Scan(&courseID, &lectureID, &isPreview, &freePreviewLectures)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "讲次不存在"})
 		return
@@ -36,6 +37,8 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
 	}
+	// 免费讲次 = 上游试学标记 OR 讲次号 <= 平台配置的免费预览讲次数。
+	isPreview = isPreview || no <= freePreviewLectures
 	student := c.MustGet(studentContextKey).(identity.Student)
 	if !s.checkResourceAccess(c, student.ID, courseID, isPreview) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})

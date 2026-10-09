@@ -7,6 +7,7 @@ import {
   publishCourse,
   setPrice,
   setCourseMajor,
+  setCourseFreePreview,
   listMajors,
   type AdminCourse,
   type MajorItem,
@@ -55,6 +56,30 @@ async function submitMajor() {
     await setCourseMajor(target.course_code, majorForm.value)
     ElMessage.success('已设置专业分类')
     majorVisible.value = false
+    load()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '设置失败')
+  }
+}
+
+// 设置免费预览讲次对话框
+const freeVisible = ref(false)
+const freeTarget = ref<AdminCourse | null>(null)
+const freeForm = ref(0)
+
+function openFree(row: AdminCourse) {
+  freeTarget.value = row
+  freeForm.value = row.free_preview_lectures ?? 0
+  freeVisible.value = true
+}
+
+async function submitFree() {
+  const target = freeTarget.value
+  if (!target) return
+  try {
+    await setCourseFreePreview(target.course_code, freeForm.value)
+    ElMessage.success('已设置免费预览讲次')
+    freeVisible.value = false
     load()
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '设置失败')
@@ -145,12 +170,16 @@ async function submitReview() {
       <el-table-column label="价格" width="90">
         <template #default="{ row }">¥{{ (row.price_cents / 100).toFixed(2) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="300">
+      <el-table-column label="免费讲次" width="90">
+        <template #default="{ row }">{{ row.free_preview_lectures ?? 0 }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="360">
         <template #default="{ row }">
           <el-button v-if="row.status === 'submitted'" size="small" type="primary" @click="openReview(row)">审核</el-button>
           <el-button v-if="row.status === 'approved'" size="small" type="success" @click="onPublish(row)">上架</el-button>
           <el-button v-if="row.status === 'published'" size="small" @click="onPrice(row)">改价</el-button>
           <el-button size="small" @click="openMajor(row)">设置专业</el-button>
+          <el-button size="small" @click="openFree(row)">免费讲次</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -192,6 +221,18 @@ async function submitReview() {
       <template #footer>
         <el-button @click="majorVisible = false">取消</el-button>
         <el-button type="primary" @click="submitMajor">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="freeVisible" title="设置免费预览讲次" width="400px">
+      <el-form label-position="top">
+        <el-form-item label="免费预览讲次数（前 N 讲免购可学，0 = 无）">
+          <el-input-number v-model="freeForm" :min="0" :max="999" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="freeVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitFree">保存</el-button>
       </template>
     </el-dialog>
   </el-card>

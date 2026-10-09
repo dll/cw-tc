@@ -43,7 +43,8 @@ func (s *Server) listCourseLectures(c *gin.Context) {
 		return
 	}
 	var courseID int64
-	if err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT id FROM course WHERE course_code = $1 AND status = 'published'`, c.Param("courseCode")).Scan(&courseID); err == sql.ErrNoRows {
+	var freePreviewLectures int
+	if err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT id, free_preview_lectures FROM course WHERE course_code = $1 AND status = 'published'`, c.Param("courseCode")).Scan(&courseID, &freePreviewLectures); err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "课程不存在"})
 		return
 	} else if err != nil {
@@ -65,7 +66,8 @@ func (s *Server) listCourseLectures(c *gin.Context) {
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 			return
 		}
-		items = append(items, gin.H{"no": no, "title": title, "is_preview": isPreview})
+		// 试学 = 上游试学标记 OR 讲次号 <= 平台免费预览讲次数。
+		items = append(items, gin.H{"no": no, "title": title, "is_preview": isPreview || no <= freePreviewLectures})
 	}
 	if err := rows.Err(); err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
