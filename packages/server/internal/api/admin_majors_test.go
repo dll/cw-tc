@@ -97,3 +97,40 @@ func TestAdminSetCourseMajor(t *testing.T) {
 		t.Fatalf("非法 JSON 应 400，实际 %d", got.Code)
 	}
 }
+
+func TestAdminSetCourseFreePreview(t *testing.T) {
+	database, err := db.Open(context.Background(), db.DialectSQLite, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
+		t.Fatal(err)
+	}
+	sid, err := staff.Create(context.Background(), database, "admin", "管理员", staff.RoleAdminOps, "Temp@123", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO course(course_code, source, name, line, major_id, status, teacher_id, price_cents) VALUES('C1','platform','平台课','main',NULL,'published',$1,1000)`, sid); err != nil {
+		t.Fatal(err)
+	}
+	r := NewWithDatabase(testConfig(t, true), database).Router()
+	login := performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"admin","password":"Temp@123"}`)
+	token := extractJSONField(t, login.Body.String(), "token")
+
+	// 设置免费预览讲次
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/C1/free-preview", `{"count":2}`, token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"free_preview_lectures":2`) {
+		t.Fatalf("设置免费讲次 = %d %s", got.Code, got.Body.String())
+	}
+	// admin 课程列表返回 free_preview_lectures
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses", "", token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"free_preview_lectures":2`) {
+		t.Fatalf("课程列表应含 free_preview_lectures = %d %s", got.Code, got.Body.String())
+	}
+	// 错误路径：count < 0 → 400；不存在课程 → 404
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/C1/free-preview", `{"count":-1}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("count<0 应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/NOPE/free-preview", `{"count":1}`, token); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在课程应 404，实际 %d", got.Code)
+	}
+}

@@ -72,3 +72,37 @@ func indexOf(value, needle string) int {
 	}
 	return -1
 }
+
+func TestLectureListFreePreviewLectures(t *testing.T) {
+	database, err := db.Open(context.Background(), db.DialectSQLite, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO staff(account,name,role,password_hash,created_source) VALUES('sample','样例教师','teacher','x','seed')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO course(course_code,source,name,line,major_id,status,teacher_id,price_cents,free_preview_lectures) VALUES('C1','platform','平台课','main',NULL,'published',1,1000,2)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO lecture(course_id,no,title,is_preview) VALUES((SELECT id FROM course WHERE course_code='C1'),1,'第一讲',0),((SELECT id FROM course WHERE course_code='C1'),2,'第二讲',0),((SELECT id FROM course WHERE course_code='C1'),3,'第三讲',0)`); err != nil {
+		t.Fatal(err)
+	}
+	s := NewWithDatabase(testConfig(t, true), database)
+	resp := performJSON(t, s.Router(), http.MethodGet, "/api/v1/courses/C1/lectures", ``)
+	body := resp.Body.String()
+	// free_preview_lectures=2：第 1、2 讲应试学（is_preview=true），第 3 讲不试学。
+	if resp.Code != http.StatusOK || !containsAll(body, `"no":1`, `"no":2`, `"no":3`) {
+		t.Fatalf("讲次列表错误: %d %s", resp.Code, body)
+	}
+	// 第 2 讲应 is_preview=true（平台免费预览覆盖），第 3 讲应 is_preview=false（JSON 键按字母序 is_preview,no,title）
+	if indexOf(body, `"is_preview":true,"no":2,"title":"第二讲"`) == -1 {
+		t.Fatalf("第 2 讲应试学: %s", body)
+	}
+	if indexOf(body, `"is_preview":false,"no":3,"title":"第三讲"`) == -1 {
+		t.Fatalf("第 3 讲不应试学: %s", body)
+	}
+}
