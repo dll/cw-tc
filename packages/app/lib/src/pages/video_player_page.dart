@@ -17,6 +17,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   bool _ready = false;
   bool _failed = false;
   bool _muted = true;
+  String _errorDetail = '';
 
   @override
   void initState() {
@@ -28,9 +29,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       // Web 浏览器自动播放策略：未静音的视频不允许无手势自动播放，先静音再播。
       _controller.setVolume(0);
       _controller.play();
-    }).catchError((Object _) {
+    }).catchError((Object e) {
       if (!mounted) return;
-      setState(() => _failed = true);
+      setState(() {
+        _failed = true;
+        _errorDetail = e.toString();
+      });
     });
   }
 
@@ -45,15 +49,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
       body: _failed
-          ? const Center(
+          ? Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
+                padding: const EdgeInsets.all(24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Icon(Icons.error_outline, size: 48),
-                    SizedBox(height: 12),
-                    Text('视频加载失败，请稍后重试'),
+                    const Icon(Icons.error_outline, size: 48),
+                    const SizedBox(height: 12),
+                    const Text('视频加载失败，请稍后重试'),
+                    if (_errorDetail.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorDetail,
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ],
                 ),
               ),
