@@ -34,7 +34,9 @@ dependencies:
   webview_flutter: ">=4.4.4 <4.9.0"
 
   # 视频播放（学习页视频，Web/Android 共用）
-  video_player: ^2.9.2
+  # ⚠️ 锁定 2.8.7：2.9.x 起 initialize() 会调用 platform interface 的 init()，
+  #    而 video_player_web 2.3.5 在该 Flutter 3.22 组合下未正确覆盖 init() → UnimplementedError。
+  video_player: 2.8.7
 
   # 音频播放（学习页分段音频）
   audioplayers: ^6.1.0
