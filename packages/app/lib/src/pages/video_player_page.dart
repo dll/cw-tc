@@ -16,6 +16,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   late final VideoPlayerController _controller;
   bool _ready = false;
   bool _failed = false;
+  bool _muted = true;
 
   @override
   void initState() {
@@ -24,6 +25,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _controller.initialize().then((_) {
       if (!mounted) return;
       setState(() => _ready = true);
+      // Web 浏览器自动播放策略：未静音的视频不允许无手势自动播放，先静音再播。
+      _controller.setVolume(0);
       _controller.play();
     }).catchError((Object _) {
       if (!mounted) return;
@@ -68,18 +71,33 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                       allowScrubbing: true,
                       padding: const EdgeInsets.symmetric(vertical: 8),
                     ),
-                    IconButton(
-                      icon: Icon(
-                        _controller.value.isPlaying
-                            ? Icons.pause_circle_filled
-                            : Icons.play_circle_filled,
-                        size: 48,
-                      ),
-                      onPressed: () => setState(() {
-                        _controller.value.isPlaying
-                            ? _controller.pause()
-                            : _controller.play();
-                      }),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        IconButton(
+                          icon: Icon(
+                            _controller.value.isPlaying
+                                ? Icons.pause_circle_filled
+                                : Icons.play_circle_filled,
+                            size: 48,
+                          ),
+                          onPressed: () => setState(() {
+                            _controller.value.isPlaying
+                                ? _controller.pause()
+                                : _controller.play();
+                          }),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            _muted ? Icons.volume_off : Icons.volume_up,
+                            size: 32,
+                          ),
+                          onPressed: () => setState(() {
+                            _muted = !_muted;
+                            _controller.setVolume(_muted ? 0 : 1);
+                          }),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                   ],
