@@ -15,14 +15,14 @@ var ErrLedgerInput = errors.New("台账参数非法")
 
 // OrderRow 订单台账行。
 type OrderRow struct {
-	OrderNo     string
-	Phone       string // 脱敏
-	CourseName  string
-	AmountCents int64
-	Status      string
-	Channel     string
-	PaidAt      string
-	CreatedAt   string
+	OrderNo     string `json:"order_no"`
+	Phone       string `json:"phone"` // 脱敏
+	CourseName  string `json:"course_name"`
+	AmountCents int64  `json:"amount_cents"`
+	Status      string `json:"status"`
+	Channel     string `json:"channel"`
+	PaidAt      string `json:"paid_at"`
+	CreatedAt   string `json:"created_at"`
 }
 
 // ListOrders 订单台账：手机号脱敏，按状态过滤，分页。
@@ -66,14 +66,14 @@ func ListOrders(ctx context.Context, db *sql.DB, status string, limit, offset in
 
 // RefundRow 退款台账行。
 type RefundRow struct {
-	RefundNo    string
-	OrderNo     string
-	Phone       string // 脱敏
-	Kind        string
-	AmountCents int64
-	Reason      string
-	Status      string
-	CreatedAt   string
+	RefundNo    string `json:"refund_no"`
+	OrderNo     string `json:"order_no"`
+	Phone       string `json:"phone"` // 脱敏
+	Kind        string `json:"kind"`
+	AmountCents int64  `json:"amount_cents"`
+	Reason      string `json:"reason"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"created_at"`
 }
 
 // ListRefunds 退款台账：手机号脱敏，分页。
@@ -103,15 +103,15 @@ func ListRefunds(ctx context.Context, db *sql.DB, limit, offset int) ([]RefundRo
 
 // CertRow 证书台账行。
 type CertRow struct {
-	CertNo    string
-	Phone     string // 脱敏
-	Course    string
-	Level     string
-	Score     float64
-	Band      string
-	Status    string
-	IssuedAt  string
-	ExpiresAt string
+	CertNo    string  `json:"cert_no"`
+	Phone     string  `json:"phone"` // 脱敏
+	Course    string  `json:"course"`
+	Level     string  `json:"level"`
+	Score     float64 `json:"score"`
+	Band      string  `json:"band"`
+	Status    string  `json:"status"`
+	IssuedAt  string  `json:"issued_at"`
+	ExpiresAt string  `json:"expires_at"`
 }
 
 // ListCertificates 证书台账：手机号脱敏，分页。

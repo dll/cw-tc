@@ -3,6 +3,8 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/cw-tc/server/internal/platform/db"
@@ -63,5 +65,19 @@ func TestLedgersMaskPhone(t *testing.T) {
 	certs, err := ListCertificates(ctx, database, 10, 0)
 	if err != nil || len(certs) != 1 || certs[0].Course != "TC-1234" || certs[0].Phone != "138****5678" {
 		t.Fatalf("证书台账失败: %+v %v", certs, err)
+	}
+}
+
+// TestLedgerJSONTags 锁台账 JSON 字段名为 snake_case（前端 client.ts 的 OrderItem 等期望），
+// 否则管理端金额列取不到 amount_cents → 显示 NaN、其余列空。
+func TestLedgerJSONTags(t *testing.T) {
+	if o, _ := json.Marshal(OrderRow{OrderNo: "O1", AmountCents: 100}); !strings.Contains(string(o), `"order_no"`) || !strings.Contains(string(o), `"amount_cents"`) {
+		t.Fatalf("OrderRow 应序列化为 snake_case: %s", o)
+	}
+	if r, _ := json.Marshal(RefundRow{RefundNo: "R1", AmountCents: 100}); !strings.Contains(string(r), `"refund_no"`) || !strings.Contains(string(r), `"amount_cents"`) {
+		t.Fatalf("RefundRow 应序列化为 snake_case: %s", r)
+	}
+	if c, _ := json.Marshal(CertRow{CertNo: "CW", Score: 88}); !strings.Contains(string(c), `"cert_no"`) || !strings.Contains(string(c), `"score"`) {
+		t.Fatalf("CertRow 应序列化为 snake_case: %s", c)
 	}
 }
