@@ -171,7 +171,7 @@ func Run(ctx context.Context, database *sql.DB, sourceDir string) error {
 			return err
 		}
 		seenCourses = append(seenCourses, course.ID)
-		if course.Type == "讲次制" {
+		if course.Type == "讲次制" || course.Type == "案例制" {
 			if err := syncLectures(ctx, database, course); err != nil {
 				return err
 			}
@@ -179,7 +179,7 @@ func Run(ctx context.Context, database *sql.DB, sourceDir string) error {
 		if err := syncQuestions(ctx, database, course); err != nil {
 			return err
 		}
-		if course.Type == "讲次制" {
+		if course.Type == "讲次制" || course.Type == "案例制" {
 			if err := syncAssets(ctx, database, course, sourceDir); err != nil {
 				return err
 			}
@@ -264,7 +264,11 @@ func syncLectures(ctx context.Context, database *sql.DB, course Course) error {
 		if err != nil || no < 1 {
 			continue
 		}
-		lectures = append(lectures, lecture{no: no, title: m[2]})
+		title := strings.TrimLeft(m[2], "_- ")
+		if title == "" {
+			title = m[2]
+		}
+		lectures = append(lectures, lecture{no: no, title: title})
 	}
 	sort.Slice(lectures, func(i, j int) bool { return lectures[i].no < lectures[j].no })
 
