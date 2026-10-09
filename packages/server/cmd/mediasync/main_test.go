@@ -31,6 +31,17 @@ func TestScanMedia(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "AI化教学创新03-CF", "01_你好世界", "README.md"), []byte("m"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// build/ 生成中间产物（分段视频/TTS 素材）应被跳过，不算课程资源
+	buildScenes := filepath.Join(root, "AI化教学创新03-CF", "01_你好世界", "build", "scenes", "s01")
+	if err := os.MkdirAll(buildScenes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(buildScenes, "video.mp4"), []byte("v"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(buildScenes, "tts_00.mp3"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	entries, err := scanMedia(root)
 	if err != nil {

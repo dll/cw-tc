@@ -72,7 +72,14 @@ func scanMedia(source string) ([]sync.MediaEntry, error) {
 			}
 			lectureDir := filepath.Join(courseDir, ld.Name())
 			_ = filepath.WalkDir(lectureDir, func(p string, d os.DirEntry, err error) error {
-				if err != nil || d.IsDir() {
+				if err != nil {
+					return nil
+				}
+				if d.IsDir() {
+					// 跳过 build/ 等生成中间产物目录（分段 video/tts 素材不是课程资源）
+					if d.Name() == "build" {
+						return filepath.SkipDir
+					}
 					return nil
 				}
 				ext := strings.ToLower(filepath.Ext(d.Name()))
