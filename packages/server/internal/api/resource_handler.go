@@ -138,10 +138,16 @@ func (s *Server) downloadAsset(c *gin.Context) {
 	c.File(filePath)
 }
 
-// checkResourceAccess 校验学员对课程资源有访问权（有效权益，或试学讲次）。
+// checkResourceAccess 校验学员对课程资源有访问权（免费课 / 有效权益，或试学讲次）。
 func (s *Server) checkResourceAccess(c *gin.Context, studentID, courseID int64, isPreview bool) bool {
 	if isPreview {
 		return true // 试学讲次免费
+	}
+	// 免费课（price_cents=0）直接放行，无需购买。
+	var priceCents int64
+	if err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT price_cents FROM course WHERE id = $1`, courseID).Scan(&priceCents); err == nil && priceCents == 0 {
+		return true
 	}
 	var n int
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),

@@ -89,7 +89,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 children: <Widget>[
                   Text(course.priceLabel, style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
                   const Spacer(),
-                  if (_entitled) ...<Widget>[
+                  if (_entitled || course.priceCents <= 0) ...<Widget>[
                     OutlinedButton(
                       onPressed: () => context.push('/exam/${widget.courseCode}/L1'),
                       child: const Text('测评'),

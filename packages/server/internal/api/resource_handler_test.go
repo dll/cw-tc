@@ -274,3 +274,45 @@ func TestLectureResourcesVideoFirst(t *testing.T) {
 		t.Fatalf("视频应排第一位，实际第一是 %q", body.Data.Items[0].Kind)
 	}
 }
+
+// TestFreeCourseAccess 免费课（price_cents=0）无需购买即可访问资源；付费课未购仍 403。
+func TestFreeCourseAccess(t *testing.T) {
+	database, err := db.Open(context.Background(), db.DialectSQLite, "file:"+filepath.Join(t.TempDir(), "free.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
+		t.Fatal(err)
+	}
+	service := identity.NewService(database, []byte("01234567890123456789012345678901"), []byte("hmac-key-for-cwTC-tests-012345678901234"))
+	student, err := service.Register(context.Background(), identity.RegisterInput{Name: "样例学员", Phone: "13812345679", IDCard: "110101199001011237", Password: "password-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := service.CreateSession(context.Background(), student.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO staff(id,account,name,role,password_hash,created_source) VALUES(1,'sample','样例教师','teacher','x','seed')`,
+		`INSERT INTO major(id,name) VALUES(1,'样例专业')`,
+		// 免费课 price_cents=0；付费课 price_cents=1000
+		`INSERT INTO course(id,course_code,source,name,line,major_id,status,teacher_id,price_cents) VALUES(1,'FREE-01','platform','免费课','main',1,'published',1,0),(2,'PAID-01','platform','付费课','main',1,'published',1,1000)`,
+		`INSERT INTO lecture(id,course_id,no,title,is_preview) VALUES(1,1,1,'第一讲',0),(2,2,1,'第一讲',0)`,
+		`INSERT INTO asset(lecture_id,kind,title,storage_key,size_bytes) VALUES(1,'markdown','讲义','free.md',100),(2,'markdown','讲义','paid.md',100)`,
+	} {
+		if _, err := database.Exec(stmt); err != nil {
+			t.Fatalf("夹具失败: %v\n%s", err, stmt)
+		}
+	}
+	s := NewWithIdentityAndDatabase(testConfig(t, true), service, database)
+	// 免费课未购 → 200
+	if resp := performJSONWithCookie(t, s.Router(), http.MethodGet, "/api/v1/courses/FREE-01/lectures/1/resources", "", session.Token); resp.Code != http.StatusOK {
+		t.Fatalf("免费课未购应 200，实际 %d: %s", resp.Code, resp.Body.String())
+	}
+	// 付费课未购 → 403
+	if resp := performJSONWithCookie(t, s.Router(), http.MethodGet, "/api/v1/courses/PAID-01/lectures/1/resources", "", session.Token); resp.Code != http.StatusForbidden {
+		t.Fatalf("付费课未购应 403，实际 %d: %s", resp.Code, resp.Body.String())
+	}
+}
