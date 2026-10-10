@@ -29,9 +29,9 @@ func TestTeacherCourseLifecycle(t *testing.T) {
 	login := performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"t1","password":"Temp@123"}`)
 	token := extractJSONField(t, login.Body.String(), "token")
 
-	// 新建草稿
-	create := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/courses", `{"name":"我的平台课","line":"main","intro":"简介"}`, token)
-	if create.Code != http.StatusOK || !containsAll(create.Body.String(), `"course_code"`) {
+	// 新建草稿（课程码由教师填写）
+	create := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/courses", `{"course_code":"TC-101","name":"我的平台课","line":"main","intro":"简介"}`, token)
+	if create.Code != http.StatusOK || !containsAll(create.Body.String(), `"course_code":"TC-101"`) {
 		t.Fatalf("新建草稿 = %d %s", create.Code, create.Body.String())
 	}
 	code := extractJSONField(t, create.Body.String(), "course_code")
@@ -39,6 +39,25 @@ func TestTeacherCourseLifecycle(t *testing.T) {
 	// 列表包含我的课程
 	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/courses", "", token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"我的平台课"`) {
 		t.Fatalf("我的课程列表 = %d %s", got.Code, got.Body.String())
+	}
+
+	// 编辑课程信息（名称/简介）
+	if got := performJSONWithBearer(t, r, http.MethodPut, "/api/v1/teacher/courses/"+code, `{"name":"改名的平台课","line":"main","intro":"新简介"}`, token); got.Code != http.StatusOK {
+		t.Fatalf("编辑课程 = %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/courses", "", token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"改名的平台课"`) {
+		t.Fatalf("编辑后列表 = %d %s", got.Code, got.Body.String())
+	}
+
+	// 课程码非法/空 → 400；重复 → 409
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/courses", `{"course_code":"","name":"x"}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("空课程码应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/courses", `{"course_code":"bad code!","name":"x"}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("非法课程码应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/courses", `{"course_code":"TC-101","name":"重复"}`, token); got.Code != http.StatusConflict {
+		t.Fatalf("重复课程码应 409，实际 %d", got.Code)
 	}
 
 	// 提交送审

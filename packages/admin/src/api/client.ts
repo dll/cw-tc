@@ -189,6 +189,7 @@ export interface AdminCourse {
   major_id: number | null
   major_name: string | null
   free_preview_lectures: number
+  intro: string | null
 }
 export async function listAdminCourses(): Promise<AdminCourse[]> {
   const r = await unwrap<{ items: AdminCourse[] }>(http.get('/admin/courses'))
@@ -252,12 +253,19 @@ export async function listTeacherCourses(): Promise<AdminCourse[]> {
   return r.items
 }
 export async function createTeacherCourse(input: {
+  course_code: string
   name: string
   line?: string
   major_id?: number | null
   intro?: string
 }): Promise<{ course_code: string }> {
   return unwrap<{ course_code: string }>(http.post('/teacher/courses', input))
+}
+export async function updateTeacherCourse(
+  code: string,
+  input: { name: string; line?: string; major_id?: number | null; intro?: string },
+): Promise<void> {
+  await unwrap<unknown>(http.put(`/teacher/courses/${code}`, input))
 }
 export async function submitCourse(code: string): Promise<void> {
   await unwrap<unknown>(http.post(`/teacher/courses/${code}/submit`, {}))

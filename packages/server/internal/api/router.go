@@ -159,6 +159,7 @@ func (s *Server) Router() *gin.Engine {
 	teacher := v1.Group("/teacher", s.staffRequired)
 	teacher.GET("/courses", s.teacherCourses)
 	teacher.POST("/courses", s.teacherCreateCourse)
+	teacher.PUT("/courses/:code", s.teacherUpdateCourse)
 	teacher.POST("/courses/:code/submit", s.teacherSubmitCourse)
 	teacher.GET("/grade", s.teacherGradeList)
 	teacher.GET("/grade/:resultID", s.teacherGradeDetail)
