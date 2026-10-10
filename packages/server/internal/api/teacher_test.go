@@ -80,4 +80,23 @@ func TestTeacherCourseLifecycle(t *testing.T) {
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/courses/"+code+"/submit", `{}`, token); got.Code != http.StatusConflict {
 		t.Fatalf("重复提交应 409，实际 %d", got.Code)
 	}
+	// 已提交状态删除 → 409（状态不可删）
+	if got := performJSONWithBearer(t, r, http.MethodDelete, "/api/v1/teacher/courses/"+code, ``, token); got.Code != http.StatusConflict {
+		t.Fatalf("已提交课程删除应 409，实际 %d", got.Code)
+	}
+
+	// 新建 → 软删除 → 列表不再包含
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/courses", `{"course_code":"TC-999","name":"待删除"}`, token); got.Code != http.StatusOK {
+		t.Fatalf("新建待删课程 = %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodDelete, "/api/v1/teacher/courses/TC-999", ``, token); got.Code != http.StatusOK {
+		t.Fatalf("删除课程 = %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/courses", "", token); got.Code != http.StatusOK || containsAll(got.Body.String(), `"待删除"`) {
+		t.Fatalf("删除后列表不应包含待删课程: %d %s", got.Code, got.Body.String())
+	}
+	// 他人课程删除 → 409（归属校验）
+	if got := performJSONWithBearer(t, r, http.MethodDelete, "/api/v1/teacher/courses/TC-999", ``, token2); got.Code != http.StatusConflict {
+		t.Fatalf("他人课程删除应 409，实际 %d", got.Code)
+	}
 }

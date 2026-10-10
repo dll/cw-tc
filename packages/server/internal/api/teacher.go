@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 	"time"
@@ -14,7 +15,7 @@ import (
 func (s *Server) teacherCourses(c *gin.Context) {
 	st := c.MustGet(staffContextKey).(staff.Staff)
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
-		`SELECT course_code, name, line, status, price_cents, major_id, created_at, intro FROM course WHERE teacher_id = $1 ORDER BY id DESC`, st.ID)
+		`SELECT course_code, name, line, status, price_cents, major_id, created_at, intro FROM course WHERE teacher_id = $1 AND deleted_at IS NULL ORDER BY id DESC`, st.ID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 		return
@@ -104,6 +105,38 @@ func (s *Server) teacherUpdateCourse(c *gin.Context) {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		c.JSON(http.StatusConflict, envelope{Code: 10002, Msg: "课程不存在、非本人课程或状态不可编辑"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0})
+}
+
+// teacherDeleteCourse DELETE /teacher/courses/:code —— 软删除课程（归属校验，proposed/rejected 可删）。
+// 不物理删除（铁律 12）：deleted_at 置位，列表过滤；删除留痕到 course_delete_log。
+func (s *Server) teacherDeleteCourse(c *gin.Context) {
+	st := c.MustGet(staffContextKey).(staff.Staff)
+	code := c.Param("code")
+	var name string
+	err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT name FROM course WHERE course_code = $1 AND teacher_id = $2 AND deleted_at IS NULL AND status IN ('proposed','rejected')`,
+		code, st.ID).Scan(&name)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusConflict, envelope{Code: 10002, Msg: "课程不存在、非本人课程或状态不可删除"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
+	now := time.Now().UTC()
+	if _, err := s.dbConn.ExecContext(c.Request.Context(),
+		`UPDATE course SET deleted_at = $1, updated_at = $1 WHERE course_code = $2 AND teacher_id = $3 AND deleted_at IS NULL AND status IN ('proposed','rejected')`,
+		now, code, st.ID); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
+	if _, err := s.dbConn.ExecContext(c.Request.Context(),
+		`INSERT INTO course_delete_log(course_code, course_name, deleted_by, deleted_at) VALUES($1, $2, $3, $4)`,
+		code, name, st.ID, now); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 		return
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0})

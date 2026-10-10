@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listTeacherCourses, createTeacherCourse, updateTeacherCourse, submitCourse, listMajors, type AdminCourse, type MajorItem } from '@/api/client'
+import { listTeacherCourses, createTeacherCourse, updateTeacherCourse, deleteTeacherCourse, submitCourse, listMajors, type AdminCourse, type MajorItem } from '@/api/client'
 
 const rows = ref<AdminCourse[]>([])
 const loading = ref(false)
@@ -94,6 +94,17 @@ async function onSubmit(row: AdminCourse) {
     ElMessage.error(e instanceof Error ? e.message : '提交失败')
   }
 }
+
+async function onDelete(row: AdminCourse) {
+  await ElMessageBox.confirm(`确认删除「${row.name}」？删除后不可恢复。`, '删除课程', { type: 'warning', confirmButtonText: '删除' })
+  try {
+    await deleteTeacherCourse(row.course_code)
+    ElMessage.success('已删除')
+    load()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '删除失败')
+  }
+}
 </script>
 
 <template>
@@ -108,13 +119,16 @@ async function onSubmit(row: AdminCourse) {
       <el-table-column label="状态" width="100">
         <template #default="{ row }">{{ statusLabel[row.status] ?? row.status }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="180">
+      <el-table-column label="操作" width="240">
         <template #default="{ row }">
           <el-button v-if="row.status === 'proposed' || row.status === 'rejected'" size="small" @click="openEdit(row)">
             编辑
           </el-button>
           <el-button v-if="row.status === 'proposed' || row.status === 'rejected'" size="small" type="primary" @click="onSubmit(row)">
             提交送审
+          </el-button>
+          <el-button v-if="row.status === 'proposed' || row.status === 'rejected'" size="small" type="danger" @click="onDelete(row)">
+            删除
           </el-button>
         </template>
       </el-table-column>

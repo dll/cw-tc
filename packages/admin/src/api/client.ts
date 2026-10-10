@@ -267,6 +267,9 @@ export async function updateTeacherCourse(
 ): Promise<void> {
   await unwrap<unknown>(http.put(`/teacher/courses/${code}`, input))
 }
+export async function deleteTeacherCourse(code: string): Promise<void> {
+  await unwrap<unknown>(http.delete(`/teacher/courses/${code}`))
+}
 export async function submitCourse(code: string): Promise<void> {
   await unwrap<unknown>(http.post(`/teacher/courses/${code}/submit`, {}))
 }
