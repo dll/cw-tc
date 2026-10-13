@@ -316,3 +316,34 @@ func TestFreeCourseAccess(t *testing.T) {
 		t.Fatalf("付费课未购应 403，实际 %d: %s", resp.Code, resp.Body.String())
 	}
 }
+
+// TestLectureResourcesMediaForceFile 验证 MediaForceFile 时（COS 欠费/停服临时回退），
+// 视频项下发文件服务签名 URL（/api/v1/assets/raw?），而非 COS 预签名 URL。
+func TestLectureResourcesMediaForceFile(t *testing.T) {
+	router, cfg, token := newResourceServer(t, true, "video", "AI化教学创新02-DO/01-案例A/video/讲解.mp4", false)
+	cfg.MediaForceFile = true // 模拟 COS 欠费回退
+	resp := performJSONWithCookie(t, router, http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", "", token)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("资源清单应 200，实际 %d: %s", resp.Code, resp.Body.String())
+	}
+	var body struct {
+		Data struct {
+			Items []struct {
+				Kind string `json:"kind"`
+				URL  string `json:"url"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("响应解析失败: %v", err)
+	}
+	if len(body.Data.Items) != 1 || body.Data.Items[0].URL == "" {
+		t.Fatalf("视频项应带 url: %s", resp.Body.String())
+	}
+	if !strings.HasPrefix(body.Data.Items[0].URL, "/api/v1/assets/raw?") {
+		t.Fatalf("MediaForceFile 应下发文件服务 URL，实际 %q", body.Data.Items[0].URL)
+	}
+	if strings.Contains(body.Data.Items[0].URL, "myqcloud.com") {
+		t.Fatalf("MediaForceFile 不应下发 COS URL: %q", body.Data.Items[0].URL)
+	}
+}

@@ -63,6 +63,9 @@ const (
 	EnvCosRegion    = "CWTC_COS_REGION"
 	EnvCosBaseURL   = "CWTC_COS_BASE_URL"
 
+	// 媒体强制走文件服务（COS 欠费/停服时临时回退，视频直接从 CWTC_CONTENT_DIR 下发）
+	EnvMediaForceFile = "CWTC_MEDIA_FORCE_FILE"
+
 	// 初始账号种子（`seed-admin` 命令读取；密码不写死、缺失则跳过该账号）
 	EnvAdminAccount   = "CWTC_ADMIN_ACCOUNT"
 	EnvAdminPassword  = "CWTC_ADMIN_PASSWORD"
@@ -137,6 +140,9 @@ type Config struct {
 	CosBucket    string
 	CosRegion    string
 	CosBaseURL   string
+
+	// 媒体强制走文件服务（COS 欠费/停服临时回退）
+	MediaForceFile bool
 }
 
 // Getenv 抽象环境读取，便于测试注入。
@@ -188,6 +194,8 @@ func LoadFrom(get Getenv) (*Config, error) {
 		CosBucket:    strings.TrimSpace(get(EnvCosBucket)),
 		CosRegion:    strings.TrimSpace(get(EnvCosRegion)),
 		CosBaseURL:   strings.TrimSpace(get(EnvCosBaseURL)),
+
+		MediaForceFile: boolDefault(get(EnvMediaForceFile), false),
 
 		// 默认值：监听本机回环，避免通配绑定被公网直连伪造 XFF（对照 ccit 约定）。
 		PublicStatusEnabled: boolDefault(get(EnvPublicStatusEnabled), true),
