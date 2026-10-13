@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"net/url"
@@ -63,10 +64,10 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		expires := time.Now().Add(10 * time.Minute)
 		sig := resource.Sign(secret, storageKey, expires)
 		item := gin.H{"kind": kind, "title": title, "storage_key": storageKey, "size_bytes": sizeBytes.Int64, "expires_at": expires.Unix(), "signature": sig}
-		// 视频/音频：优先 COS 预签名 URL（Web 播放器无法带 Bearer 头，需自认证 URL）。
-		// MediaForceFile 时（COS 欠费/停服临时回退）改发文件服务签名 URL，同域 Cookie 可过鉴权。
+		// 视频/音频：COS 可读则下发预签名 URL（Web 播放器无法带 Bearer 头，需自认证 URL）。
+		// COS 欠费/停服或 MediaForceFile 时自动回退文件服务签名 URL（同域 Cookie 可过鉴权）。
 		if isCosBackedKey(storageKey) {
-			if !s.cfg.MediaForceFile && s.cosStore != nil && s.cosStore.Enabled() {
+			if s.cosAvailable(c.Request.Context(), storageKey) {
 				if u, err := s.cosStore.PresignGet(c.Request.Context(), storageKey, 2*time.Hour); err == nil {
 					item["url"] = u
 				}
@@ -137,8 +138,8 @@ func (s *Server) downloadAsset(c *gin.Context) {
 	}
 	// 视频/音频对象在 COS：预签名后 302 重定向（私有桶不能直接 GET，走签名 URL）。
 	// 预签名失败回退文件服务，绝不在签名校验后 500。
-	// MediaForceFile 时（COS 欠费/停服临时回退）跳过 COS，直接读文件服务。
-	if !s.cfg.MediaForceFile && s.cosStore != nil && s.cosStore.Enabled() && isCosBackedKey(key) {
+	// COS 欠费/停服（cosAvailable=false）或 MediaForceFile 时，跳过 COS 直接读文件服务。
+	if isCosBackedKey(key) && s.cosAvailable(c.Request.Context(), key) {
 		if u, err := s.cosStore.PresignGet(c.Request.Context(), key, 10*time.Minute); err == nil {
 			c.Redirect(http.StatusFound, u)
 			return
@@ -181,4 +182,22 @@ func isCosBackedKey(key string) bool {
 	default:
 		return false
 	}
+}
+
+// cosAvailable 探测 COS 是否可读（带 5 分钟缓存）。
+// COS 未配置、MediaForceFile 强制回退、或探测到欠费/停服（非 206）时返回 false，
+// 调用方据此把视频/音频回退到文件服务（ContentDir）。
+func (s *Server) cosAvailable(ctx context.Context, key string) bool {
+	if s.cfg == nil || s.cfg.MediaForceFile || s.cosStore == nil || !s.cosStore.Enabled() {
+		return false
+	}
+	s.cosProbeMu.Lock()
+	defer s.cosProbeMu.Unlock()
+	if time.Since(s.cosProbeAt) < 5*time.Minute {
+		return s.cosProbeOK
+	}
+	ok := s.cosStore.Probe(ctx, key)
+	s.cosProbeAt = time.Now()
+	s.cosProbeOK = ok
+	return ok
 }

@@ -83,3 +83,24 @@ func (s *Store) Head(ctx context.Context, key string) error {
 	}
 	return resp.Body.Close()
 }
+
+// Probe 探测对象是否可读（Range GET bytes=0-0）。
+// 返回 true 表示可访问（206）；false 表示不可访问（COS 欠费/停服 451、对象不存在或其他错误）。
+// 供调用方在 COS 不可用时自动回退文件服务。
+func (s *Store) Probe(ctx context.Context, key string) bool {
+	u, err := s.PresignGet(ctx, key, time.Minute)
+	if err != nil {
+		return false
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Range", "bytes=0-0")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusPartialContent // 206
+}

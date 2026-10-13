@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,11 @@ type Server struct {
 	dbConn   *sql.DB
 	sms      *identity.SMSService
 	cosStore *cosstore.Store
+
+	// COS 可用性探测缓存（欠费/停服时自动回退文件服务，见 cosAvailable）。
+	cosProbeMu sync.Mutex
+	cosProbeAt time.Time
+	cosProbeOK bool
 }
 
 // New 构造 Server。
