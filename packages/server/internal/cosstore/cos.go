@@ -92,15 +92,20 @@ func (s *Store) Probe(ctx context.Context, key string) bool {
 	if err != nil {
 		return false
 	}
+	return probeURL(ctx, u, http.DefaultClient)
+}
+
+// probeURL 对给定 URL 发 Range GET bytes=0-0，判断是否 206（可读）。
+func probeURL(ctx context.Context, u string, hc *http.Client) bool {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return false
 	}
 	req.Header.Set("Range", "bytes=0-0")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusPartialContent // 206
+	return resp.StatusCode == http.StatusPartialContent
 }

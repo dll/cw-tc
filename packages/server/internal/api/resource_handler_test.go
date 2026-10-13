@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cw-tc/server/internal/config"
+	"github.com/cw-tc/server/internal/cosstore"
 	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/platform/db"
 	"github.com/cw-tc/server/internal/resource"
@@ -345,5 +346,43 @@ func TestLectureResourcesMediaForceFile(t *testing.T) {
 	}
 	if strings.Contains(body.Data.Items[0].URL, "myqcloud.com") {
 		t.Fatalf("MediaForceFile 不应下发 COS URL: %q", body.Data.Items[0].URL)
+	}
+}
+
+// TestCosAvailable 覆盖 COS 可用性探测的短路与缓存路径。
+func TestCosAvailable(t *testing.T) {
+	// cosStore 未配置 → false
+	s := New(testConfig(t, true))
+	if s.cosAvailable(context.Background(), "a.mp4") {
+		t.Fatal("cosStore 未配置应返回 false")
+	}
+	// MediaForceFile → false
+	cfg := testConfig(t, true)
+	cfg.MediaForceFile = true
+	s2 := New(cfg)
+	if s2.cosAvailable(context.Background(), "a.mp4") {
+		t.Fatal("MediaForceFile 应返回 false")
+	}
+	// 缓存未过期 → 直接返回缓存值（不触发真实探测）
+	s3 := New(testConfig(t, true))
+	s3.cosStore = cosstore.New("id", "k", "b", "ap-nanjing")
+	s3.cosProbeAt = time.Now()
+	s3.cosProbeOK = true
+	if !s3.cosAvailable(context.Background(), "a.mp4") {
+		t.Fatal("缓存命中应返回 true")
+	}
+	s3.cosProbeOK = false
+	if s3.cosAvailable(context.Background(), "a.mp4") {
+		t.Fatal("缓存命中应返回 false")
+	}
+	// 缓存过期 → 触发真实探测（假凭据，COS 返回 403/网络错误 → false，并更新缓存时间戳）
+	s4 := New(testConfig(t, true))
+	s4.cosStore = cosstore.New("id", "k", "b", "ap-nanjing")
+	s4.cosProbeAt = time.Now().Add(-10 * time.Minute)
+	if s4.cosAvailable(context.Background(), "a.mp4") {
+		t.Fatal("假凭据探测应返回 false")
+	}
+	if time.Since(s4.cosProbeAt) >= 5*time.Minute {
+		t.Fatal("探测后应更新缓存时间戳")
 	}
 }

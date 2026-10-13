@@ -2,6 +2,8 @@ package cosstore
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -65,5 +67,35 @@ func TestPresignGetBuildsSignedURL(t *testing.T) {
 	}
 	if !strings.Contains(u, "q-signature=") || !strings.Contains(u, "b.mp4") {
 		t.Fatalf("预签名 URL 格式异常: %s", u)
+	}
+}
+
+func TestProbeURL(t *testing.T) {
+	// 206 → 可读
+	srv206 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Range") != "bytes=0-0" {
+			t.Errorf("应带 Range 头，实际 %q", r.Header.Get("Range"))
+		}
+		w.Header().Set("Content-Range", "bytes 0-0/1024")
+		w.WriteHeader(http.StatusPartialContent)
+	}))
+	defer srv206.Close()
+	if !probeURL(context.Background(), srv206.URL, srv206.Client()) {
+		t.Fatal("206 应返回 true")
+	}
+	// 451（COS 欠费/停服）→ 不可读
+	srv451 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnavailableForLegalReasons)
+	}))
+	defer srv451.Close()
+	if probeURL(context.Background(), srv451.URL, srv451.Client()) {
+		t.Fatal("451 应返回 false")
+	}
+	// 连接失败 → false（指向已关闭的 server）
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+	if probeURL(context.Background(), deadURL, dead.Client()) {
+		t.Fatal("连接失败应返回 false")
 	}
 }
