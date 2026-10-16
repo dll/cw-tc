@@ -1,8 +1,8 @@
 # Hermes + 飞书 + 测试回复 v1
 
-> **主题**：豆包账号租户下 `CCIT-OPC公司群` 机器人失效与修复复盘 —— 从 Hermes 安装、飞书建应用与建群、配置成功、开发 cw-tc，到群回复失效与三日修复
-> **版本**：v1.0　**日期**：2026-10-15　**状态**：已修复并实测通过
-> **范围**：Hermes 网关的飞书通道（默认 profile 及 `co`/`dev`/`pm`/`qa` 分身）
+> **主题**：豆包账号租户下 `CCIT-OPC公司群` 机器人失效与修复复盘 —— 从 Hermes 安装、飞书建应用与建群、配置成功、开发 cw-tc，到群回复失效、三日修复，再到**六应用全量迁入畅网**
+> **版本**：v1.3　**日期**：2026-10-16　**状态**：✅ 6 个应用全部迁入畅网 + `Hermes-CCIT` 群；**六路群内 `@`→回复全部实测通过**（§11.7）
+> **范围**：Hermes 网关的飞书通道（默认 profile 及 `co`/`dev`/`pm`/`qa`/`cso` 共 6 个 profile）
 > **不涉及**：cw-tc 业务代码本身
 
 ---
@@ -15,9 +15,10 @@
 | **直接原因** | 取 `tenant_access_token` 返回 `21001 Access denied by access control policy` |
 | **根因一** | 网关 5 个自建应用**建在个人版身份「豆包账号」（非企业租户）下**，飞书侧对该类身份的应用执行访问控制策略 |
 | **根因二** | 迁到企业租户后，`FEISHU_ALLOWED_USERS` 为空 ⇒ 授权 allowlist 语义下**谁都不许** ⇒ 消息收得到但被丢弃 |
-| **修复** | 在已认证企业「畅网」下新建应用 **Hermes-CEO** ＋ 新建群 **Hermes-CCIT** ＋ 补齐权限/事件/重新发版 ＋ 填授权名单 |
-| **验证** | 群里 `@Hermes-CEO` → 收到 → 生成 → 回复成功（10-15 00:44） |
-| **未闭环** | `co`/`dev`/`pm`/`qa` 四个分身未迁移；旧群 `CCIT-OPC公司群` 因跨租户不可迁移 |
+| **修复** | 在已认证企业「畅网」下新建应用（**6 个**）＋ 新建群 **Hermes-CCIT** ＋ 补齐权限/事件/机器人能力/重新发版 ＋ 各填**该应用下**的授权名单 |
+| **验证** | CEO 群里 `@` → 收到 → 生成 → 回复成功（10-15 00:44）；v1.2 六应用配置**六项全绿**（§11.2）；**v1.3 六路群内 `@`→回复全部实测通过**（§11.7） |
+| **修复面扩展（v1.2）** | 默认 + `co`/`dev`/`pm`/`qa` 共 5 个旧应用全换畅网新应用，并**新增 `cso`**（第 6 个 profile）；旧 5 应用（`cli_aa48ee001278dcb8` 等）遗留豆包账号，仍 21001（§10） |
+| **迁移二次踩坑** | 新应用常见三连坑：漏发 `im:message` 权限（`99991672`）、未启用机器人能力（`230006`）、授权名单仍写**旧 app 的 open_id**（`Unauthorized user`） |
 
 > **一句话**：这不是本机故障，也不是代码故障 —— 是**「应用归属的租户身份」被飞书策略收紧**，叠加迁租户后暴露的**授权名单为空**。两层的表现完全不同（前者报 21001，后者日志写 `Unauthorized user`），必须分开诊断。
 
@@ -25,7 +26,7 @@
 
 ## 1. 背景
 
-**Hermes** 是运行在本机的 AI 代理网关，把飞书群当作「指令通道」：群里 `@` 某个机器人（CEO / CO / DEV / PM / QA），对应的 agent 就会接活、调模型、把结果回帖到群里。
+**Hermes** 是运行在本机的 AI 代理网关，把飞书群当作「指令通道」：群里 `@` 某个机器人（CEO / CO / DEV / PM / QA / CSO），对应的 agent 就会接活、调模型、把结果回帖到群里。
 
 **cw-tc（第三课堂）** 这个项目的开发就是走这条通道的：在 `Hermes-CCIT` / `CCIT-OPC公司群` 里下指令，agent 在本地 `E:\2026-2027\2026-2027-1\MyProjects\cw-tc` 改代码、跑门禁、提交推送。
 
@@ -38,7 +39,7 @@
 | Hermes home | `C:\Users\ldl\AppData\Local\hermes` |
 | 网关启动方式 | Windows 计划任务 `Hermes_Gateway`（**不是** `hermes gateway start`，见 §7.2） |
 | 网关卡 | `bin/hermes.exe gateway` |
-| profile 数 | 5（`default` + `co`/`dev`/`pm`/`qa`） |
+| profile 数 | 6（`default` + `co`/`dev`/`pm`/`qa`/`cso`） |
 | 每个 profile | 一个**独立的飞书自建应用**（独立 App ID / Secret） |
 
 ---
@@ -53,7 +54,7 @@
                           v                        ^
           +-------------------------------------------------+
           |         Hermes Gateway  (schtask Hermes_Gateway) |
-          |  profiles: default  co  dev  pm  qa              |
+          |  profiles: default  co  dev  pm  qa  cso         |
           |  每个 profile = 一个飞书自建应用 = 一套 App ID     |
           +-------------------------------------------------+
                           |
@@ -220,7 +221,7 @@ def _allows(allowed, candidate) -> bool:
 | 4 | **补权限 + 加事件 + 重新发版** | 见 §5.2，**改完必须重新发布版本才生效** |
 | 5 | 写 `.env`：`FEISHU_APP_ID` / `FEISHU_APP_SECRET` | **`.env` 是受保护文件**，`patch`/`write_file` 会被拒，只能由 terminal 跑脚本改；先备份 |
 | 6 | 写 `.env`：`FEISHU_ALLOWED_USERS` = **该应用下**用户本人的 open_id | 见 §5.3 取值方法 |
-| 7 | 写 `.env`：`FEISHU_HOME_CHANNEL` = 新群 `oc_` id；**重启网关** | 改 `.env` 不热生效 |
+| 7 | 写 `.env`：`FEISHU_HOME_CHANNEL` = 新群 `oc_` id | **换 `FEISHU_APP_ID/SECRET` 必须重启网关**（适配器在启动时用凭据建连）；**仅改 `FEISHU_ALLOWED_USERS` 即时生效**（授权门 per-turn 读 + `.env` mtime 缓存失效，见 §11.4） |
 
 ### 5.2 新应用必须补齐的三样（一键创建不够用）
 
@@ -299,6 +300,7 @@ powershell -NoProfile -Command "Start-ScheduledTask -TaskName Hermes_Gateway"
 | `10014` | `app secret invalid` | 密钥错（用于**反证**） |
 | `99991401` | IP 白名单拦截 | ⚠️ **与 21001 不是一回事**；且**对 access_token 接口不生效** —— 别往这个方向修 |
 | `99991672` | 缺少应用身份权限（scope） | 权限没开或**开了没重新发版** |
+| `230006` | `Bot ability is not activated` | 新应用**没启用「机器人」能力**（v1.2 新增，见 §11.3） |
 
 ---
 
@@ -327,25 +329,26 @@ powershell -NoProfile -Command "Start-ScheduledTask -TaskName Hermes_Gateway"
 
 ## 8. 遗留问题与后续动作
 
-### 8.1 🔴 `co` / `dev` / `pm` / `qa` 四个分身未迁移
+### 8.1 ✅ 分身已全量迁移（v1.2 完成；**v1.3 群内六路实测全通**，见 §11）
 
-仍是个人版租户下的应用（`cli_aa4916be…` / `cli_aa491fc9…` / `cli_aa4922df…` / `cli_aa491bb2…`），**长连接能上、消息发不出**（同 21001）。
+2026-10-15 晚，`co`/`dev`/`pm`/`qa` 四个分身全部换成畅网新应用，并**新增第 6 个 profile `cso`**。旧（豆包）应用 ID 仅留作对照：
 
-**动作**：按 §5.1 各建一个企业租户应用 + 补三样 + **各填各自的新 open_id**（注意是 per-app 的，不能复制 CEO 那个）。
+| profile | 旧 App ID（豆包，弃用） | 新 App ID（畅网） | 状态 |
+|---|---|---|---|
+| `default` | `cli_aa48ee001278dcb8` | `cli_aa451b7b4bb8dc0f` | ✅ 已迁 |
+| `co` | `cli_aa4916beb478dbed` | `cli_aa5a7b30adb9dbb5` | ✅ 已迁 |
+| `dev` | `cli_aa491fc95338dcc6` | `cli_aa5a751bd8381cec` | ✅ 已迁 |
+| `pm` | `cli_aa4922dfba38dbe3` | `cli_aa5a7633b6781d0e` | ✅ 已迁 |
+| `qa` | `cli_aa491bb29cf89bd1` | `cli_aa5a77c6cfb89ce3` | ✅ 已迁 |
+| `cso`（新增） | — | `cli_aa5a723b40781ce3` | ✅ 新建 |
 
-| profile | 当前 App ID | 状态 |
-|---|---|---|
-| `default` | `cli_aa451b7b4bb8dc0f` | ✅ 已迁（畅网） |
-| `co` | `cli_aa4916beb478dbed` | ⏳ 待迁 |
-| `dev` | `cli_aa491fc95338dcc6` | ⏳ 待迁 |
-| `pm` | `cli_aa4922dfba38dbe3` | ⏳ 待迁 |
-| `qa` | `cli_aa491bb29cf89bd1` | ⏳ 待迁 |
+### 8.2 ⚪ 旧群 `CCIT-OPC公司群`（历史遗留，已弃用；新群见 §11）
 
-### 8.2 🔴 旧群 `CCIT-OPC公司群` 不可迁移
+> 该群与群内 5 个旧应用仍留在豆包账号租户，仍 21001 —— **不再修复**，开发通道已整体切到 `Hermes-CCIT`。
 
-`oc_76dc985873e026f38d4c25914c3daddb` 在**豆包账号租户**下；企业租户的应用**进不去**（自建应用只属于一个租户）。**跨租户搬群在控制台里没有入口。**
+群里能测的是 **CCIT-CEO**（`cli_aa48ee001278dcb8`，备份 `.env.bak-20261014-175947`）以及 `co`/`dev`/`pm`/`qa`。2026-10-15 02:20 五个全部 `21001`，发消息这一步走不到。
 
-⇒ 结论：**保群与换租户二选一，不能兼得**。现方案是换群（`Hermes-CCIT`）。
+畅网的 Hermes-CEO 与这个群不同租户（`232010`），不能拿来顶替。`cli_aa2aa23469f8dbd6`（显示名 CCIT-CSO）不在这个群里，不能拿来测这个群。
 
 ### 8.3 🟡 本机时间服务未启动
 
@@ -379,13 +382,34 @@ keeping the literal placeholder
 | 类别 | 值 |
 |---|---|
 | 企业租户 | 畅网（企业编号 `FM4LZVK30GM`，认证有效期至 2027-08-21） |
-| 个人版身份 | 豆包账号（网关 5 个旧应用的归属） |
-| 新应用 | `Hermes-CEO` / `cli_aa451b7b4bb8dc0f` / bot open_id `ou_02dee9b1c4e0c9cae83c9814206705b2` |
+| 个人版身份 | 豆包账号（网关 5 个**旧**应用的归属） |
 | 新群 | `Hermes-CCIT` / `oc_6c93e87bc97d9de2bf7e6621545d4c2b` |
 | 旧群 | `CCIT-OPC公司群` / `oc_76dc985873e026f38d4c25914c3daddb` |
-| 用户 open_id（新应用下） | `ou_85c77a4a70a94aefdf68b027fee7750d` |
+
+**畅网新应用（6 个）与其机器人 `open_id`**（`bot/v3/info` 实测）：
+
+| profile | 应用 / 机器人 | App ID | bot open_id |
+|---|---|---|---|
+| `default` | Hermes-CEO | `cli_aa451b7b4bb8dc0f` | `ou_02dee9b1c4e0c9cae83c9814206705b2` |
+| `co` | Hermes-CO | `cli_aa5a7b30adb9dbb5` | `ou_a235ac07e1b9b0cd5580d54090c9cf1e` |
+| `dev` | Hermes-DEV | `cli_aa5a751bd8381cec` | `ou_286d0f1eac42b82f3b732b69c20b03ae` |
+| `pm` | Hermes-PM | `cli_aa5a7633b6781d0e` | `ou_cce6fe166f28eeafef3e53f3747d7f19` |
+| `qa` | Hermes-QA | `cli_aa5a77c6cfb89ce3` | `ou_3caaff4c793370eb6cab3c66e2f32d28` |
+| `cso` | Hermes-CSO | `cli_aa5a723b40781ce3` | `ou_e84fc800c769371310ce469b7aa98c26` |
+
+**「我」（用户本人）在每个应用下的 `open_id`**（**per-app，逐个不同**，各自写进该 profile 的 `FEISHU_ALLOWED_USERS`）：
+
+| profile | 用户 open_id |
+|---|---|
+| `default` | `ou_85c77a4a70a94aefdf68b027fee7750d` |
+| `co` | `ou_088a584c506521425cdc7a8e07f06c9a` |
+| `dev` | `ou_245fa70e835074df3b6af782e287ac7f` |
+| `pm` | `ou_7353d2df7780487b2761f0aaa5ff79aa` |
+| `qa` | `ou_7e4d599d8a3f4cb4f40ca3f79bc1d88f` |
+| `cso` | `ou_d246984d029a15c9a980e0485dd5dcba` |
 
 > ⚠️ **App Secret / tenant_access_token 一律不在此文档中出现。**
+> ⚠️ 上表两组 `ou_` **不可互相复制**（同一应用内才唯一）；换应用即失效，这是迁移期最大的坑（§4.2 / §11.3）。
 
 ### 9.2 关键文件位置
 
@@ -411,3 +435,153 @@ keeping the literal placeholder
 
 > **「机器人不回话」有四种彼此独立的成因**：凭证被策略拦（21001）、事件订阅没生效（零 `Inbound`）、授权名单不含本人（`Unauthorized user`）、以及 agent 侧出错（有 `Inbound` 无 `response ready`）。
 > **四条腿要一条一条验，不能靠"换了应用"这类直觉跳步。**
+
+---
+
+## 10. v1.1 复核（2026-10-15 02:20）：测错应用，已撤回
+
+上一稿把 `.env.bak-20261015000927` 里的 `cli_aa2aa23469f8dbd6`（机器人显示名 **CCIT-CSO**）当成旧群机器人。**撤回。** CCIT-CSO 不在 `CCIT-OPC公司群`。那个备份是 10-15 00:09 切走之前的中间状态，不是群里的 CCIT-CEO。
+
+群里要测的 5 个应用，凭据在 `.env.bak-20261014-175947`（CEO）和 `profiles/{co,dev,pm,qa}/.env`。02:20 重打 `tenant_access_token/internal`（未走系统代理）：
+
+| 群内应用 | App ID | 结果 |
+|---|---|---|
+| CCIT-CEO | `cli_aa48ee001278dcb8` | **`21001`** |
+| co | `cli_aa4916beb478dbed` | **`21001`** |
+| dev | `cli_aa491fc95338dcc6` | **`21001`** |
+| pm | `cli_aa4922dfba38dbe3` | **`21001`** |
+| qa | `cli_aa491bb29cf89bd1` | **`21001`** |
+
+五个都是同一句：`Access denied by access control policy. Contact the administrator for assistance.` 密钥被认出来了（否则是 `10014`），token 不发，所以发送探针做不了。这不是「没去测」，是测完发不出。
+
+对照（都不是这个群的机器人）：
+
+| 应用 | App ID | 结果 | 为何不能用来测这个群 |
+|---|---|---|---|
+| Hermes-CEO（现网关，畅网） | `cli_aa451b7b4bb8dc0f` | `code: 0` | `GET` 该群 → **`232010`** 不同租户 |
+| CCIT-CSO | `cli_aa2aa23469f8dbd6` | `code: 0` | 发该群 → **`230002`** 不在群里 |
+
+21001 仍不在官方[通用错误码表](https://open.feishu.cn/document/server-docs/api-call-guide/generic-error-code?lang=zh-CN)里。它和 `99991401`（IP 白名单，且不对 token 接口生效）、`99991672`（缺 scope，要先拿到 token）不是一回事。长连接可以还连着，发消息每次重新要 token，所以只有发送腿死。本机没有开关能放开这 5 个应用。
+
+### 10.1 控制台复核（同日，豆包账号已登录）
+
+开发者后台应用列表（`正式应用@豆包账号`，所有者刘老师）与网关凭据对得上，状态都是已启用、已发布：
+
+| 名称 | App ID | 发布 |
+|---|---|---|
+| CCIT-CEO | `cli_aa48ee001278dcb8` | 2026-10-05 22:11 已发布，版本 1.0.3 |
+| CCIT-CO | `cli_aa4916beb478dbed` | 2026-10-05 22:46 已发布 |
+| CCIT-DEV | `cli_aa491fc95338dcc6` | 2026-10-05 21:20 已发布 |
+| CCIT-PM | `cli_aa4922dfba38dbe3` | 2026-10-05 21:30 已发布 |
+| CCIT-QA | `cli_aa491bb29cf89bd1` | 2026-10-05 21:37 已发布 |
+
+同页还有 CCIT-CDO（`cli_aa45ef4aff781c01`，2026-10-14 发布），不在网关的 5 个 profile 里，没有用来测这个群。
+
+安全设置里 IP 白名单不是已配置的拦截（错误码也不会是 21001）。`版本管理 → 创建版本`：「对外共享」两个勾选框为 disabled，整页没有「实名」。`admin.feishu.cn` 原文：「当前登录身份为刘老师（豆包账号），请创建企业以访问管理后台」——这个身份没有管理后台，没有访问控制开关可以关。畅网的 Hermes-CEO 页面返回 403（当前登录身份不是它的所有者）。
+
+⇒ 这 5 个应用的 21001 不是停用、未发布、IP 白名单或本机配置。开发者后台里没有能让 token 重新签发的操作。
+
+---
+
+## 11. v1.2 ~ v1.3 迁移完成：6 应用全量迁入畅网并群内实测全通（2026-10-15 晚 ~ 10-16 早）
+
+### 11.1 做了什么
+
+- **新增第 6 个 profile `cso`**：`hermes profile create cso --clone-from co`（克隆 `config.yaml`/`.env`/`SOUL.md`/skills，**不带飞书通道** —— 两个 profile 共用一套 bot 凭据会互抢），模型沿用 `qwen-max`；自动生成别名 `~/.local/bin/cso.bat`。
+- **`co`/`dev`/`pm`/`qa`/`cso` 五个 profile 全部换畅网新应用**：`FEISHU_APP_ID/SECRET` 换新，`FEISHU_DOMAIN/CONNECTION_MODE/GROUP_POLICY/REQUIRE_MENTION/ALLOWED_USERS/HOME_CHANNEL` 与 CEO 口径对齐。
+- 应用 ID 与 open_id 全表见 §9.1。
+
+### 11.2 六项核验矩阵（本机实测，**全绿**）
+
+| 机器人 | App ID | token | 在群内 | 主动发信 | 授权名单匹配 | 长连接 |
+|---|---|---|---|---|---|---|
+| CEO | `cli_aa451b7b4bb8dc0f` | `0` | ✅ | `0` | ✅ | connected |
+| co | `cli_aa5a7b30adb9dbb5` | `0` | ✅ | `0` | ✅ | connected |
+| dev | `cli_aa5a751bd8381cec` | `0` | ✅ | `0` | ✅ | connected |
+| pm | `cli_aa5a7633b6781d0e` | `0` | ✅ | `0` | ✅ | connected |
+| qa | `cli_aa5a77c6cfb89ce3` | `0` | ✅ | `0` | ✅ | connected |
+| cso | `cli_aa5a723b40781ce3` | `0` | ✅ | `0` | ✅ | connected |
+
+> 其中「在群内 / 授权名单匹配」由 `GET /im/v1/chats/{chat_id}/members` 取群里真实 `open_id` 后与 `.env` 逐字比对得出 —— **不是靠"应该没问题"**。
+> ⚠️ 表中「长连接 = connected」是**那一刻**的读数；改过 `.env` 后可能失效为 `0 adapter(s) connected`（§11.8 陷阱 B），**以当日该 profile 日志为准**。
+
+### 11.3 迁移期新踩的三个坑（都在"新应用"上）
+
+| # | 现象 / 错误码 | 真实原因 | 修法 |
+|---|---|---|---|
+| 1 | 发消息 `99991672`（缺 `im:message` / `im:message:send` / `im:message:send_as_bot`） | 新应用**权限没开或开了没重新发版** | 补权限 → 重新发版 |
+| 2 | 发消息 `230006 Bot ability is not activated` | 新应用**没启用「机器人」能力** | 应用能力页开启机器人 |
+| 3 | 入站 `Unauthorized user: ou_xxx` | 授权名单写的是**旧 app 的 open_id**（per-app 失效） | 换成**该应用下**本人的 open_id（§5.3 取值法） |
+| 4 | 群里 `@` **只有某一个** bot 不回，其余都回 | 该 profile 的**适配器实际没在跑**：改过其 `.env` 后 `run_profile_reconcile.py` 重建结果为 `0 adapter(s) connected`，而 `gateway_state.json` 仍显示 `connected`（**过期值**） | **重启网关**（`hermes gateway stop` → 计划任务启动），见 §11.8 |
+
+> 坑 3 最隐蔽 —— 前五项（token/连接/发信/事件）全绿，唯一断点在授权名单（与 §4.2 同源，换应用必复现一次）。
+> 坑 4 也隐蔽 —— 配置六项全绿、控制台四样都对，却单路不回；**根因在进程里，不在控制台**（§11.8）。
+
+### 11.4 纠正：`.env` 到底哪些改动要重启
+
+| 改的键 | 是否需重启 | 机制 |
+|---|---|---|
+| `FEISHU_APP_ID` / `FEISHU_APP_SECRET` | **需要重启网关** | 适配器在**启动时**用凭据建长连接 |
+| `FEISHU_ALLOWED_USERS`（仅授权名单） | **不需要，即时生效** | 授权门 **per-turn** 读（`build_profile_secret_scope` + `.env` **mtime 缓存失效**） |
+| `FEISHU_HOME_CHANNEL` / 群策略 | 不需要（下条消息生效） | 读取点同上 |
+
+> §5.1 步骤 7 原写「改 `.env` 不热生效」——**修订**：只有**凭据**要重启，**授权名单是热的**。
+> ⚠️ 但热重扫**不保证重建成功**：多路复用网关对 `.env` 变更会打 `Re-scanned profile 'x' after config/.env change (N adapter(s) connected)`，**`N=0` 表示该 profile 的适配器没起来**（坑 4）——此时"授权名单热生效"也救不了，必须重启。**改过凭据或迁移后收尾，一律重启一次再验**。
+
+### 11.5 施工单补充：新应用要配「四样」（原 §5.2 三样 + 机器人能力）
+
+> 原 §5.2 写的「权限 / 事件 / 发版」三样，**漏了「启用机器人能力」**（坑 2）。合一版：
+
+1. **权限 5 条**（`im:message` / `im:message:send_as_bot` / `im:message.group_at_msg:readonly` / `im:message.p2p_msg:readonly` / `im:chat:readonly`）
+2. **事件** `im.message.receive_v1`（订阅方式=长连接）
+3. **机器人能力** —— 开启「机器人」
+4. **版本发布** —— 以上任一改动都要**重新发版**才生效
+
+### 11.6 探针脚本（可复用）
+
+```powershell
+# 逐个 profile：token + 在群 + 发信 + 群里真实 open_id（secret 不打印）
+$h="C:\Users\ldl\AppData\Local\hermes"; $G="oc_6c93e87bc97d9de2bf7e6621545d4c2b"
+foreach($p in @('','co','dev','pm','qa','cso')){
+  $f = if($p){ "$h\profiles\$p\.env" } else { "$h\.env" }
+  $L=Get-Content $f
+  $id=(($L|?{$_ -match '^\s*FEISHU_APP_ID='}|Select -Last 1) -replace '^\s*FEISHU_APP_ID=','').Trim()
+  $se=(($L|?{$_ -match '^\s*FEISHU_APP_SECRET='}|Select -Last 1) -replace '^\s*FEISHU_APP_SECRET=','').Trim()
+  $t=(irm -Uri 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal' -Method Post -ContentType json -Body (@{app_id=$id;app_secret=$se}|ConvertTo-Json -c) -TimeoutSec 15)
+  $m=irm -Uri "https://open.feishu.cn/open-apis/im/v1/chats/$G/members?member_id_type=open_id" -Headers @{Authorization="Bearer $($t.tenant_access_token)"} -TimeoutSec 15
+  "$p token=$($t.code) members=$(($m.data.items.member_id) -join ',')"
+}
+```
+
+### 11.7 群内 @ 入站实测（**六路全通**，本机日志逐条）
+
+| 机器人 | `Inbound` 收到 | `response ready` | 回群 | 结论 |
+|---|---|---|---|---|
+| CEO | 06:52:21 | 06:52:34 | 33 字 | ✅ |
+| co | 06:52:21 | 06:52:41 | 81 字 | ✅ |
+| dev | 06:52:21 | 06:52:36 | 140 字 | ✅ |
+| pm | 06:52:21 | 06:52:30 | 41 字 | ✅ |
+| qa | 07:28:45 | 07:29:07 | 369 字 | ✅（**重启网关后**） |
+| cso | 06:52:21 | 06:52:37 | 153 字 | ✅ |
+
+> 判定依据：`Inbound` → `response ready` → `Sending response` 三段齐，且**无** `Send failed` / `Unauthorized user`。
+> `cso` 06:00 曾 `Send failed [99991672]`，补齐 `im:message:send_as_bot` 后 06:52 起正常。
+
+### 11.8 收尾复盘：两个"看起来像控制台问题，其实在本机"的陷阱（v1.3）
+
+| # | 陷阱 | 表现 | 正确做法 |
+|---|---|---|---|
+| A | **二级 profile 的日志不在根目录** | 只翻 `logs/gateway.log` 会得出「**只有 CEO 收到入站**」的错误结论 | `co`/`dev`/`pm`/`qa`/`cso` 各写**自己的** `profiles/<名>/logs/gateway.log`；根日志**只记 default**。查谁收没收到，**看各自的日志** |
+| B | **`gateway_state.json` 的 `connected` 会是过期值** | state 显示 `connected`，实际适配器没在跑，群里 @ 无人应答 | 判定"在没在跑"看**当日该 profile 日志有没有 `Connected in websocket mode` / `Inbound`**；并搜根日志的 `Re-scanned profile 'x' ... (0 adapter(s) connected)` |
+
+**由此定下的收尾动作**：凡**改过 `FEISHU_APP_ID/SECRET`**（或迁移后未重启过），**收尾前重启一次网关**，再逐 profile 确认 fresh `Connected`；随后群里逐 bot `@` 一次收尾。
+
+### 11.9 未闭环 / 待人工
+
+| 项 | 说明 |
+|---|---|
+| ✅ **群内 @ 入站实测** | 六路全部实测通过（§11.7），v1.3 关闭 |
+| 🟡 §8.3 本机时间服务 | 仍 `Stopped` |
+| 🟡 §8.4 `DEEPSEEK_API_KEY` 告警 | 未处理（实测不影响回复） |
+
+> **纪律**：用户本人做的平台侧修复，按「待核实的说法」处理 —— 配置项用探针逐条核（§11.2），**群内 `@` 的入站腿只能本人 @**（探针替代不了），逐 bot 单独标出，不混进"已通"；本节结论均出自本机日志。
