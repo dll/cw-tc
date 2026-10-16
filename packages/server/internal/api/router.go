@@ -211,29 +211,10 @@ func (s *Server) health(c *gin.Context) {
 //   - **不得**返回任何姓名、身份证号（含脱敏）、手机号、订单金额明细；
 //   - 不可用时必须如实返回 unavailable，**不得伪造健康**。
 //
-// 关于计数：**尚未接入数据源**（M1 起接 PostgreSQL）。
-// 因此这里返回 **null 而非 0** —— 0 是一个会被误读为"真的没有课程"的数字，
-// 属于铁律二禁止的"编数"；null 表达的是"未知"。
-// 接入数据源后，各字段改为从库中聚合查询，届时才填真实值。
+// 具体聚合见 publicStatusSnapshot（public_status.go）：未接数据源时返回 null 而非 0
+// —— 0 会被误读为"真的没有课程"，属铁律二禁止的编数；null 表达"未知"。
 func (s *Server) publicStatus(c *gin.Context) {
-	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
-		"source":     "cw-tc",
-		"observedAt": clock.From(c.Request.Context()).Now().Format(time.RFC3339),
-		"status":     statusUnavailable,
-		"dataSource": "not_wired", // 显式标注：计数尚未接入数据源
-		"courses": gin.H{
-			"total":     nil,
-			"published": nil,
-			"byMajor":   nil,
-		},
-		"certificates": gin.H{
-			"issued":  nil,
-			"revoked": nil,
-		},
-		"learners": gin.H{
-			"registered": nil,
-		},
-	}})
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: s.publicStatusSnapshot(c.Request.Context())})
 }
 
 // 状态取值（与 PRD v2 §7.12 K-2 一致）。
