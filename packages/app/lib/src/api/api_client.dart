@@ -118,16 +118,24 @@ class ApiClient {
   }
 
   /// 课程广场列表（`GET /api/v1/courses`，公开只读）。
-  Future<List<Course>> courses({int? majorId}) async {
+  ///
+  /// 支持 `majorId` / `line`(main|aux) / `q`(关键词) 与分页（`pageSize` 上限 100）。
+  Future<CoursePage> courses({
+    int? majorId,
+    String? line,
+    String? q,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final query = <String, dynamic>{'page': page, 'page_size': pageSize};
+    if (majorId != null) query['major_id'] = majorId;
+    if (line != null && line.isNotEmpty) query['line'] = line;
+    if (q != null && q.trim().isNotEmpty) query['q'] = q.trim();
     final res = await _dio.get<Map<String, dynamic>>(
       '/api/v1/courses',
-      queryParameters: majorId != null ? {'major_id': majorId} : null,
+      queryParameters: query,
     );
-    final data = res.data?['data'] as Map<String, dynamic>?;
-    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
-    return items
-        .map((e) => Course.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return CoursePage.fromJson(res.data?['data'] as Map<String, dynamic>?);
   }
 
   /// 专业分类列表（`GET /api/v1/majors`，公开只读，启用的）。

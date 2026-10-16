@@ -13,7 +13,19 @@ class _FakeApiClient extends ApiClient {
   final List<Course> _courses;
 
   @override
-  Future<List<Course>> courses({int? majorId}) async => _courses;
+  Future<CoursePage> courses({
+    int? majorId,
+    String? line,
+    String? q,
+    int page = 1,
+    int pageSize = 20,
+  }) async =>
+      CoursePage(
+        items: _courses,
+        total: _courses.length,
+        page: page,
+        pageSize: pageSize,
+      );
 
   @override
   Future<List<Major>> majors() async => const <Major>[];

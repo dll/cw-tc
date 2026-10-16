@@ -8,10 +8,10 @@ import 'resource_viewer_page.dart';
 import 'slide_viewer_page.dart';
 import 'video_player_page.dart';
 
-/// 学习页（PRD v2 §7.4 B-4）：某讲的资源清单（讲义 / 课件 / 视频）。
+/// 学习页（PRD v2 §7.4 B-4）：某讲的资源清单（视频 / 音频 / 讲义 / 课件 / 代码）。
 ///
-/// 资源带短时签名 URL；本页展示清单（类型/标题/大小），
-/// 视频播放 / 讲义在线阅读接续资源网关后落地。
+/// 资源带短时签名 URL；本页**按类型分组**展示（视频 → 音频 → 讲义 → 课件 → 代码 → 其他），
+/// 组内按标题排序并**按存储键去重**，避免同名/重复条目把清单搅乱。
 class LearnPage extends StatefulWidget {
   const LearnPage({super.key, required this.courseCode, required this.no, this.api});
 
@@ -26,6 +26,17 @@ class LearnPage extends StatefulWidget {
 class _LearnPageState extends State<LearnPage> {
   late final ApiClient _api = widget.api ?? ApiClient();
   late Future<List<LectureResource>> _future;
+
+  /// 资源分组展示顺序（未列出的类型排最后）。
+  static const List<String> _kindOrder = <String>[
+    'video',
+    'audio',
+    'markdown',
+    'slide',
+    'code',
+    'html',
+    'frozen_output',
+  ];
 
   @override
   void initState() {
@@ -63,30 +74,72 @@ class _LearnPageState extends State<LearnPage> {
               ),
             );
           }
-          final resources = snapshot.data ?? const <LectureResource>[];
+          final resources = _grouped(snapshot.data ?? const <LectureResource>[]);
           if (resources.isEmpty) {
             return const Center(child: Text('本讲暂无资源'));
           }
-          return ListView.separated(
-            padding: const EdgeInsets.all(12),
-            itemCount: resources.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (BuildContext context, int i) {
-              final r = resources[i];
-              return Card(
-                margin: EdgeInsets.zero,
-                child: ListTile(
-                  leading: Icon(_iconFor(r.kind)),
-                  title: Text(r.fileName),
-                  subtitle: Text(_labelFor(r.kind) +
-                      (r.sizeLabel.isEmpty ? '' : ' · ${r.sizeLabel}')),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _open(context, r),
-                ),
-              );
-            },
+          final children = <Widget>[];
+          String? currentKind;
+          for (final r in resources) {
+            if (r.kind != currentKind) {
+              currentKind = r.kind;
+              children.add(_sectionHeader(context, r.kind));
+            }
+            children.add(_resourceTile(context, r));
+          }
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            children: children,
           );
         },
+      ),
+    );
+  }
+
+  /// 去重（按 storage_key）后按「类型顺序 → 标题」稳定排序。
+  List<LectureResource> _grouped(List<LectureResource> input) {
+    final seen = <String>{};
+    final deduped = <LectureResource>[];
+    for (final r in input) {
+      if (seen.add(r.storageKey)) deduped.add(r);
+    }
+    deduped.sort((a, b) {
+      final rankCompare = _kindRank(a.kind).compareTo(_kindRank(b.kind));
+      if (rankCompare != 0) return rankCompare;
+      return a.title.compareTo(b.title);
+    });
+    return deduped;
+  }
+
+  int _kindRank(String kind) {
+    final idx = _kindOrder.indexOf(kind);
+    return idx >= 0 ? idx : _kindOrder.length;
+  }
+
+  Widget _sectionHeader(BuildContext context, String kind) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+      child: Row(
+        children: <Widget>[
+          Icon(_iconFor(kind), size: 18, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(_labelFor(kind), style: theme.textTheme.titleSmall),
+        ],
+      ),
+    );
+  }
+
+  Widget _resourceTile(BuildContext context, LectureResource r) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(_iconFor(r.kind)),
+        title: Text(r.fileName),
+        subtitle: Text(_labelFor(r.kind) +
+            (r.sizeLabel.isEmpty ? '' : ' · ${r.sizeLabel}')),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _open(context, r),
       ),
     );
   }
@@ -96,7 +149,7 @@ class _LearnPageState extends State<LearnPage> {
     if (r.kind == 'video' && r.url != null) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => VideoPlayerPage(title: r.fileName, url: r.url!),
+          builder: (_) => VideoPlayerPage(title: r.title, url: r.url!),
         ),
       );
       return;
@@ -105,7 +158,7 @@ class _LearnPageState extends State<LearnPage> {
     if (r.kind == 'audio' && r.url != null) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => AudioPlayerPage(title: r.fileName, url: r.url!),
+          builder: (_) => AudioPlayerPage(title: r.title, url: r.url!),
         ),
       );
       return;
@@ -147,6 +200,8 @@ class _LearnPageState extends State<LearnPage> {
         return Icons.code;
       case 'html':
         return Icons.web_outlined;
+      case 'frozen_output':
+        return Icons.insights_outlined;
       default:
         return Icons.insert_drive_file_outlined;
     }
@@ -166,6 +221,8 @@ class _LearnPageState extends State<LearnPage> {
         return '代码';
       case 'html':
         return 'HTML 页';
+      case 'frozen_output':
+        return '冻结输出';
       default:
         return kind;
     }
