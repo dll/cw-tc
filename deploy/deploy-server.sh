@@ -29,7 +29,9 @@ fi
 # --- 学生端 Web（服务器有 flutter 时构建）---
 if [ -x /opt/flutter/bin/flutter ]; then
   export PATH=/opt/flutter/bin:$PATH
-  ( cd "$REPO/packages/app" && flutter pub get >/dev/null && flutter build web --release --base-href=/student/ )
+  # 清理旧的 Flutter Web 构建缓存，强制重生成 federated plugin registrant。
+  # 否则增量构建可能漏注册 video_player_web/audioplayers_web，导致学生端资源页播放器初始化失败。
+  ( cd "$REPO/packages/app" && flutter pub get >/dev/null && rm -rf .dart_tool/flutter_build && flutter build web --release --base-href=/student/ )
   mkdir -p /var/www/cw-tc-student && rm -rf /var/www/cw-tc-student/*
   tar -C "$REPO/packages/app/build/web" -cf - . | tar -C /var/www/cw-tc-student -xf -
   echo "学生端已更新"
