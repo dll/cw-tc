@@ -415,6 +415,9 @@ func TestHtmlPreviewAndInlineAudio(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "lesson", "assets", "audio", "step_00.mp3"), []byte("audio-sample"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "lesson", "assets", "avatar.jpg"), []byte("image-sample"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg.ContentDir = dir
 	cfg.MediaForceFile = true
 	listed := performJSONWithCookie(t, router, http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", "", token)
@@ -464,6 +467,9 @@ func TestHtmlPreviewAndInlineAudio(t *testing.T) {
 	}
 	if missing := performJSON(t, router, http.MethodGet, htmlItem.InlineBaseURL+"assets/audio/secret.mp3", ""); missing.Code != http.StatusNotFound {
 		t.Fatalf("未入库的同目录文件应 404: %d", missing.Code)
+	}
+	if picture := performJSON(t, router, http.MethodGet, htmlItem.InlineBaseURL+"assets/avatar.jpg", ""); picture.Code != http.StatusOK || picture.Body.String() != "image-sample" {
+		t.Fatalf("HTML 内未入库的配图应可加载: %d %s", picture.Code, picture.Body.String())
 	}
 	if _, err := database.Exec(`UPDATE course SET free_preview_lectures = 0 WHERE id = 1`); err != nil {
 		t.Fatal(err)

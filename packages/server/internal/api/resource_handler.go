@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -186,7 +187,7 @@ func inlineSignatureKey(assetID, studentID int64) string {
 }
 
 // streamInlineAsset 为 HTML 讲义中的相对资源提供受控基址。
-// 签名只授权同一讲、同一目录下已入 asset 表的资源，每次请求仍检查账号和学习权益。
+// 签名只授权同一讲、同一目录下的课程资源，每次请求仍检查账号和学习权益。
 func (s *Server) streamInlineAsset(c *gin.Context) {
 	if s.cfg == nil || s.dbConn == nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "资源不可用"})
@@ -228,7 +229,24 @@ func (s *Server) streamInlineAsset(c *gin.Context) {
 	var kind string
 	err = s.dbConn.QueryRowContext(c.Request.Context(),
 		`SELECT kind FROM asset WHERE lecture_id = $1 AND storage_key = $2`, lectureID, key).Scan(&kind)
-	if err != nil || (kind != "audio" && kind != "slide" && kind != "html") {
+	if err == sql.ErrNoRows && strings.HasPrefix(key, base+"/assets/") {
+		// 上游同步仅登记教学资源类型，HTML 内的配图没有 asset 行。
+		// 图片仍限制在该 HTML 的 assets 目录和当前学员的授权范围内。
+		if s.cfg.ContentDir != "" {
+			imagePath := filepath.Join(s.cfg.ContentDir, filepath.FromSlash(key))
+			assetDir := filepath.Join(s.cfg.ContentDir, filepath.FromSlash(base), "assets")
+			resolvedImage, imageErr := filepath.EvalSymlinks(imagePath)
+			resolvedDir, dirErr := filepath.EvalSymlinks(assetDir)
+			if imageErr == nil && dirErr == nil && strings.HasPrefix(resolvedImage, resolvedDir+string(os.PathSeparator)) {
+				switch strings.ToLower(filepath.Ext(key)) {
+				case ".jpg", ".jpeg", ".png", ".gif", ".webp":
+					kind = "image"
+					err = nil
+				}
+			}
+		}
+	}
+	if err != nil || (kind != "audio" && kind != "slide" && kind != "html" && kind != "image") {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不存在"})
 		return
 	}
