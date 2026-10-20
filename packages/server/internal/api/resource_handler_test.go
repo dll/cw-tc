@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -341,11 +343,51 @@ func TestLectureResourcesMediaForceFile(t *testing.T) {
 	if len(body.Data.Items) != 1 || body.Data.Items[0].URL == "" {
 		t.Fatalf("视频项应带 url: %s", resp.Body.String())
 	}
-	if !strings.HasPrefix(body.Data.Items[0].URL, "/api/v1/assets/raw?") {
+	if !strings.HasPrefix(body.Data.Items[0].URL, "/api/v1/assets/media?") {
 		t.Fatalf("MediaForceFile 应下发文件服务 URL，实际 %q", body.Data.Items[0].URL)
 	}
 	if strings.Contains(body.Data.Items[0].URL, "myqcloud.com") {
 		t.Fatalf("MediaForceFile 不应下发 COS URL: %q", body.Data.Items[0].URL)
+	}
+}
+
+func TestSignedMediaStreamsWithoutCookie(t *testing.T) {
+	key := "course/video/sample.mp4"
+	router, cfg, token := newResourceServer(t, true, "video", key, false)
+	cfg.MediaForceFile = true
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "course", "video"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(key)), []byte("sample-video-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ContentDir = dir
+	listed := performJSONWithCookie(t, router, http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", "", token)
+	var body struct {
+		Data struct {
+			Items []struct {
+				URL string `json:"url"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &body); err != nil || len(body.Data.Items) != 1 {
+		t.Fatalf("资源清单异常: %v %s", err, listed.Body.String())
+	}
+	u := body.Data.Items[0].URL
+	req := httptest.NewRequest(http.MethodGet, u, nil)
+	req.Header.Set("Range", "bytes=0-5")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusPartialContent || resp.Body.String() != "sample" || !strings.HasPrefix(resp.Header().Get("Content-Type"), "video/mp4") {
+		t.Fatalf("无 Cookie 的视频 Range 请求异常: %d %s %s", resp.Code, resp.Header().Get("Content-Type"), resp.Body.String())
+	}
+	parsed, _ := url.Parse(u)
+	q := parsed.Query()
+	q.Set("student", "999")
+	parsed.RawQuery = q.Encode()
+	if bad := performJSON(t, router, http.MethodGet, parsed.String(), ""); bad.Code != http.StatusForbidden {
+		t.Fatalf("篡改学员后应 403，实际 %d", bad.Code)
 	}
 }
 
@@ -366,23 +408,22 @@ func TestCosAvailable(t *testing.T) {
 	// 缓存未过期 → 直接返回缓存值（不触发真实探测）
 	s3 := New(testConfig(t, true))
 	s3.cosStore = cosstore.New("id", "k", "b", "ap-nanjing")
-	s3.cosProbeAt = time.Now()
-	s3.cosProbeOK = true
+	s3.cosProbes = map[string]cosProbeResult{"a.mp4": {at: time.Now(), ok: true}}
 	if !s3.cosAvailable(context.Background(), "a.mp4") {
 		t.Fatal("缓存命中应返回 true")
 	}
-	s3.cosProbeOK = false
+	s3.cosProbes["a.mp4"] = cosProbeResult{at: time.Now(), ok: false}
 	if s3.cosAvailable(context.Background(), "a.mp4") {
 		t.Fatal("缓存命中应返回 false")
 	}
 	// 缓存过期 → 触发真实探测（假凭据，COS 返回 403/网络错误 → false，并更新缓存时间戳）
 	s4 := New(testConfig(t, true))
 	s4.cosStore = cosstore.New("id", "k", "b", "ap-nanjing")
-	s4.cosProbeAt = time.Now().Add(-10 * time.Minute)
+	s4.cosProbes = map[string]cosProbeResult{"a.mp4": {at: time.Now().Add(-10 * time.Minute), ok: true}}
 	if s4.cosAvailable(context.Background(), "a.mp4") {
 		t.Fatal("假凭据探测应返回 false")
 	}
-	if time.Since(s4.cosProbeAt) >= 5*time.Minute {
+	if time.Since(s4.cosProbes["a.mp4"].at) >= 5*time.Minute {
 		t.Fatal("探测后应更新缓存时间戳")
 	}
 }

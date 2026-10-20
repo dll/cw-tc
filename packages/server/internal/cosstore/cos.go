@@ -5,8 +5,10 @@ package cosstore
 import (
 	"context"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -71,7 +73,13 @@ func (s *Store) PresignGet(ctx context.Context, key string, expire time.Duration
 
 // Upload 上传对象（r 读到 EOF）。
 func (s *Store) Upload(ctx context.Context, key string, r io.Reader) error {
-	_, err := s.client.Object.Put(ctx, key, r, nil)
+	contentType := mime.TypeByExtension(strings.ToLower(path.Ext(key)))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	_, err := s.client.Object.Put(ctx, key, r, &cos.ObjectPutOptions{
+		ObjectPutHeaderOptions: &cos.ObjectPutHeaderOptions{ContentType: contentType},
+	})
 	return err
 }
 

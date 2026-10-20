@@ -38,8 +38,12 @@ type Server struct {
 
 	// COS 可用性探测缓存（欠费/停服时自动回退文件服务，见 cosAvailable）。
 	cosProbeMu sync.Mutex
-	cosProbeAt time.Time
-	cosProbeOK bool
+	cosProbes  map[string]cosProbeResult
+}
+
+type cosProbeResult struct {
+	at time.Time
+	ok bool
 }
 
 // New 构造 Server。
@@ -177,6 +181,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/courses/:courseCode/lectures", s.listCourseLectures)
 	v1.GET("/courses/:courseCode/lectures/:no/resources", authRequired(s.identity), s.listLectureResources)
 	v1.GET("/assets/raw", authRequired(s.identity), s.downloadAsset)
+	v1.GET("/assets/media", s.streamSignedMedia)
 	v1.GET("/majors", s.listMajors)
 	v1.GET("/health", s.health)
 	v1.GET("/verify/:certNo", s.verifyCert)

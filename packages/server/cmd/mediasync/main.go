@@ -119,9 +119,9 @@ type uploader interface {
 	Upload(ctx context.Context, key string, r io.Reader) error
 }
 
-// runUpload 逐个上传媒体文件，返回成功数（单文件失败跳过不中断）。
-func runUpload(ctx context.Context, source string, entries []sync.MediaEntry, up uploader) int {
-	uploaded := 0
+// runUpload 逐个上传媒体文件，只返回确实已上传的资源，避免清单引用不存在的对象。
+func runUpload(ctx context.Context, source string, entries []sync.MediaEntry, up uploader) []sync.MediaEntry {
+	uploaded := make([]sync.MediaEntry, 0, len(entries))
 	for _, e := range entries {
 		f, err := os.Open(filepath.Join(source, filepath.FromSlash(e.StorageKey)))
 		if err != nil {
@@ -132,7 +132,7 @@ func runUpload(ctx context.Context, source string, entries []sync.MediaEntry, up
 			continue
 		}
 		_ = f.Close()
-		uploaded++
+		uploaded = append(uploaded, e)
 	}
 	return uploaded
 }
@@ -148,12 +148,15 @@ func run(source, manifestPath string, up uploader) (int, error) {
 	}
 	uploaded := runUpload(context.Background(), source, entries, up)
 	if manifestPath != "" {
-		raw, _ := json.MarshalIndent(entries, "", "  ")
+		raw, _ := json.MarshalIndent(uploaded, "", "  ")
 		if err := os.WriteFile(manifestPath, raw, 0o644); err != nil {
 			return 0, err
 		}
 	}
-	return uploaded, nil
+	if len(uploaded) != len(entries) {
+		return len(uploaded), fmt.Errorf("媒体上传不完整：成功 %d/%d；仅成功资源写入清单", len(uploaded), len(entries))
+	}
+	return len(uploaded), nil
 }
 
 func main() {
