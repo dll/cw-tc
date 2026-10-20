@@ -8,6 +8,7 @@ class LectureResource {
     required this.expiresAt,
     required this.signature,
     this.url,
+    this.inlineBaseUrl,
   });
 
   final String kind; // 讲义 / 课件 / 视频 等
@@ -20,6 +21,9 @@ class LectureResource {
   /// 视频/音频的 COS 预签名直链（自认证，Web 播放器无需带 Bearer 头）。其余资源为 null。
   final String? url;
 
+  /// HTML 内相对音频等资源使用的短时授权基址。
+  final String? inlineBaseUrl;
+
   factory LectureResource.fromJson(Map<String, dynamic> json) {
     return LectureResource(
       kind: json['kind'] as String,
@@ -29,6 +33,7 @@ class LectureResource {
       expiresAt: (json['expires_at'] as num?)?.toInt() ?? 0,
       signature: json['signature'] as String,
       url: json['url'] as String?,
+      inlineBaseUrl: json['inline_base_url'] as String?,
     );
   }
 
@@ -36,7 +41,8 @@ class LectureResource {
   String get sizeLabel {
     if (sizeBytes <= 0) return '';
     if (sizeBytes < 1024) return '$sizeBytes B';
-    if (sizeBytes < 1024 * 1024) return '${(sizeBytes / 1024).toStringAsFixed(1)} KB';
+    if (sizeBytes < 1024 * 1024)
+      return '${(sizeBytes / 1024).toStringAsFixed(1)} KB';
     return '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 

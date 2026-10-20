@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,6 +30,11 @@ var resourceDBCounter int64
 // newResourceServer 构造带学员会话 + 课程/讲次/资源夹具的测试服务。
 // 返回 router / cfg（可改 ContentDir）/ 学员会话 token。
 func newResourceServer(t *testing.T, isPreview bool, kind, storageKey string, entitled bool) (*gin.Engine, *config.Config, string) {
+	router, cfg, token, _ := newResourceServerWithDB(t, isPreview, kind, storageKey, entitled)
+	return router, cfg, token
+}
+
+func newResourceServerWithDB(t *testing.T, isPreview bool, kind, storageKey string, entitled bool) (*gin.Engine, *config.Config, string, *sql.DB) {
 	t.Helper()
 	// 每次用独立文件库，避免共享内存库在同测试内多次调用时撞 student 唯一约束。
 	dbPath := filepath.Join(t.TempDir(), fmt.Sprintf("resource_%d.db", atomic.AddInt64(&resourceDBCounter, 1)))
@@ -75,7 +81,7 @@ func newResourceServer(t *testing.T, isPreview bool, kind, storageKey string, en
 	}
 	cfg := testConfig(t, true)
 	s := NewWithIdentityAndDatabase(cfg, service, database)
-	return s.Router(), cfg, session.Token
+	return s.Router(), cfg, session.Token, database
 }
 
 func TestLectureResourcesReturnsSignedURLs(t *testing.T) {
@@ -388,6 +394,82 @@ func TestSignedMediaStreamsWithoutCookie(t *testing.T) {
 	parsed.RawQuery = q.Encode()
 	if bad := performJSON(t, router, http.MethodGet, parsed.String(), ""); bad.Code != http.StatusForbidden {
 		t.Fatalf("篡改学员后应 403，实际 %d", bad.Code)
+	}
+}
+
+func TestHtmlPreviewAndInlineAudio(t *testing.T) {
+	router, cfg, token, database := newResourceServerWithDB(t, false, "html", "lesson/page.html", false)
+	if _, err := database.Exec(`UPDATE course SET free_preview_lectures = 2 WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO asset(lecture_id,kind,title,storage_key,size_bytes) VALUES(1,'audio','讲解','lesson/assets/audio/step_00.mp3',16)`); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "lesson", "assets", "audio"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lesson", "page.html"), []byte("<html>课件</html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lesson", "assets", "audio", "step_00.mp3"), []byte("audio-sample"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ContentDir = dir
+	cfg.MediaForceFile = true
+	listed := performJSONWithCookie(t, router, http.MethodGet, "/api/v1/courses/AI-01/lectures/1/resources", "", token)
+	if listed.Code != http.StatusOK {
+		t.Fatalf("试学资源清单应 200: %d %s", listed.Code, listed.Body.String())
+	}
+	var body struct {
+		Data struct {
+			Items []struct {
+				Kind          string `json:"kind"`
+				InlineBaseURL string `json:"inline_base_url"`
+				StorageKey    string `json:"storage_key"`
+				ExpiresAt     int64  `json:"expires_at"`
+				Signature     string `json:"signature"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	var htmlItem *struct {
+		Kind          string `json:"kind"`
+		InlineBaseURL string `json:"inline_base_url"`
+		StorageKey    string `json:"storage_key"`
+		ExpiresAt     int64  `json:"expires_at"`
+		Signature     string `json:"signature"`
+	}
+	for i := range body.Data.Items {
+		if body.Data.Items[i].Kind == "html" {
+			htmlItem = &body.Data.Items[i]
+		}
+	}
+	if htmlItem == nil || htmlItem.InlineBaseURL == "" {
+		t.Fatalf("HTML 应下发内嵌资源基址: %s", listed.Body.String())
+	}
+	rawURL := "/api/v1/assets/raw?key=lesson%2Fpage.html&expires=" + strconv.FormatInt(htmlItem.ExpiresAt, 10) + "&sig=" + htmlItem.Signature
+	if raw := performJSONWithCookie(t, router, http.MethodGet, rawURL, "", token); raw.Code != http.StatusOK {
+		t.Fatalf("平台试学讲次的 HTML 下载应 200: %d %s", raw.Code, raw.Body.String())
+	}
+	audioURL := htmlItem.InlineBaseURL + "assets/audio/step_00.mp3"
+	req := httptest.NewRequest(http.MethodGet, audioURL, nil)
+	req.Header.Set("Range", "bytes=0-4")
+	audio := httptest.NewRecorder()
+	router.ServeHTTP(audio, req)
+	if audio.Code != http.StatusPartialContent || audio.Body.String() != "audio" || !strings.HasPrefix(audio.Header().Get("Content-Type"), "audio/mpeg") {
+		t.Fatalf("HTML 内相对音频应无需 Cookie 可播放: %d %s %s", audio.Code, audio.Header().Get("Content-Type"), audio.Body.String())
+	}
+	if missing := performJSON(t, router, http.MethodGet, htmlItem.InlineBaseURL+"assets/audio/secret.mp3", ""); missing.Code != http.StatusNotFound {
+		t.Fatalf("未入库的同目录文件应 404: %d", missing.Code)
+	}
+	if _, err := database.Exec(`UPDATE course SET free_preview_lectures = 0 WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if denied := performJSON(t, router, http.MethodGet, audioURL, ""); denied.Code != http.StatusForbidden {
+		t.Fatalf("撤销试学后签名音频应 403: %d", denied.Code)
 	}
 }
 

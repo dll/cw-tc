@@ -46,7 +46,7 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
-	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT kind, title, storage_key, size_bytes FROM asset WHERE lecture_id = $1 ORDER BY CASE WHEN kind = 'video' THEN 0 ELSE 1 END, sort ASC, id ASC`, lectureID)
+	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT id, kind, title, storage_key, size_bytes FROM asset WHERE lecture_id = $1 ORDER BY CASE WHEN kind = 'video' THEN 0 ELSE 1 END, sort ASC, id ASC`, lectureID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
@@ -55,15 +55,20 @@ func (s *Server) listLectureResources(c *gin.Context) {
 	secret := []byte(s.cfg.SessionSecret)
 	items := make([]gin.H, 0)
 	for rows.Next() {
+		var assetID int64
 		var kind, title, storageKey string
 		var sizeBytes sql.NullInt64
-		if err := rows.Scan(&kind, &title, &storageKey, &sizeBytes); err != nil {
+		if err := rows.Scan(&assetID, &kind, &title, &storageKey, &sizeBytes); err != nil {
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 			return
 		}
 		expires := time.Now().Add(10 * time.Minute)
 		sig := resource.Sign(secret, storageKey, expires)
 		item := gin.H{"kind": kind, "title": title, "storage_key": storageKey, "size_bytes": sizeBytes.Int64, "expires_at": expires.Unix(), "signature": sig}
+		if kind == "html" {
+			inlineExpires := time.Now().Add(2 * time.Hour)
+			item["inline_base_url"] = "/api/v1/assets/inline/" + strconv.FormatInt(student.ID, 10) + "/" + strconv.FormatInt(assetID, 10) + "/" + strconv.FormatInt(inlineExpires.Unix(), 10) + "/" + resource.Sign(secret, inlineSignatureKey(assetID, student.ID), inlineExpires) + "/"
+		}
 		// 视频/音频：COS 可读则下发预签名 URL（Web 播放器无法带 Bearer 头，需自认证 URL）。
 		// COS 不可用时下发绑定学员的短时签名 URL；播放器不能可靠地附加 Bearer/Cookie。
 		if isCosBackedKey(storageKey) {
@@ -118,8 +123,9 @@ func (s *Server) downloadAsset(c *gin.Context) {
 	var kind string
 	var courseID int64
 	var isPreview bool
+	var lectureNo, previewCount int
 	err = s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT a.kind, l.course_id, l.is_preview FROM asset a JOIN lecture l ON l.id = a.lecture_id WHERE a.storage_key = $1`, key).Scan(&kind, &courseID, &isPreview)
+		`SELECT a.kind, l.course_id, l.no, l.is_preview, co.free_preview_lectures FROM asset a JOIN lecture l ON l.id = a.lecture_id JOIN course co ON co.id = l.course_id WHERE a.storage_key = $1`, key).Scan(&kind, &courseID, &lectureNo, &isPreview, &previewCount)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不存在"})
 		return
@@ -128,7 +134,7 @@ func (s *Server) downloadAsset(c *gin.Context) {
 		return
 	}
 	student := c.MustGet(studentContextKey).(identity.Student)
-	if !s.checkResourceAccess(c, student.ID, courseID, isPreview) {
+	if !s.checkResourceAccess(c, student.ID, courseID, isPreview || lectureNo <= previewCount) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
@@ -173,6 +179,60 @@ func (s *Server) streamSignedMedia(c *gin.Context) {
 
 func mediaSignatureKey(key string, studentID int64) string {
 	return "media:" + strconv.FormatInt(studentID, 10) + ":" + key
+}
+
+func inlineSignatureKey(assetID, studentID int64) string {
+	return "inline:" + strconv.FormatInt(studentID, 10) + ":" + strconv.FormatInt(assetID, 10)
+}
+
+// streamInlineAsset 为 HTML 讲义中的相对资源提供受控基址。
+// 签名只授权同一讲、同一目录下已入 asset 表的资源，每次请求仍检查账号和学习权益。
+func (s *Server) streamInlineAsset(c *gin.Context) {
+	if s.cfg == nil || s.dbConn == nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "资源不可用"})
+		return
+	}
+	studentID, studentErr := strconv.ParseInt(c.Param("student"), 10, 64)
+	assetID, assetErr := strconv.ParseInt(c.Param("asset"), 10, 64)
+	expiresUnix, expiresErr := strconv.ParseInt(c.Param("expires"), 10, 64)
+	if studentErr != nil || studentID <= 0 || assetErr != nil || assetID <= 0 || expiresErr != nil ||
+		!resource.Verify([]byte(s.cfg.SessionSecret), inlineSignatureKey(assetID, studentID), time.Unix(expiresUnix, 0), c.Param("sig")) {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "签名无效或已过期"})
+		return
+	}
+	var htmlKey string
+	var lectureID, courseID int64
+	var lectureNo, previewCount int
+	var isPreview bool
+	err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT a.storage_key, l.id, l.course_id, l.no, l.is_preview, co.free_preview_lectures
+		 FROM asset a JOIN lecture l ON l.id = a.lecture_id JOIN course co ON co.id = l.course_id
+		 JOIN student st ON st.id = $2 AND st.status = 'active'
+		 WHERE a.id = $1 AND a.kind = 'html' AND co.status = 'published'`, assetID, studentID,
+	).Scan(&htmlKey, &lectureID, &courseID, &lectureNo, &isPreview, &previewCount)
+	if err != nil {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不存在"})
+		return
+	}
+	if !s.checkResourceAccess(c, studentID, courseID, isPreview || lectureNo <= previewCount) {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+		return
+	}
+	relative := strings.TrimPrefix(c.Param("relative"), "/")
+	base := filepath.ToSlash(filepath.Dir(htmlKey))
+	key := filepath.ToSlash(filepath.Clean(filepath.Join(base, filepath.FromSlash(relative))))
+	if relative == "" || key == base || !strings.HasPrefix(key, base+"/") {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "非法路径"})
+		return
+	}
+	var kind string
+	err = s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT kind FROM asset WHERE lecture_id = $1 AND storage_key = $2`, lectureID, key).Scan(&kind)
+	if err != nil || (kind != "audio" && kind != "slide" && kind != "html") {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不存在"})
+		return
+	}
+	s.serveAsset(c, key, kind)
 }
 
 // serveAsset 下发已完成签名与权限校验的资源。

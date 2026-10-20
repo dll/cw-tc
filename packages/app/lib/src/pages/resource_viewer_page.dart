@@ -3,8 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
-import 'html_viewer_stub.dart'
-    if (dart.library.html) 'html_viewer_web.dart';
+import 'html_viewer_stub.dart' if (dart.library.html) 'html_viewer_web.dart';
 
 /// 资源阅读页：文本类资源端内展示。
 ///
@@ -63,7 +62,14 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
             case 'markdown':
               return Markdown(data: content, selectable: true);
             case 'html':
-              return HtmlViewer(html: content);
+              return HtmlViewer(
+                html: widget.resource.inlineBaseUrl == null
+                    ? content
+                    : htmlWithBase(
+                        content,
+                        _api.mediaUrl(widget.resource.inlineBaseUrl!),
+                      ),
+              );
             default:
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -77,4 +83,13 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
       ),
     );
   }
+}
+
+/// 把受控的同讲资源地址放在原页面第一个 base 位置，供相对音频路径解析。
+String htmlWithBase(String html, String baseUrl) {
+  final base = '<base href="$baseUrl">';
+  final head = RegExp(r'<head(?:\s[^>]*)?>', caseSensitive: false);
+  final match = head.firstMatch(html);
+  if (match == null) return '$base$html';
+  return html.replaceRange(match.end, match.end, base);
 }
