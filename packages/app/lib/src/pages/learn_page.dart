@@ -149,7 +149,7 @@ class _LearnPageState extends State<LearnPage> {
     if (r.kind == 'video' && r.url != null) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => VideoPlayerPage(title: r.title, url: r.url!),
+          builder: (_) => VideoPlayerPage(title: r.title, url: _api.mediaUrl(r.url!)),
         ),
       );
       return;
@@ -158,7 +158,7 @@ class _LearnPageState extends State<LearnPage> {
     if (r.kind == 'audio' && r.url != null) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => AudioPlayerPage(title: r.title, url: r.url!),
+          builder: (_) => AudioPlayerPage(title: r.title, url: _api.mediaUrl(r.url!)),
         ),
       );
       return;

@@ -65,7 +65,7 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		sig := resource.Sign(secret, storageKey, expires)
 		item := gin.H{"kind": kind, "title": title, "storage_key": storageKey, "size_bytes": sizeBytes.Int64, "expires_at": expires.Unix(), "signature": sig}
 		// 视频/音频：COS 可读则下发预签名 URL（Web 播放器无法带 Bearer 头，需自认证 URL）。
-		// COS 欠费/停服或 MediaForceFile 时自动回退文件服务签名 URL（同域 Cookie 可过鉴权）。
+		// COS 不可用时下发绑定学员的短时签名 URL；播放器不能可靠地附加 Bearer/Cookie。
 		if isCosBackedKey(storageKey) {
 			if s.cosAvailable(c.Request.Context(), storageKey) {
 				if u, err := s.cosStore.PresignGet(c.Request.Context(), storageKey, 2*time.Hour); err == nil {
@@ -73,11 +73,13 @@ func (s *Server) listLectureResources(c *gin.Context) {
 				}
 			}
 			if _, ok := item["url"]; !ok {
+				mediaExpires := time.Now().Add(2 * time.Hour)
 				q := url.Values{}
 				q.Set("key", storageKey)
-				q.Set("expires", strconv.FormatInt(expires.Unix(), 10))
-				q.Set("sig", sig)
-				item["url"] = "/api/v1/assets/raw?" + q.Encode()
+				q.Set("expires", strconv.FormatInt(mediaExpires.Unix(), 10))
+				q.Set("student", strconv.FormatInt(student.ID, 10))
+				q.Set("sig", resource.Sign(secret, mediaSignatureKey(storageKey, student.ID), mediaExpires))
+				item["url"] = "/api/v1/assets/media?" + q.Encode()
 			}
 		}
 		items = append(items, item)
@@ -128,6 +130,55 @@ func (s *Server) downloadAsset(c *gin.Context) {
 	student := c.MustGet(studentContextKey).(identity.Student)
 	if !s.checkResourceAccess(c, student.ID, courseID, isPreview) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+		return
+	}
+	s.serveAsset(c, key, kind)
+}
+
+// streamSignedMedia 使用绑定学员与资源的短时签名，供浏览器原生 video/audio 请求使用。
+// 每次请求重新检查权益，退款或撤销权益后即使签名未过期也不能继续读取。
+func (s *Server) streamSignedMedia(c *gin.Context) {
+	if s.cfg == nil || s.dbConn == nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "资源不可用"})
+		return
+	}
+	key := c.Query("key")
+	studentID, studentErr := strconv.ParseInt(c.Query("student"), 10, 64)
+	expiresUnix, expiresErr := strconv.ParseInt(c.Query("expires"), 10, 64)
+	if key == "" || studentErr != nil || studentID <= 0 || expiresErr != nil || !isCosBackedKey(key) ||
+		!resource.Verify([]byte(s.cfg.SessionSecret), mediaSignatureKey(key, studentID), time.Unix(expiresUnix, 0), c.Query("sig")) {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "签名无效或已过期"})
+		return
+	}
+	var kind string
+	var courseID int64
+	var lectureNo, previewCount int
+	var isPreview bool
+	err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT a.kind, l.course_id, l.no, l.is_preview, co.free_preview_lectures
+		 FROM asset a JOIN lecture l ON l.id = a.lecture_id JOIN course co ON co.id = l.course_id
+		 JOIN student st ON st.id = $2 AND st.status = 'active'
+		 WHERE a.storage_key = $1 AND co.status = 'published'`, key, studentID,
+	).Scan(&kind, &courseID, &lectureNo, &isPreview, &previewCount)
+	if err != nil || (kind != "video" && kind != "audio") {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不存在"})
+		return
+	}
+	if !s.checkResourceAccess(c, studentID, courseID, isPreview || lectureNo <= previewCount) {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+		return
+	}
+	s.serveAsset(c, key, kind)
+}
+
+func mediaSignatureKey(key string, studentID int64) string {
+	return "media:" + strconv.FormatInt(studentID, 10) + ":" + key
+}
+
+// serveAsset 下发已完成签名与权限校验的资源。
+func (s *Server) serveAsset(c *gin.Context, key, kind string) {
+	if s.cfg.ContentDir == "" && (!isCosBackedKey(key) || !s.cosAvailable(c.Request.Context(), key)) {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源文件不可用"})
 		return
 	}
 	// 源码可下载，其余仅查看/播放（防盗：非源码不给 attachment 下载头）。
@@ -193,11 +244,13 @@ func (s *Server) cosAvailable(ctx context.Context, key string) bool {
 	}
 	s.cosProbeMu.Lock()
 	defer s.cosProbeMu.Unlock()
-	if time.Since(s.cosProbeAt) < 5*time.Minute {
-		return s.cosProbeOK
+	if cached, ok := s.cosProbes[key]; ok && time.Since(cached.at) < 5*time.Minute {
+		return cached.ok
 	}
 	ok := s.cosStore.Probe(ctx, key)
-	s.cosProbeAt = time.Now()
-	s.cosProbeOK = ok
+	if s.cosProbes == nil {
+		s.cosProbes = make(map[string]cosProbeResult)
+	}
+	s.cosProbes[key] = cosProbeResult{at: time.Now(), ok: ok}
 	return ok
 }

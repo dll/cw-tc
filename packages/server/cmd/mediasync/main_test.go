@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -93,14 +94,19 @@ func TestRunUpload(t *testing.T) {
 	}
 	up := &fakeUploader{uploaded: map[string]bool{}, failOn: "c.wav"}
 	n := runUpload(context.Background(), root, entries, up)
-	if n != 2 {
-		t.Fatalf("应成功 2 个，实际 %d", n)
+	if len(n) != 2 {
+		t.Fatalf("应成功 2 个，实际 %d", len(n))
 	}
 	if !up.uploaded["a.mp4"] || !up.uploaded["b.mp3"] {
 		t.Fatalf("a.mp4/b.mp3 应上传成功")
 	}
 	if up.uploaded["c.wav"] || up.uploaded["missing.mp4"] {
 		t.Fatalf("c.wav/missing.mp4 不应上传成功")
+	}
+	for _, entry := range n {
+		if !up.uploaded[entry.StorageKey] {
+			t.Fatalf("清单包含上传失败的资源: %s", entry.StorageKey)
+		}
 	}
 }
 
@@ -136,5 +142,35 @@ func TestRun(t *testing.T) {
 	}
 	if _, err := os.Stat(manifest); err != nil {
 		t.Fatal("清单未写出")
+	}
+}
+
+func TestRunWritesOnlyUploadedMedia(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "课程总览.json"), []byte(`{"courses":[{"id":"03-CF","dir":"AI化教学创新03-CF"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mediaDir := filepath.Join(root, "AI化教学创新03-CF", "01_你好世界", "video")
+	if err := os.MkdirAll(mediaDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"good.mp4", "bad.mp4"} {
+		if err := os.WriteFile(filepath.Join(mediaDir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest := filepath.Join(t.TempDir(), "media.json")
+	uploader := &fakeUploader{uploaded: map[string]bool{}, failOn: filepath.ToSlash(filepath.Join("AI化教学创新03-CF", "01_你好世界", "video", "bad.mp4"))}
+	n, err := run(root, manifest, uploader)
+	if err == nil || n != 1 {
+		t.Fatalf("部分上传失败应报错且成功数为 1，实际 %d, %v", n, err)
+	}
+	raw, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []sync.MediaEntry
+	if err := json.Unmarshal(raw, &entries); err != nil || len(entries) != 1 || filepath.Base(entries[0].StorageKey) != "good.mp4" {
+		t.Fatalf("清单必须只含成功对象: %v %s", err, raw)
 	}
 }

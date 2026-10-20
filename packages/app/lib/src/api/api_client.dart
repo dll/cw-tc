@@ -255,6 +255,9 @@ class ApiClient {
     return uri.toString();
   }
 
+  /// 文件服务回退地址可能是站内相对路径，播放器必须收到完整 URL。
+  String mediaUrl(String url) => Uri.parse(_baseUrl).resolve(url).toString();
+
   /// 拉取文本类资源（讲义 Markdown / 代码 / HTML）原文，供端内阅读。
   Future<String> fetchResourceText(LectureResource r) async {
     final res = await _dio.get<String>(
