@@ -182,6 +182,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/courses/:courseCode/lectures/:no/resources", authRequired(s.identity), s.listLectureResources)
 	v1.GET("/assets/raw", authRequired(s.identity), s.downloadAsset)
 	v1.GET("/assets/media", s.streamSignedMedia)
+	v1.GET("/assets/inline/:student/:asset/:expires/:sig/*relative", s.streamInlineAsset)
 	v1.GET("/majors", s.listMajors)
 	v1.GET("/health", s.health)
 	v1.GET("/verify/:certNo", s.verifyCert)
