@@ -95,6 +95,7 @@ jobs:
 
       - name: 上传覆盖率报告
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: go-coverage-report
@@ -127,6 +128,7 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
 
   # ------------------------------------------------------------------
   # 学生端（Flutter）：静态分析 + 单测
