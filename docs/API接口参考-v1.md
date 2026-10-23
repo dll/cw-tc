@@ -330,7 +330,7 @@
 | POST | `/admin/orders/{orderNo}/partial-refund` | 管理员 | **[P0] 部分退款（= 打折）** —— **语义已定（v2.24）**：等价于 `kind=reward` + 指定 `amount_cents`；**保留权益与证书**、**不计入退款率**、**计入对账**（§7.3 G-7）。保留本路径仅为兼容早期引用 |
 | GET | `/admin/certs` | 管理员 | 证书台账 |
 | POST | `/admin/certs/{certNo}/revoke` | 管理员 | 撤销证书（须填原因） |
-| GET | `/admin/users` | 管理员 | **用户列表**（`q` 支持手机号 / 姓名 / 学号 / 账号；**`id_card` 参数被忽略**） |
+| GET | `/admin/users` | 管理员 | **用户列表**：`type` 可选 `student` / `teacher` / `admin_super` / `admin_ops`，不传则展示全部；`limit`（1~100，默认 20）和 `offset` 分页，返回 `items` 与 `total`。每项带 `user_type`；学员带学号和脱敏手机号，内部人员带账号，不返回手机号或身份证号。`id_card` 参数被忽略。 |
 | GET | `/admin/users/{id}` | 管理员 | **用户详情**（**默认脱敏**，见 §1.10） |
 | GET | `/admin/users/{id}/reveal` | **super**（手机号 ops 可） | **查看全号**：须带 `reason`，**每次写审计**（§7.10.10（二）） |
 | PATCH | `/admin/users/{id}/status` | 管理员（永久封禁仅 super） | **封禁 / 解封**：须带 `reason_kind` + `note`（+ `until`） |

@@ -116,17 +116,21 @@ export async function listCerts(): Promise<CertItem[]> {
 }
 
 // —— 用户管理 ——
+export type UserType = 'student' | 'teacher' | 'admin_super' | 'admin_ops'
 export interface UserItem {
   id: number
+  user_type: UserType
   student_no: string
+  account: string
   name: string
   phone: string
   status: string
   created_at: string
 }
-export async function listUsers(): Promise<UserItem[]> {
-  const r = await unwrap<{ items: UserItem[] }>(http.get('/admin/users'))
-  return r.items
+export async function listUsers(userType: UserType | '' = '', limit = 20, offset = 0): Promise<{ items: UserItem[]; total: number }> {
+  return unwrap<{ items: UserItem[]; total: number }>(http.get('/admin/users', {
+    params: { type: userType, limit, offset },
+  }))
 }
 export async function revealUser(id: number, reason: string): Promise<{ phone: string }> {
   return unwrap<{ phone: string }>(http.post(`/admin/users/${id}/reveal`, { reason }))

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -11,12 +12,38 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// adminListUsers GET /admin/users —— 学员列表（默认脱敏，身份证号永不返回）。
+// adminListUsers GET /admin/users —— 四类用户统一列表（默认脱敏，身份证号永不返回）。
 func (s *Server) adminListUsers(c *gin.Context) {
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	limit, limitErr := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	offset, offsetErr := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limitErr != nil || offsetErr != nil || limit < 1 || limit > 100 || offset < 0 {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "分页参数错误"})
+		return
+	}
+	userType := c.Query("type")
+	switch userType {
+	case "", "student", "teacher", "admin_super", "admin_ops":
+	default:
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "用户类型错误"})
+		return
+	}
+	const usersSQL = `
+		SELECT id, 'student' AS user_type, student_no, CAST(NULL AS TEXT) AS account,
+		       name, phone, status, created_at FROM student WHERE $1 = '' OR $1 = 'student'
+		UNION ALL
+		SELECT id, role AS user_type, CAST(NULL AS TEXT) AS student_no, account,
+		       name, CAST(NULL AS TEXT) AS phone, status, created_at FROM staff
+		       WHERE $1 = '' OR role = $1`
+	var total int64
+	if err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT COUNT(*) FROM (`+usersSQL+`) AS users`, userType).Scan(&total); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
-		`SELECT id, student_no, name, phone, status, created_at FROM student ORDER BY id DESC LIMIT $1 OFFSET $2`, limit, offset)
+		`SELECT id, user_type, student_no, account, name, phone, status, created_at
+		 FROM (`+usersSQL+`) AS users ORDER BY created_at DESC, user_type, id DESC LIMIT $2 OFFSET $3`,
+		userType, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 		return
@@ -25,21 +52,27 @@ func (s *Server) adminListUsers(c *gin.Context) {
 	items := make([]gin.H, 0)
 	for rows.Next() {
 		var id int64
-		var studentNo, name, phone, status, createdAt string
-		if err := rows.Scan(&id, &studentNo, &name, &phone, &status, &createdAt); err != nil {
+		var userType, name, status, createdAt string
+		var studentNo, account, phone sql.NullString
+		if err := rows.Scan(&id, &userType, &studentNo, &account, &name, &phone, &status, &createdAt); err != nil {
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 			return
 		}
+		maskedPhone := ""
+		if phone.Valid && phone.String != "" {
+			maskedPhone = redact.Phone(phone.String)
+		}
 		items = append(items, gin.H{
-			"id": id, "student_no": studentNo, "name": name,
-			"phone": redact.Phone(phone), "status": status, "created_at": createdAt,
+			"id": id, "user_type": userType, "student_no": studentNo.String,
+			"account": account.String, "name": name, "phone": maskedPhone,
+			"status": status, "created_at": createdAt,
 		})
 	}
 	if err := rows.Err(); err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 		return
 	}
-	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"items": items}})
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"items": items, "total": total}})
 }
 
 // adminRevealUser POST /admin/users/:id/reveal —— 看全号（事由必填 + 写审计；宽 ≠ 无痕）。
