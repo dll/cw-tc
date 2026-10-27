@@ -19,7 +19,7 @@ func (s *Server) adminGrantEntitlement(c *gin.Context) {
 		CourseID    int64  `json:"course_id"`
 		CourseCode  string `json:"course_code"`
 		GrantReason string `json:"grant_reason"`
-		Confirm bool `json:"confirm"`
+		Confirm     bool   `json:"confirm"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.StudentID <= 0 || req.GrantReason == "" || !req.Confirm {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
