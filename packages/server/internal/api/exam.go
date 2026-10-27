@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -85,9 +86,17 @@ func (s *Server) submitExam(c *gin.Context) {
 	}
 	certNo := ""
 	if res.IsPass {
-		if cn, err := issueCertForSession(ctx, s.dbConn, sessionID, res); err == nil {
-			certNo = cn
+		cn, issueErr := issueCertForSession(ctx, s.dbConn, sessionID, res, []byte(s.cfg.IDCardEncKey))
+		if issueErr != nil {
+			// 通过测评不等于已发证；缺少合法身份证时必须明确提示并阻止生成“空证书”结果。
+			if errors.Is(issueErr, exam.ErrCertIdentityRequired) {
+				c.JSON(http.StatusConflict, envelope{Code: 10507, Msg: issueErr.Error()})
+				return
+			}
+			c.JSON(http.StatusConflict, envelope{Code: 10506, Msg: "证书签发失败"})
+			return
 		}
+		certNo = cn
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"session_id":  res.SessionID,
@@ -100,7 +109,7 @@ func (s *Server) submitExam(c *gin.Context) {
 }
 
 // issueCertForSession 通过后发证：从会话取 student/course/level，再取 course_code。
-func issueCertForSession(ctx context.Context, db *sql.DB, sessionID int64, res exam.Result) (string, error) {
+func issueCertForSession(ctx context.Context, db *sql.DB, sessionID int64, res exam.Result, idCardEncKey []byte) (string, error) {
 	var studentID, courseID int64
 	var level string
 	if err := db.QueryRowContext(ctx,
@@ -114,12 +123,13 @@ func issueCertForSession(ctx context.Context, db *sql.DB, sessionID int64, res e
 		return "", err
 	}
 	return exam.IssueCertificate(ctx, db, exam.CertIssueInput{
-		StudentID:  studentID,
-		CourseID:   courseID,
-		CourseCode: courseCode,
-		Level:      level,
-		Score:      res.TotalScore,
-		Band:       res.Band,
+		StudentID:    studentID,
+		CourseID:     courseID,
+		CourseCode:   courseCode,
+		Level:        level,
+		Score:        res.TotalScore,
+		Band:         res.Band,
+		IDCardEncKey: idCardEncKey,
 	})
 }
 

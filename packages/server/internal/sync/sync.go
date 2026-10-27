@@ -179,6 +179,9 @@ func Run(ctx context.Context, database *sql.DB, sourceDir string) error {
 		if err := syncQuestions(ctx, database, course); err != nil {
 			return err
 		}
+		if err := syncLectureQuestions(ctx, database, course); err != nil {
+			return err
+		}
 		if course.Type == "讲次制" || course.Type == "案例制" {
 			if err := syncAssets(ctx, database, course, sourceDir); err != nil {
 				return err

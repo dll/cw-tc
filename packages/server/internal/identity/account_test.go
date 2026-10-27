@@ -83,6 +83,25 @@ func TestLoginBySMSAndReplay(t *testing.T) {
 	}
 }
 
+func TestLoginBySMSRequiresRegistrationReview(t *testing.T) {
+	service, database := accountTestService(t)
+	defer database.Close()
+	if _, err := service.Register(context.Background(), RegisterInput{
+		Name: "样例学员", Phone: "13812345678", Password: "password-1", RequireReview: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sms := NewSMSService()
+	service.WithSMS(sms)
+	now := time.Now().UTC()
+	if _, err := sms.Issue(context.Background(), "13812345678", "login", "654321", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.LoginBySMS(context.Background(), "13812345678", "654321", now); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("待审核账号不得通过短信登录: %v", err)
+	}
+}
+
 func TestResetPasswordBySMS(t *testing.T) {
 	service, database := accountTestService(t)
 	defer database.Close()
@@ -125,7 +144,7 @@ func TestRebindPhone(t *testing.T) {
 	}
 }
 
-func TestRegisterConsumesSMS(t *testing.T) {
+func TestRegisterDoesNotConsumeSMS(t *testing.T) {
 	service, database := accountTestService(t)
 	defer database.Close()
 	sms := NewSMSService()
@@ -135,12 +154,8 @@ func TestRegisterConsumesSMS(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := service.Register(context.Background(), RegisterInput{Name: "样例学员", Phone: "13812345678", IDCard: "110101199001011237", Password: "password-1"})
-	if err != ErrInvalidInput {
-		t.Fatalf("缺少验证码应返回 ErrInvalidInput: %v", err)
-	}
-	_, err = service.Register(context.Background(), RegisterInput{Name: "样例学员", Phone: "13812345678", IDCard: "110101199001011237", Password: "password-1", SMSCode: "333333", SMSScene: "register"})
 	if err != nil {
-		t.Fatalf("带验证码注册失败: %v", err)
+		t.Fatalf("注册不应依赖短信验证码: %v", err)
 	}
 }
 

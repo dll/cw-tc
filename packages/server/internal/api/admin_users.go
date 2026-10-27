@@ -29,10 +29,10 @@ func (s *Server) adminListUsers(c *gin.Context) {
 	}
 	const usersSQL = `
 		SELECT id, 'student' AS user_type, student_no, CAST(NULL AS TEXT) AS account,
-		       name, phone, status, created_at FROM student WHERE $1 = '' OR $1 = 'student'
+		       name, phone, status, created_at, registration_reviewed_at, registration_review_status FROM student WHERE $1 = '' OR $1 = 'student'
 		UNION ALL
 		SELECT id, role AS user_type, CAST(NULL AS TEXT) AS student_no, account,
-		       name, CAST(NULL AS TEXT) AS phone, status, created_at FROM staff
+		       name, CAST(NULL AS TEXT) AS phone, status, created_at, CAST(NULL AS TEXT) AS registration_reviewed_at, CAST(NULL AS TEXT) AS registration_review_status FROM staff
 		       WHERE $1 = '' OR role = $1`
 	var total int64
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),
@@ -41,8 +41,8 @@ func (s *Server) adminListUsers(c *gin.Context) {
 		return
 	}
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
-		`SELECT id, user_type, student_no, account, name, phone, status, created_at
-		 FROM (`+usersSQL+`) AS users ORDER BY created_at DESC, user_type, id DESC LIMIT $2 OFFSET $3`,
+		`SELECT id, user_type, student_no, account, name, phone, status, created_at, registration_reviewed_at, registration_review_status
+		 FROM (`+usersSQL+`) AS users ORDER BY CASE WHEN registration_review_status='pending' THEN 0 ELSE 1 END, created_at DESC, user_type, id DESC LIMIT $2 OFFSET $3`,
 		userType, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
@@ -54,7 +54,9 @@ func (s *Server) adminListUsers(c *gin.Context) {
 		var id int64
 		var userType, name, status, createdAt string
 		var studentNo, account, phone sql.NullString
-		if err := rows.Scan(&id, &userType, &studentNo, &account, &name, &phone, &status, &createdAt); err != nil {
+		var reviewed sql.NullString
+		var reviewStatus sql.NullString
+		if err := rows.Scan(&id, &userType, &studentNo, &account, &name, &phone, &status, &createdAt, &reviewed, &reviewStatus); err != nil {
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 			return
 		}
@@ -66,6 +68,15 @@ func (s *Server) adminListUsers(c *gin.Context) {
 			"id": id, "user_type": userType, "student_no": studentNo.String,
 			"account": account.String, "name": name, "phone": maskedPhone,
 			"status": status, "created_at": createdAt,
+			"registration_status": func() string {
+				if userType != "student" {
+					return "n/a"
+				}
+				if reviewStatus.Valid {
+					return reviewStatus.String
+				}
+				return "approved"
+			}(),
 		})
 	}
 	if err := rows.Err(); err != nil {

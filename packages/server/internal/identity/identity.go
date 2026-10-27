@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
+	"time"
 )
 
 var phonePattern = regexp.MustCompile(`^1[3-9][0-9]{9}$`)
@@ -47,6 +49,15 @@ func ValidateIDCard(id string) error {
 	}
 	if got != want {
 		return errors.New("身份证号校验位错误")
+	}
+	// 校验地区与出生日期，防止仅校验位正确的伪造号码入库。
+	region := id[:2]
+	if !strings.Contains("|11|12|13|14|15|21|22|23|31|32|33|34|35|36|37|41|42|43|44|45|46|50|51|52|53|54|61|62|63|64|65|71|81|82|", "|"+region+"|") {
+		return errors.New("身份证号地区码非法")
+	}
+	birth, err := time.Parse("20060102", id[6:14])
+	if err != nil || birth.Format("20060102") != id[6:14] || birth.After(time.Now().UTC()) || birth.Year() < 1900 {
+		return errors.New("身份证号出生日期非法")
 	}
 	return nil
 }

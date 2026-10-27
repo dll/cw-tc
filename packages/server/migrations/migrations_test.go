@@ -128,7 +128,9 @@ func TestDialectSchemasMatch(t *testing.T) {
 		pgTables := parseTables(pgBody)
 		liteTables := parseTables(liteBody)
 		if len(pgTables) == 0 {
-			t.Errorf("postgres/%s 里没解析到 CREATE TABLE（解析器与写法不符？）", name)
+			if len(liteTables) != 0 || !strings.Contains(strings.ToUpper(stripSQLComments(pgBody)), "ALTER TABLE") || !strings.Contains(strings.ToUpper(stripSQLComments(liteBody)), "ALTER TABLE") {
+				t.Errorf("%s：无建表语句的迁移必须在两种方言中都包含对应 ALTER TABLE", name)
+			}
 			continue
 		}
 		for table, pgCols := range pgTables {

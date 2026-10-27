@@ -8,6 +8,10 @@ import (
 	"errors"
 )
 
+type execContexter interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
 var ErrAuditInput = errors.New("审计参数非法")
 
 // Input 审计记录入参。
@@ -24,7 +28,7 @@ type Input struct {
 }
 
 // Record 写入一条审计记录。
-func Record(ctx context.Context, db *sql.DB, in Input) error {
+func Record(ctx context.Context, db execContexter, in Input) error {
 	if db == nil || in.Action == "" || in.ActorID <= 0 {
 		return ErrAuditInput
 	}

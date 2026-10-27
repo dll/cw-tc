@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/cw-tc/server/internal/identity"
+	"strings"
 	"time"
 )
 
@@ -58,13 +60,16 @@ func AllocateCertNo(ctx context.Context, q certSeqQuerier, courseCode, level str
 
 // CertIssueInput 发证入参。
 type CertIssueInput struct {
-	StudentID  int64
-	CourseID   int64
-	CourseCode string
-	Level      string
-	Score      float64
-	Band       string
+	StudentID    int64
+	CourseID     int64
+	CourseCode   string
+	Level        string
+	Score        float64
+	Band         string
+	IDCardEncKey []byte
 }
+
+var ErrCertIdentityRequired = errors.New("发证前必须完成身份证实名信息")
 
 // IssueCertificate 发证：取号 + 写入 certificate（同一事务，失败不消耗号，铁律 4）。
 func IssueCertificate(ctx context.Context, db *sql.DB, in CertIssueInput) (string, error) {
@@ -79,6 +84,19 @@ func IssueCertificate(ctx context.Context, db *sql.DB, in CertIssueInput) (strin
 		return "", err
 	}
 	defer tx.Rollback()
+	idCardSnapshot := ""
+	if len(in.IDCardEncKey) != 32 {
+		return "", ErrCertIdentityRequired
+	}
+	var idCardCipher []byte
+	if err := tx.QueryRowContext(ctx, `SELECT id_card_cipher FROM student WHERE id=$1 AND status='active'`, in.StudentID).Scan(&idCardCipher); err != nil || len(idCardCipher) == 0 {
+		return "", ErrCertIdentityRequired
+	}
+	idCard, err := identity.UnprotectIDCard(idCardCipher, in.IDCardEncKey)
+	if err != nil || identity.ValidateIDCard(idCard) != nil {
+		return "", ErrCertIdentityRequired
+	}
+	idCardSnapshot = maskIDCard(idCard)
 	certNo, err := AllocateCertNo(ctx, tx, in.CourseCode, in.Level)
 	if err != nil {
 		return "", err
@@ -86,14 +104,21 @@ func IssueCertificate(ctx context.Context, db *sql.DB, in CertIssueInput) (strin
 	issuedAt := time.Now().UTC()
 	expiresAt := issuedAt.AddDate(3, 0, 0) // 有效期 3 年（数据字典 §5.4）
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO certificate(cert_no, student_id, course_id, level, score, band, issued_at, expires_at)
-		 VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+		`INSERT INTO certificate(cert_no, student_id, course_id, level, score, band, issued_at, expires_at, id_card_snapshot)
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
 		certNo, in.StudentID, in.CourseID, in.Level, in.Score, in.Band,
-		issuedAt.Format(time.RFC3339), expiresAt.Format(time.RFC3339)); err != nil {
+		issuedAt.Format(time.RFC3339), expiresAt.Format(time.RFC3339), idCardSnapshot); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {
 		return "", err
 	}
 	return certNo, nil
+}
+
+func maskIDCard(value string) string {
+	if len(value) != 18 {
+		return ""
+	}
+	return value[:6] + strings.Repeat("*", 8) + value[14:]
 }

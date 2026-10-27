@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestExamRouteStartAndSubmit(t *testing.T) {
 	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
 		t.Fatal(err)
 	}
-	service := identity.NewService(database, []byte("01234567890123456789012345678901"), []byte("hmac-key-for-cwTC-tests-012345678901234"))
+	service := identity.NewService(database, []byte(strings.Repeat("a", 32)), []byte("hmac-key-for-cwTC-tests-012345678901234"))
 	student, err := service.Register(context.Background(), identity.RegisterInput{Name: "样例学员", Phone: "13812345678", IDCard: "110101199001011237", Password: "password-1"})
 	if err != nil {
 		t.Fatal(err)

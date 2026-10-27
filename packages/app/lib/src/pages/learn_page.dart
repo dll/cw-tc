@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
 import 'audio_player_page.dart';
+import 'lecture_discussion_page.dart';
+import 'lecture_practice_page.dart';
 import 'resource_viewer_page.dart';
 import 'slide_viewer_page.dart';
 import 'video_player_page.dart';
@@ -13,7 +15,8 @@ import 'video_player_page.dart';
 /// 资源带短时签名 URL；本页**按类型分组**展示（视频 → 音频 → 讲义 → 课件 → 代码 → 其他），
 /// 组内按标题排序并**按存储键去重**，避免同名/重复条目把清单搅乱。
 class LearnPage extends StatefulWidget {
-  const LearnPage({super.key, required this.courseCode, required this.no, this.api});
+  const LearnPage(
+      {super.key, required this.courseCode, required this.no, this.api});
 
   final String courseCode;
   final int no;
@@ -50,7 +53,8 @@ class _LearnPageState extends State<LearnPage> {
       appBar: AppBar(title: Text('第 ${widget.no} 讲')),
       body: FutureBuilder<List<LectureResource>>(
         future: _future,
-        builder: (BuildContext context, AsyncSnapshot<List<LectureResource>> snapshot) {
+        builder: (BuildContext context,
+            AsyncSnapshot<List<LectureResource>> snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -66,7 +70,8 @@ class _LearnPageState extends State<LearnPage> {
                   const Text('资源加载失败'),
                   TextButton(
                     onPressed: () => setState(() {
-                      _future = _api.lectureResources(widget.courseCode, widget.no);
+                      _future =
+                          _api.lectureResources(widget.courseCode, widget.no);
                     }),
                     child: const Text('重试'),
                   ),
@@ -74,11 +79,32 @@ class _LearnPageState extends State<LearnPage> {
               ),
             );
           }
-          final resources = _grouped(snapshot.data ?? const <LectureResource>[]);
-          if (resources.isEmpty) {
-            return const Center(child: Text('本讲暂无资源'));
-          }
-          final children = <Widget>[];
+          final resources =
+              _grouped(snapshot.data ?? const <LectureResource>[]);
+          final children = <Widget>[
+            Card(
+                child: ListTile(
+              leading: const Icon(Icons.quiz_outlined),
+              title: const Text('本讲测评'),
+              subtitle: const Text('思考题练习，提交后查看参考解答'),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => LecturePracticePage(
+                      courseCode: widget.courseCode,
+                      no: widget.no,
+                      api: _api))),
+            )),
+            Card(
+                child: ListTile(
+              leading: const Icon(Icons.forum_outlined),
+              title: const Text('本讲讨论'),
+              subtitle: const Text('公开讨论，按点赞量排序'),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => LectureDiscussionPage(
+                      courseCode: widget.courseCode,
+                      no: widget.no,
+                      api: _api))),
+            )),
+          ];
           String? currentKind;
           for (final r in resources) {
             if (r.kind != currentKind) {
@@ -149,7 +175,8 @@ class _LearnPageState extends State<LearnPage> {
     if (r.kind == 'video' && r.url != null) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => VideoPlayerPage(title: r.title, url: _api.mediaUrl(r.url!)),
+          builder: (_) =>
+              VideoPlayerPage(title: r.title, url: _api.mediaUrl(r.url!)),
         ),
       );
       return;
@@ -158,7 +185,8 @@ class _LearnPageState extends State<LearnPage> {
     if (r.kind == 'audio' && r.url != null) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => AudioPlayerPage(title: r.title, url: _api.mediaUrl(r.url!)),
+          builder: (_) =>
+              AudioPlayerPage(title: r.title, url: _api.mediaUrl(r.url!)),
         ),
       );
       return;

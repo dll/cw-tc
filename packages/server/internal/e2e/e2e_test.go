@@ -127,6 +127,7 @@ func TestFullFlowWithMockPayment(t *testing.T) {
 	// 7. M3-06 发证 + M3-07 验真（交卷 → 判分 → 发证 → 验真 全链路）
 	certNo, err := exam.IssueCertificate(ctx, database, exam.CertIssueInput{
 		StudentID: stu.ID, CourseID: 1, CourseCode: "C1", Level: "L1", Score: res.TotalScore, Band: res.Band,
+		IDCardEncKey: bytes.Repeat([]byte("a"), 32),
 	})
 	if err != nil {
 		t.Fatalf("发证失败: %v", err)

@@ -21,7 +21,7 @@ func (s *Service) LoginBySMS(ctx context.Context, phone, code string, now time.T
 		return Student{}, ErrDatabaseNotConfigured
 	}
 	var student Student
-	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone FROM student WHERE phone = $1 AND status = 'active'`, phone).
+	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone FROM student WHERE phone = $1 AND status = 'active' AND registration_review_status = 'approved'`, phone).
 		Scan(&student.ID, &student.StudentNo, &student.Name, &student.Phone)
 	if err != nil {
 		return Student{}, ErrInvalidCredentials

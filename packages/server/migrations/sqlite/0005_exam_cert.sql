@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS certificate (
     revoked_by INTEGER REFERENCES staff(id),
     issued_by INTEGER REFERENCES staff(id),
     id_card_mode TEXT NOT NULL DEFAULT 'mask',
+    id_card_snapshot TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CHECK (level IN ('L1','L2','L3')),
     CHECK (status IN ('valid','revoked')),

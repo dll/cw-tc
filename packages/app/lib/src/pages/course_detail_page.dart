@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../api/api_client.dart';
 import '../models/course.dart';
 import '../models/lecture.dart';
+import 'lecture_discussion_page.dart';
 
 /// 课程详情（PRD v2 §7.2 B-2）：基本信息 + 讲次列表。
 ///
@@ -45,7 +47,30 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     try {
       final orderNo = await _api.createOrder(widget.courseCode);
       if (orderNo.isEmpty) throw Exception('下单失败');
-      await _api.mockPayOrder(orderNo);
+      final qrCode = await _api.alipayPrecreate(orderNo);
+      if (qrCode.isEmpty) throw Exception('支付宝二维码获取失败');
+      if (!mounted) return;
+      await showDialog<void>(context: context, builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('支付宝扫码支付'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+            QrImageView(data: qrCode, size: 240),
+            const SizedBox(height: 8),
+            const Text('请使用支付宝扫码付款。付款后点击“我已支付”查询订单。'),
+          ]),
+          actions: <Widget>[
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('稍后支付')),
+            FilledButton(onPressed: () async {
+              final status = await _api.orderStatus(orderNo);
+              if (!dialogContext.mounted) return;
+              if (status == 'paid') { Navigator.of(dialogContext).pop(); return; }
+              ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('尚未收到支付确认，请稍后再查')));
+            }, child: const Text('我已支付')),
+          ],
+        );
+      });
+      final status = await _api.orderStatus(orderNo);
+      if (status != 'paid') return;
       if (!mounted) return;
       setState(() => _entitled = true);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,16 +112,20 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               const SizedBox(height: 12),
               Row(
                 children: <Widget>[
-                  Text(course.priceLabel, style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
+                  Text(course.priceLabel,
+                      style: theme.textTheme.titleLarge
+                          ?.copyWith(color: theme.colorScheme.primary)),
                   const Spacer(),
                   if (_entitled || course.priceCents <= 0) ...<Widget>[
                     OutlinedButton(
-                      onPressed: () => context.push('/exam/${widget.courseCode}/L1'),
+                      onPressed: () =>
+                          context.push('/exam/${widget.courseCode}/L1'),
                       child: const Text('测评'),
                     ),
                     const SizedBox(width: 8),
                     FilledButton(
-                      onPressed: () => context.push('/learn/${widget.courseCode}/1'),
+                      onPressed: () =>
+                          context.push('/learn/${widget.courseCode}/1'),
                       child: const Text('开始学习'),
                     ),
                   ] else ...<Widget>[
@@ -112,7 +141,8 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               const SizedBox(height: 8),
               FutureBuilder<List<Lecture>>(
                 future: _api.lectures(widget.courseCode),
-                builder: (BuildContext context, AsyncSnapshot<List<Lecture>> ls) {
+                builder:
+                    (BuildContext context, AsyncSnapshot<List<Lecture>> ls) {
                   if (ls.connectionState == ConnectionState.waiting) {
                     return const Padding(
                       padding: EdgeInsets.all(24),
@@ -130,10 +160,27 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                     children: lectures.map((lecture) {
                       return ListTile(
                         dense: true,
-                        leading: CircleAvatar(radius: 14, child: Text('${lecture.no}')),
+                        leading: CircleAvatar(
+                            radius: 14, child: Text('${lecture.no}')),
                         title: Text(lecture.title),
-                        trailing: lecture.isPreview ? const Chip(label: Text('试学')) : null,
-                        onTap: () => context.push('/learn/${widget.courseCode}/${lecture.no}'),
+                        trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              if (lecture.isPreview)
+                                const Chip(label: Text('试学')),
+                              IconButton(
+                                tooltip: '本讲讨论',
+                                icon: const Icon(Icons.forum_outlined),
+                                onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                        builder: (_) => LectureDiscussionPage(
+                                            courseCode: widget.courseCode,
+                                            no: lecture.no,
+                                            api: _api))),
+                              ),
+                            ]),
+                        onTap: () => context
+                            .push('/learn/${widget.courseCode}/${lecture.no}'),
                       );
                     }).toList(),
                   );

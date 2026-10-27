@@ -26,6 +26,10 @@ func (s *Server) login(c *gin.Context) {
 	}
 	student, err := s.identity.Login(c.Request.Context(), request.Phone, request.Password)
 	if err != nil {
+		if err == identity.ErrRegistrationPending {
+			c.JSON(http.StatusForbidden, envelope{Code: 10108, Msg: err.Error()})
+			return
+		}
 		c.JSON(http.StatusUnauthorized, envelope{Code: 10101, Msg: "手机号或密码错误"})
 		return
 	}

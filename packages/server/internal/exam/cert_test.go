@@ -2,10 +2,14 @@ package exam
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cw-tc/server/internal/identity"
 )
 
 func TestAllocateCertNoSequential(t *testing.T) {
@@ -64,8 +68,10 @@ func TestIssueCertificateWritesUniqueRow(t *testing.T) {
 	database := examDB(t)
 	defer database.Close()
 	ctx := context.Background()
+	key := []byte("01234567890123456789012345678901")
 	certNo, err := IssueCertificate(ctx, database, CertIssueInput{
 		StudentID: 1, CourseID: 1, CourseCode: "C1", Level: "L2", Score: 88, Band: "good",
+		IDCardEncKey: key,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -86,8 +92,40 @@ func TestIssueCertificateWritesUniqueRow(t *testing.T) {
 	// 同课同级当前只发一张（部分唯一索引）
 	if _, err := IssueCertificate(ctx, database, CertIssueInput{
 		StudentID: 1, CourseID: 1, CourseCode: "C1", Level: "L2", Score: 90, Band: "excellent",
+		IDCardEncKey: key,
 	}); err == nil {
 		t.Fatal("同课同级重复发证应被唯一索引拦截")
+	}
+}
+
+func TestIssueCertificateRequiresIdentityAndStoresMaskedSnapshot(t *testing.T) {
+	database := examDB(t)
+	defer database.Close()
+	ctx := context.Background()
+	input := CertIssueInput{StudentID: 1, CourseID: 1, CourseCode: "C1", Level: "L2", Score: 88, Band: "good", IDCardEncKey: []byte(strings.Repeat("a", 32))}
+	if _, err := database.Exec(`UPDATE student SET id_card_cipher=NULL, id_card_hash=NULL WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := IssueCertificate(ctx, database, input); !errors.Is(err, ErrCertIdentityRequired) {
+		t.Fatalf("无身份证应拒绝发证，得到 %v", err)
+	}
+	ciphertext, _, err := identity.ProtectIDCard("110101199001011237", input.IDCardEncKey, []byte("hmac-key-for-cwtc-tests-012345678901234"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE student SET id_card_cipher=$1 WHERE id=1`, ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	certNo, err := IssueCertificate(ctx, database, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot string
+	if err := database.QueryRow(`SELECT id_card_snapshot FROM certificate WHERE cert_no=$1`, certNo).Scan(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot != "110101********1237" {
+		t.Fatalf("证书身份证快照未脱敏：%s", snapshot)
 	}
 }
 

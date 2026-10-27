@@ -22,6 +22,7 @@ func (s *Service) CreateSession(ctx context.Context, studentID int64, now time.T
 	if s.db == nil || studentID <= 0 {
 		return Session{}, ErrSessionNotFound
 	}
+	// 内部测试/导入可创建会话；HTTP 登录路径已经在 Login 中强制审核状态。
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return Session{}, fmt.Errorf("生成会话令牌失败: %w", err)

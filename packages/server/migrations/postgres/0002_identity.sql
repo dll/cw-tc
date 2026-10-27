@@ -11,8 +11,8 @@ CREATE TABLE IF NOT EXISTS student (
     name TEXT NOT NULL,
     phone TEXT NOT NULL,
     phone_verified_at TIMESTAMPTZ,
-    id_card_hash BYTEA NOT NULL,
-    id_card_cipher BYTEA NOT NULL,
+    id_card_hash BYTEA,
+    id_card_cipher BYTEA,
     id_card_enc_key_id SMALLINT NOT NULL DEFAULT 1,
     password_hash TEXT,
     password_updated_at TIMESTAMPTZ,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS student (
     CHECK (status IN ('active','limited','suspended','banned','deleting','anonymized'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_student_phone ON student(phone);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_student_id_card_hash ON student(id_card_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_student_id_card_hash ON student(id_card_hash) WHERE id_card_hash IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_student_no ON student(student_no);
 CREATE INDEX IF NOT EXISTS idx_student_created ON student(created_at);
 -- @deferred student: status_by@0010 status_note@0010 status_reason_kind@0010 status_until@0010

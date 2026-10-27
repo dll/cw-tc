@@ -37,7 +37,15 @@ func SignCallback(secret []byte, orderNo, txnID, amount string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 func (s *PaymentService) HandleCallback(ctx context.Context, in CallbackInput) error {
-	if s.db == nil || in.OrderNo == "" || in.Channel == "" || in.ChannelTxnID == "" || in.IdempotencyKey == "" || in.AmountCents <= 0 || !hmac.Equal([]byte(in.Signature), []byte(SignCallback(s.secret, in.OrderNo, in.ChannelTxnID, strconv.FormatInt(in.AmountCents, 10)))) {
+	if !hmac.Equal([]byte(in.Signature), []byte(SignCallback(s.secret, in.OrderNo, in.ChannelTxnID, strconv.FormatInt(in.AmountCents, 10)))) {
+		return ErrCallbackInvalid
+	}
+	return s.HandleVerifiedCallback(ctx, in)
+}
+
+// HandleVerifiedCallback 只接收已由渠道公钥验签的结果，调用方不得使用客户端参数代替渠道通知。
+func (s *PaymentService) HandleVerifiedCallback(ctx context.Context, in CallbackInput) error {
+	if s.db == nil || in.OrderNo == "" || in.ChannelTxnID == "" || in.IdempotencyKey == "" || in.AmountCents <= 0 || (in.Channel != "alipay" && in.Channel != "wechat" && in.Channel != "mock") {
 		return ErrCallbackInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -48,7 +56,8 @@ func (s *PaymentService) HandleCallback(ctx context.Context, in CallbackInput) e
 	var orderID, studentID, courseID int64
 	var status string
 	var amount int64
-	if err = tx.QueryRowContext(ctx, `SELECT id, student_id, course_id, amount_cents, status FROM orders WHERE order_no=$1`, in.OrderNo).Scan(&orderID, &studentID, &courseID, &amount, &status); err != nil || amount != in.AmountCents {
+	var orderChannel sql.NullString
+	if err = tx.QueryRowContext(ctx, `SELECT id, student_id, course_id, amount_cents, status, channel FROM orders WHERE order_no=$1`, in.OrderNo).Scan(&orderID, &studentID, &courseID, &amount, &status, &orderChannel); err != nil || amount != in.AmountCents || (orderChannel.Valid && orderChannel.String != in.Channel) || (status != "pending" && status != "paid") {
 		return ErrCallbackInvalid
 	}
 	var exists int
@@ -56,12 +65,23 @@ func (s *PaymentService) HandleCallback(ctx context.Context, in CallbackInput) e
 		return err
 	}
 	if exists > 0 {
+		var previousOrderID int64
+		if err = tx.QueryRowContext(ctx, `SELECT order_id FROM payment_txn WHERE idempotency_key=$1 OR (channel=$2 AND channel_txn_id=$3) LIMIT 1`, in.IdempotencyKey, in.Channel, in.ChannelTxnID).Scan(&previousOrderID); err != nil || previousOrderID != orderID {
+			return ErrCallbackInvalid
+		}
 		return tx.Commit()
+	}
+	if status != "pending" {
+		return ErrCallbackInvalid
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO payment_txn(order_id, channel, channel_txn_id, amount_cents, raw_status, idempotency_key, callback_payload, verified_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, orderID, in.Channel, in.ChannelTxnID, in.AmountCents, "success", in.IdempotencyKey, "[REDACTED]", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE orders SET status='paid', paid_at=$1, updated_at=$2 WHERE id=$3 AND status='pending'`, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderID); err != nil {
+	orderChannelValue := in.Channel
+	if in.Channel == "mock" {
+		orderChannelValue = ""
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE orders SET status='paid', channel=NULLIF($1,''), paid_at=$2, updated_at=$3 WHERE id=$4 AND status='pending'`, orderChannelValue, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), orderID); err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO entitlement(student_id, course_id, source, order_id, granted_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(student_id, course_id) WHERE revoked_at IS NULL DO NOTHING`, studentID, courseID, "order", orderID, time.Now().UTC().Format(time.RFC3339))

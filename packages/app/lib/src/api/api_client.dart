@@ -29,7 +29,8 @@ class ApiClient {
 
     _dio.interceptors.add(
       InterceptorsWrapper(
-        onRequest: (RequestOptions options, RequestInterceptorHandler handler) async {
+        onRequest:
+            (RequestOptions options, RequestInterceptorHandler handler) async {
           _assertNoSensitiveQuery(options);
           final token = await _storage.read(key: _tokenKey);
           if (token != null && token.isNotEmpty) {
@@ -60,13 +61,16 @@ class ApiClient {
   }
 
   /// 密码登录（`POST /api/v1/auth/login`）：返回 token 并写入安全存储。
-  Future<String> login({required String phone, required String password}) async {
+  Future<String> login(
+      {required String phone, required String password}) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/api/v1/auth/login',
       data: <String, dynamic>{'phone': phone, 'password': password},
     );
+    _ensureSuccess(res.data);
     final data = res.data?['data'] as Map<String, dynamic>?;
     final token = data?['token'] as String? ?? '';
+    if (token.isEmpty) throw Exception('登录响应缺少会话令牌');
     if (token.isNotEmpty) {
       await _storage.write(key: _tokenKey, value: token);
       await _storage.write(key: _phoneKey, value: phone);
@@ -74,7 +78,7 @@ class ApiClient {
     return token;
   }
 
-  /// 注册（`POST /api/v1/auth/register`）：注册即登录，返回 token 并写入安全存储。
+  /// 注册（`POST /api/v1/auth/register`）：提交后等待运营审核，不建立会话。
   Future<String> register({
     required String name,
     required String phone,
@@ -90,6 +94,7 @@ class ApiClient {
         'password': password,
       },
     );
+    _ensureSuccess(res.data);
     final data = res.data?['data'] as Map<String, dynamic>?;
     final token = data?['token'] as String? ?? '';
     if (token.isNotEmpty) {
@@ -97,6 +102,13 @@ class ApiClient {
       await _storage.write(key: _phoneKey, value: phone);
     }
     return token;
+  }
+
+  void _ensureSuccess(Map<String, dynamic>? body) {
+    final code = body?['code'];
+    if (code != 0) {
+      throw Exception((body?['msg'] as String?) ?? '请求失败（错误码 $code）');
+    }
   }
 
   /// 登出：清除本地会话凭据。
@@ -143,9 +155,7 @@ class ApiClient {
     final res = await _dio.get<Map<String, dynamic>>('/api/v1/majors');
     final data = res.data?['data'] as Map<String, dynamic>?;
     final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
-    return items
-        .map((e) => Major.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return items.map((e) => Major.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// 创建订单（`POST /api/v1/orders`，用课程码），返回 order_no。
@@ -158,9 +168,24 @@ class ApiClient {
     return data?['order_no'] as String? ?? '';
   }
 
+  /// 生成与当前订单绑定的支付宝当面付二维码内容。
+  Future<String> alipayPrecreate(String orderNo) async {
+    final res = await _dio
+        .post<Map<String, dynamic>>('/api/v1/orders/$orderNo/alipay/precreate');
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    return data?['qr_code'] as String? ?? '';
+  }
+
+  Future<String> orderStatus(String orderNo) async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/orders/$orderNo');
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    return data?['status'] as String? ?? '';
+  }
+
   /// 模拟支付成功（`POST /orders/:orderNo/mock-pay`，仅支付渠道未接入时）。
   Future<void> mockPayOrder(String orderNo) async {
-    await _dio.post<Map<String, dynamic>>('/api/v1/orders/$orderNo/mock-pay', data: <String, dynamic>{});
+    await _dio.post<Map<String, dynamic>>('/api/v1/orders/$orderNo/mock-pay',
+        data: <String, dynamic>{});
   }
 
   /// 我的学习权益（`GET /api/v1/me/entitlements`），返回已购课程码列表。
@@ -176,14 +201,16 @@ class ApiClient {
 
   /// 课程详情（`GET /api/v1/courses/:courseCode`，公开只读）。
   Future<Course> courseDetail(String courseCode) async {
-    final res = await _dio.get<Map<String, dynamic>>('/api/v1/courses/$courseCode');
+    final res =
+        await _dio.get<Map<String, dynamic>>('/api/v1/courses/$courseCode');
     final data = res.data?['data'] as Map<String, dynamic>?;
     return Course.fromJson(data ?? const <String, dynamic>{});
   }
 
   /// 课程讲次列表（`GET /api/v1/courses/:courseCode/lectures`，公开只读）。
   Future<List<Lecture>> lectures(String courseCode) async {
-    final res = await _dio.get<Map<String, dynamic>>('/api/v1/courses/$courseCode/lectures');
+    final res = await _dio
+        .get<Map<String, dynamic>>('/api/v1/courses/$courseCode/lectures');
     final data = res.data?['data'] as Map<String, dynamic>?;
     final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
     return items
@@ -192,7 +219,8 @@ class ApiClient {
   }
 
   /// 开考（`POST /exams`）：返回 session_id + 试卷（不含答案）。
-  Future<ExamSession> startExam({required String courseCode, required String level}) async {
+  Future<ExamSession> startExam(
+      {required String courseCode, required String level}) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/api/v1/exams',
       data: <String, dynamic>{'course_code': courseCode, 'level': level},
@@ -207,7 +235,8 @@ class ApiClient {
   }
 
   /// 交卷判分（`POST /exams/:sessionID/submit`）：通过自动发证。
-  Future<ExamResult> submitExam(int sessionId, Map<String, String> answers) async {
+  Future<ExamResult> submitExam(
+      int sessionId, Map<String, String> answers) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/api/v1/exams/$sessionId/submit',
       data: <String, dynamic>{'answers': answers},
@@ -232,11 +261,75 @@ class ApiClient {
   }
 
   /// 讲次资源清单（`GET /courses/:code/lectures/:no/resources`，含签名 URL）。
-  Future<List<LectureResource>> lectureResources(String courseCode, int no) async {
-    final res = await _dio.get<Map<String, dynamic>>('/api/v1/courses/$courseCode/lectures/$no/resources');
+  Future<List<LectureResource>> lectureResources(
+      String courseCode, int no) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+        '/api/v1/courses/$courseCode/lectures/$no/resources');
     final data = res.data?['data'] as Map<String, dynamic>?;
     final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
-    return items.map((e) => LectureResource.fromJson(e as Map<String, dynamic>)).toList();
+    return items
+        .map((e) => LectureResource.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  String _lecturePath(String code, int no) =>
+      '/api/v1/courses/$code/lectures/$no';
+
+  Future<List<Map<String, dynamic>>> lecturePractice(
+      String code, int no) async {
+    final res = await _dio
+        .get<Map<String, dynamic>>('${_lecturePath(code, no)}/practice');
+    return ((res.data?['data'] as Map<String, dynamic>?)?['items']
+                as List<dynamic>? ??
+            const [])
+        .cast<Map<String, dynamic>>();
+  }
+
+  Future<String> submitLectureAnswer(
+      String code, int no, int questionId, String answer) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '${_lecturePath(code, no)}/practice/$questionId/answers',
+      data: <String, dynamic>{'answer': answer},
+    );
+    return (res.data?['data'] as Map<String, dynamic>?)?['reference_answer']
+            as String? ??
+        '';
+  }
+
+  Future<List<Map<String, dynamic>>> lectureTopics(String code, int no) async {
+    final res = await _dio
+        .get<Map<String, dynamic>>('${_lecturePath(code, no)}/topics');
+    return ((res.data?['data'] as Map<String, dynamic>?)?['items']
+                as List<dynamic>? ??
+            const [])
+        .cast<Map<String, dynamic>>();
+  }
+
+  Future<void> postLectureTopic(String code, int no, String body) async {
+    await _dio.post<Map<String, dynamic>>('${_lecturePath(code, no)}/topics',
+        data: <String, dynamic>{'body': body});
+  }
+
+  Future<List<Map<String, dynamic>>> lectureReplies(
+      String code, int no, int topicId) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+        '${_lecturePath(code, no)}/topics/$topicId/replies');
+    return ((res.data?['data'] as Map<String, dynamic>?)?['items']
+                as List<dynamic>? ??
+            const [])
+        .cast<Map<String, dynamic>>();
+  }
+
+  Future<void> postLectureReply(
+      String code, int no, int topicId, String body) async {
+    await _dio.post<Map<String, dynamic>>(
+        '${_lecturePath(code, no)}/topics/$topicId/replies',
+        data: <String, dynamic>{'body': body});
+  }
+
+  Future<void> likeLectureTopic(String code, int no, int topicId) async {
+    await _dio.post<Map<String, dynamic>>(
+        '${_lecturePath(code, no)}/topics/$topicId/like');
   }
 
   /// 资源签名下载 URL（`GET /api/v1/assets/raw?key=&expires=&sig=`）。
