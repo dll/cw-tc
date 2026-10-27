@@ -42,12 +42,12 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	token := extractJSONField(t, login.Body.String(), "token")
 
 	// 授权免费学习
-	grant := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_id":1,"grant_reason":"校长特批"}`, token)
+	grant := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_id":1,"grant_reason":"校长特批","confirm":true}`, token)
 	if grant.Code != http.StatusOK {
 		t.Fatalf("授权 = %d %s", grant.Code, grant.Body.String())
 	}
 	// 重复授权 → 409
-	dup := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_id":1,"grant_reason":"再次"}`, token)
+	dup := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_id":1,"grant_reason":"再次","confirm":true}`, token)
 	if dup.Code != http.StatusConflict {
 		t.Fatalf("重复授权应 409，实际 %d", dup.Code)
 	}
@@ -56,11 +56,11 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 		t.Fatalf("缺事由应 400，实际 %d", got.Code)
 	}
 	// course_code 不存在 → 400
-	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_code":"NOPE","grant_reason":"x"}`, token); got.Code != http.StatusBadRequest {
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_code":"NOPE","grant_reason":"x","confirm":true}`, token); got.Code != http.StatusBadRequest {
 		t.Fatalf("course_code 不存在应 400，实际 %d", got.Code)
 	}
 	// course_code 解析成功但重复 → 409（覆盖解析成功分支）
-	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_code":"C1","grant_reason":"x"}`, token); got.Code != http.StatusConflict {
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/entitlements", `{"student_id":1,"course_code":"C1","grant_reason":"x","confirm":true}`, token); got.Code != http.StatusConflict {
 		t.Fatalf("course_code 重复授权应 409，实际 %d", got.Code)
 	}
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/platform/db"
 	"github.com/cw-tc/server/migrations"
 )
@@ -20,7 +21,13 @@ func examDB(t *testing.T) *sql.DB {
 	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`INSERT INTO student(id, student_no, name, phone, id_card_hash, id_card_cipher, agreement_versions) VALUES(1,'S00000001','样例学员','13812345678',X'01',X'02','[]')`); err != nil {
+	encKey := []byte("01234567890123456789012345678901")
+	hmacKey := []byte("hmac-key-for-cwtc-tests-012345678901234")
+	ciphertext, hash, err := identity.ProtectIDCard("110101199001011237", encKey, hmacKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO student(id, student_no, name, phone, id_card_hash, id_card_cipher, agreement_versions) VALUES(1,'S00000001','样例学员','13812345678',$1,$2,'[]')`, hash, ciphertext); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.Exec(`INSERT INTO staff(id, account, name, role, password_hash, created_source) VALUES(1,'t','教师','teacher',X'01','seed')`); err != nil {

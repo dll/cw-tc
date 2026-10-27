@@ -1,12 +1,24 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { pendingRegistrationCount } from '@/api/client'
 
 // M0 骨架：左侧菜单 + 路由出口。菜单项与 router.ts 一一对应，
 // M1 起按登录角色（管理员 / 教师）过滤可见项。
 const route = useRoute()
 const title = computed(() => (route.path.startsWith('/teacher') ? '教师工作台' : '管理后台'))
 const isLogin = computed(() => route.path === '/login' || route.path === '/change-password')
+const pendingCount = ref(0)
+let pendingTimer: ReturnType<typeof setInterval> | undefined
+async function refreshPending() {
+  if (isLogin.value) return
+  try { pendingCount.value = await pendingRegistrationCount() } catch { pendingCount.value = 0 }
+}
+onMounted(() => {
+  void refreshPending()
+  pendingTimer = setInterval(() => { void refreshPending() }, 30000)
+})
+onUnmounted(() => { if (pendingTimer) clearInterval(pendingTimer) })
 
 const menus = [
   { group: '管理端', items: [
@@ -39,6 +51,7 @@ const menus = [
           <el-menu-item-group :title="m.group">
             <el-menu-item v-for="it in m.items" :key="it.path" :index="it.path">
               {{ it.label }}
+              <el-badge v-if="it.path === '/admin/users' && pendingCount > 0" :value="pendingCount" style="margin-left: 10px" />
             </el-menu-item>
           </el-menu-item-group>
         </template>

@@ -24,12 +24,13 @@ var (
 )
 
 type OrderInput struct {
-	StudentID  int64
-	CourseID   int64
-	RequestID  string
-	CourseName string
-	PriceCents int64
-	ExpiresAt  time.Time
+	StudentID     int64
+	CourseID      int64
+	RequestID     string
+	CourseName    string
+	PriceCents    int64
+	DiscountCents int64
+	ExpiresAt     time.Time
 }
 
 type Order struct {
@@ -76,11 +77,17 @@ func (s *Service) CreateOrderFromCourse(ctx context.Context, studentID, courseID
 		return Order{}, fmt.Errorf("课程不可下单: %w", err)
 	}
 	input.StudentID, input.CourseID, input.RequestID, input.ExpiresAt = studentID, courseID, requestID, expiresAt
+	var discount int64
+	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(discount_cents,0) FROM student_course_discount WHERE student_id=$1 AND course_id=$2 AND active=1`, studentID, courseID).Scan(&discount)
+	if discount > input.PriceCents {
+		discount = input.PriceCents
+	}
+	input.DiscountCents = discount
 	return s.CreateOrder(ctx, input)
 }
 
 func (s *Service) CreateOrder(ctx context.Context, in OrderInput) (Order, error) {
-	if s.db == nil || in.StudentID <= 0 || in.CourseID <= 0 || in.CourseName == "" || in.PriceCents < 0 || in.ExpiresAt.IsZero() {
+	if s.db == nil || in.StudentID <= 0 || in.CourseID <= 0 || in.CourseName == "" || in.PriceCents < 0 || in.DiscountCents < 0 || in.DiscountCents > in.PriceCents || in.ExpiresAt.IsZero() {
 		return Order{}, ErrOrderInput
 	}
 	existing, err := s.pending(ctx, in.StudentID, in.CourseID)
@@ -94,7 +101,7 @@ func (s *Service) CreateOrder(ctx context.Context, in OrderInput) (Order, error)
 	}
 	orderNo := newOrderNo(in.StudentID)
 	var id int64
-	err = s.db.QueryRowContext(ctx, `INSERT INTO orders(order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, status, request_id, expired_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, orderNo, in.StudentID, in.CourseID, in.CourseName, in.PriceCents, in.PriceCents, "pending", in.RequestID, in.ExpiresAt.UTC().Format(time.RFC3339)).Scan(&id)
+	err = s.db.QueryRowContext(ctx, `INSERT INTO orders(order_no, student_id, course_id, course_name_snapshot, price_snapshot_cents, amount_cents, discount_cents, status, request_id, expired_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, orderNo, in.StudentID, in.CourseID, in.CourseName, in.PriceCents, in.PriceCents-in.DiscountCents, in.DiscountCents, "pending", in.RequestID, in.ExpiresAt.UTC().Format(time.RFC3339)).Scan(&id)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed: orders.student_id, orders.course_id") {
 		candidate, retryErr := s.pending(ctx, in.StudentID, in.CourseID)
 		if retryErr == nil {
@@ -104,5 +111,5 @@ func (s *Service) CreateOrder(ctx context.Context, in OrderInput) (Order, error)
 	if err != nil {
 		return Order{}, fmt.Errorf("创建订单失败: %w", err)
 	}
-	return Order{ID: id, OrderNo: orderNo, StudentID: in.StudentID, CourseID: in.CourseID, CourseName: in.CourseName, PriceCents: in.PriceCents, AmountCents: in.PriceCents, Status: "pending", ExpiredAt: in.ExpiresAt}, nil
+	return Order{ID: id, OrderNo: orderNo, StudentID: in.StudentID, CourseID: in.CourseID, CourseName: in.CourseName, PriceCents: in.PriceCents, AmountCents: in.PriceCents - in.DiscountCents, Status: "pending", ExpiredAt: in.ExpiresAt}, nil
 }

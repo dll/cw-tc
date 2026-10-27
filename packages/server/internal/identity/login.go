@@ -5,10 +5,12 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
 var ErrInvalidCredentials = errors.New("手机号或密码错误")
+var ErrRegistrationPending = errors.New("账号待运营管理员审核，请审核通过后登录")
 var ErrAccountLocked = errors.New("账号已锁定，请稍后再试")
 
 const (
@@ -22,14 +24,16 @@ func (s *Service) Login(ctx context.Context, phone, password string) (Student, e
 }
 
 func (s *Service) loginWithClock(ctx context.Context, phone, password string, now time.Time) (Student, error) {
+	phone = strings.TrimSpace(phone)
 	if s.db == nil || ValidatePhone(phone) != nil || password == "" {
 		return Student{}, ErrInvalidCredentials
 	}
 	var student Student
 	var stored string
 	var lockedUntil sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone, password_hash, locked_until FROM student WHERE phone = $1 AND status = 'active'`, phone).
-		Scan(&student.ID, &student.StudentNo, &student.Name, &student.Phone, &stored, &lockedUntil)
+	var reviewStatus string
+	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone, password_hash, locked_until, registration_review_status FROM student WHERE phone = $1 AND status = 'active'`, phone).
+		Scan(&student.ID, &student.StudentNo, &student.Name, &student.Phone, &stored, &lockedUntil, &reviewStatus)
 	if err != nil {
 		return Student{}, ErrInvalidCredentials
 	}
@@ -41,6 +45,9 @@ func (s *Service) loginWithClock(ctx context.Context, phone, password string, no
 	if len(stored) != 64 || subtle.ConstantTimeCompare([]byte(hashPassword(password)), []byte(stored)) != 1 {
 		s.recordFailedLogin(ctx, student.ID, now)
 		return Student{}, ErrInvalidCredentials
+	}
+	if reviewStatus != "approved" {
+		return Student{}, ErrRegistrationPending
 	}
 	s.resetFailedLogin(ctx, student.ID, now)
 	return student, nil

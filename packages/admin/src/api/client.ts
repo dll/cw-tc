@@ -126,6 +126,14 @@ export interface UserItem {
   phone: string
   status: string
   created_at: string
+  registration_status?: string
+}
+export async function approveRegistration(id: number, reason: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/users/${id}/approve-registration`, { reason, confirm: true }))
+}
+export async function pendingRegistrationCount(): Promise<number> {
+  const result = await unwrap<{ count: number }>(http.get('/admin/registration-pending'))
+  return result.count
 }
 export async function listUsers(userType: UserType | '' = '', limit = 20, offset = 0): Promise<{ items: UserItem[]; total: number }> {
   return unwrap<{ items: UserItem[]; total: number }>(http.get('/admin/users', {
@@ -139,8 +147,15 @@ export async function grantEntitlement(input: {
   student_id: number
   course_code: string
   grant_reason: string
+  confirm: boolean
 }): Promise<void> {
   await unwrap<unknown>(http.post('/admin/entitlements', input))
+}
+export async function batchDiscount(input: {student_ids: number[]; course_code: string; discount_cents: number; reason: string; confirm: boolean}): Promise<{updated: number}> {
+  return unwrap<{updated: number}>(http.post('/admin/student-discounts', input))
+}
+export async function batchGrant(input: {student_ids: number[]; course_code: string; reason: string; confirm: boolean}): Promise<{granted: number}> {
+  return unwrap<{granted: number}>(http.post('/admin/student-grants', input))
 }
 export async function revokeEntitlement(studentId: number, courseId: number): Promise<void> {
   await unwrap<unknown>(http.delete(`/admin/entitlements/${studentId}/${courseId}`))

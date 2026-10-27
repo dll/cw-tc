@@ -40,7 +40,7 @@ func (s *Server) createOrder(c *gin.Context) {
 // mockPayOrder POST /orders/:orderNo/mock-pay —— 支付渠道线下未接时模拟支付成功（等价于回调）。
 // 仅在 cfg.PaymentEnabled()==false 时放行；生产已接支付则 403。
 func (s *Server) mockPayOrder(c *gin.Context) {
-	if s.cfg != nil && s.cfg.PaymentEnabled() {
+	if s.cfg != nil && (s.cfg.PaymentEnabled() || s.cfg.IsProduction()) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "支付渠道已接入，不支持模拟支付"})
 		return
 	}

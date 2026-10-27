@@ -43,6 +43,7 @@ dependencies:
 
   # Markdown 渲染（讲义 md 端内渲染）
   flutter_markdown: ^0.7.3
+  qr_flutter: 4.1.0
 
   # 以下依赖按里程碑加入，版本沿用 wxx 已验证的组合（此处先留说明，不提前引入）：
   #   M1  缓存/临时目录 path_provider: ^2.1.0

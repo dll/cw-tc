@@ -40,10 +40,10 @@ func TestRegisterEndpointReturnsStudentWithoutSensitiveFields(t *testing.T) {
 	if strings.Contains(string(raw), "id_card") || strings.Contains(string(raw), "password") {
 		t.Fatalf("注册响应不得返回敏感字段: %s", raw)
 	}
-	// 注册即登录：应返回 token（移动端存安全存储、走 Bearer）
+	// 注册仅进入待审核队列，不建立可用登录会话。
 	data, _ := envelope["data"].(map[string]any)
-	if data == nil || data["token"] == nil || data["token"] == "" {
-		t.Fatalf("注册响应应返回 token: %s", raw)
+	if data == nil || data["status"] != "pending_review" || data["token"] != nil {
+		t.Fatalf("注册响应应为待审核且不得返回 token: %s", raw)
 	}
 }
 

@@ -432,6 +432,21 @@
 
 ### 2.15 讨论区（模块 N，**v2.10 新增**）
 
+#### 2.15.1 每讲开放练习与讨论（当前实现）
+
+以下接口按讲次号 `no` 定位，独立于课程总测评与证书。练习题由上游《思考题.md》同步，`GET practice` 不返回参考解答；学员提交自答后才返回已有的参考解答，未提供解答的题目不自动判分。
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/courses/{code}/lectures/{no}/practice` | 有该讲学习权限的学员 | 本讲思考题、出处、题号 |
+| POST | `/courses/{code}/lectures/{no}/practice/{questionID}/answers` | 有该讲学习权限的学员 | 保存自答并返回参考解答；不影响总课程测评 |
+| GET | `/courses/{code}/lectures/{no}/topics` | 公开 | 帖子列表，点赞数降序，同票按时间与 ID 降序 |
+| POST | `/courses/{code}/lectures/{no}/topics` | 登录学员 | 发帖；隐私与测评泄漏拦截 |
+| GET · POST | `/courses/{code}/lectures/{no}/topics/{topicID}/replies` | 公开读；登录学员写 | 查看与发表公开评论 |
+| POST · DELETE | `/courses/{code}/lectures/{no}/topics/{topicID}/like` | 登录学员 | 点赞与取消点赞，重复操作幂等 |
+
+公开讨论只返回化名，不返回实名、手机号、身份证号。写入前拒绝个人敏感信息和疑似测评题目。
+
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
 | GET | `/courses/{code}/topics` | 学员（**已解锁**） | 帖子列表（`kind` / `sort=newest\|useful\|replies` 筛选；**置顶恒在首**） |
@@ -509,7 +524,6 @@
 ```json
 {
   "phone": "13812345678",
-  "sms_code": "123456",
   "password": "********",
   "name": "张三",
   "id_card": "110101199001011234",   // 样例值（虚构），仅示意格式
@@ -523,9 +537,12 @@
 - 📌 **文档中出现的样例号码必须带"样例"标记**（同一行内），
   这是 `deploy/scripts/scan-sensitive.sh` 的放行约定 —— 见 AGENTS.md 铁律 3。
   上面的 `// 样例值（虚构）` 就是该标记；**写文档时不要漏，否则合规门禁会拦下**。
-- 服务端：校验校验位 → 算 `id_card_hash` → AES 加密存密文；返回**不含明文的**资料。
-- 响应：`data = { "student_no": "TC2026-000137", "session": "<token>" }`。
-- 错误：`10103` 手机号已注册 · `10104` 身份证号已注册 · `10105` 校验位错 · `10101` 验证码错。
+- 服务端：手机号仅做格式校验，**不调用短信服务**；注册后状态为 `pending_review`，由运营管理员审核手机号后才可登录。
+- `id_card` 为可选字段；填写时校验校验位并以 HMAC + AES-256-GCM 保存，未填写也可完成注册。
+- 响应：`data = { "student_no": "...", "name": "...", "phone": "138****5678", "status": "pending_review" }`，不返回会话 token。
+- 错误：`10103` 手机号已注册 · `10104` 身份证号已注册 · `10105` 身份证号校验位错误。
+
+注册审核：`GET /admin/registration-pending` 返回待审学员数量，运营后台每 30 秒刷新待办提示；`/admin/users` 将待审学员排在前面。`POST /admin/users/{id}/approve-registration`，运营管理员或超级管理员必须提交 `reason` 与 `confirm=true`；成功后写入审核人、审核时间、`phone_verified_at` 与审计日志。密码正确但待审时登录返回 `10108`。
 
 ### 3.2 `POST /auth/login` 登录
 
@@ -537,6 +554,7 @@
 - 两种 `mode` 都**必须带图形验证码**（防手机号撞库）。
 - 连续失败 5 次 → 账号 + IP 双维度锁定 10 分钟，返回 `10102`。
 - 响应：`data = { "session": "<token>", "role": "student", "profile": {...脱敏} }`。
+- 注册审核状态不是 `approved` 的账号禁止登录。
 
 ### 3.3 `GET /assets/{assetId}/url` 资源签名地址
 

@@ -83,6 +83,28 @@ func (s *Server) requireSuper(c *gin.Context) {
 	c.Next()
 }
 
+func (s *Server) requireAdmin(c *gin.Context) {
+	v, ok := c.Get(staffContextKey)
+	st, valid := v.(staff.Staff)
+	if !ok || !valid || (st.Role != staff.RoleAdminOps && st.Role != staff.RoleAdminSuper) {
+		c.AbortWithStatusJSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无权限"})
+		return
+	}
+	c.Next()
+}
+
+func requireAdminOps(s *Server) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		v, ok := c.Get(staffContextKey)
+		st, valid := v.(staff.Staff)
+		if !ok || !valid || (st.Role != staff.RoleAdminOps && st.Role != staff.RoleAdminSuper) {
+			c.AbortWithStatusJSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无权限"})
+			return
+		}
+		c.Next()
+	}
+}
+
 func bearerToken(c *gin.Context) string {
 	h := c.GetHeader("Authorization")
 	if strings.HasPrefix(h, "Bearer ") {
