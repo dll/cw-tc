@@ -30,6 +30,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_student_id_card_hash ON student(id_card_has
 CREATE UNIQUE INDEX IF NOT EXISTS uq_student_no ON student(student_no);
 CREATE INDEX IF NOT EXISTS idx_student_created ON student(created_at);
 -- @deferred student: status_by@0010 status_note@0010 status_reason_kind@0010 status_until@0010
+-- @deferred student: registration_reviewed_at@0022 registration_reviewed_by@0022 registration_review_status@0022
 -- @note student: 0010：`student.phone` 的普通唯一索引改为**部分唯一**（`WHERE phone IS NOT NULL AND phone <> ''`，注销后置空）
 
 CREATE TABLE IF NOT EXISTS student_session (

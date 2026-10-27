@@ -20,7 +20,9 @@ func TestValidatePhoneAndIDCard(t *testing.T) {
 func TestValidateIDCardRejectsInvalidRegionAndBirthDate(t *testing.T) {
 	// 两个号码的校验位有效，但地区码或出生日期无效。
 	for _, sample := range []string{"990101199001011237", "110101199002301239"} {
-		if ValidateIDCard(sample) == nil { t.Errorf("应拒绝无效证件号 %q", sample) }
+		if ValidateIDCard(sample) == nil {
+			t.Errorf("应拒绝无效证件号 %q", sample)
+		}
 	}
 }
 
