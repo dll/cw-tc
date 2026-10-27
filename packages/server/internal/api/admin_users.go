@@ -32,7 +32,7 @@ func (s *Server) adminListUsers(c *gin.Context) {
 		       name, phone, status, created_at, registration_reviewed_at, registration_review_status FROM student WHERE $1 = '' OR $1 = 'student'
 		UNION ALL
 		SELECT id, role AS user_type, CAST(NULL AS TEXT) AS student_no, account,
-		       name, CAST(NULL AS TEXT) AS phone, status, created_at, CAST(NULL AS TEXT) AS registration_reviewed_at, CAST(NULL AS TEXT) AS registration_review_status FROM staff
+		       name, CAST(NULL AS TEXT) AS phone, status, created_at, NULL AS registration_reviewed_at, CAST(NULL AS TEXT) AS registration_review_status FROM staff
 		       WHERE $1 = '' OR role = $1`
 	var total int64
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),

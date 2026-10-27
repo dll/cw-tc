@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -55,7 +56,8 @@ func (s *Server) adminApproveRegistration(c *gin.Context) {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "学员不存在或不可审核"})
 		return
 	}
-	if err := audit.Record(c.Request.Context(), tx, audit.Input{ActorType: "staff", ActorID: operator.ID, ActorRole: string(operator.Role), Action: "student.registration_approve", TargetType: "student", TargetID: strconv.FormatInt(studentID, 10), After: strings.TrimSpace(req.Reason), IP: c.ClientIP()}); err != nil {
+	reasonJSON, _ := json.Marshal(map[string]string{"reason": strings.TrimSpace(req.Reason)})
+	if err := audit.Record(c.Request.Context(), tx, audit.Input{ActorType: "staff", ActorID: operator.ID, ActorRole: string(operator.Role), Action: "student.registration_approve", TargetType: "student", TargetID: strconv.FormatInt(studentID, 10), After: string(reasonJSON), IP: c.ClientIP()}); err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: "审核失败"})
 		return
 	}
