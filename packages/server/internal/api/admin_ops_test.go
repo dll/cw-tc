@@ -10,6 +10,7 @@ import (
 	"github.com/cw-tc/server/internal/platform/db"
 	"github.com/cw-tc/server/internal/staff"
 	"github.com/cw-tc/server/migrations"
+	"github.com/gin-gonic/gin"
 )
 
 func TestAdminGrantAndBroadcast(t *testing.T) {
@@ -39,7 +40,18 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	if _, err = database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id, price_cents) VALUES(1,'C1','platform','课程','main',1,'published',2,1000)`); err != nil {
 		t.Fatal(err)
 	}
-	r := NewWithDatabase(testConfig(t, true), database).Router()
+	server := NewWithDatabase(testConfig(t, true), database)
+	r := server.Router()
+	// 直接调用运营批量处理器，确保测试覆盖业务事务本身而非仅覆盖鉴权中间件。
+	batch := gin.New()
+	batch.POST("/discount", func(c *gin.Context) {
+		c.Set(staffContextKey, staff.Staff{ID: 1, Role: staff.RoleAdminSuper})
+		server.adminBatchDiscount(c)
+	})
+	batch.POST("/grant", func(c *gin.Context) {
+		c.Set(staffContextKey, staff.Staff{ID: 1, Role: staff.RoleAdminSuper})
+		server.adminBatchFree(c)
+	})
 
 	login := performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"admin","password":"Temp@123"}`)
 	token := extractJSONField(t, login.Body.String(), "token")
@@ -112,5 +124,11 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	}
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-grants", `{"student_ids":[2],"course_code":"C1","reason":"运营活动","confirm":true}`, token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"granted":1`) {
 		t.Fatalf("批量免费授权失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSON(t, batch, http.MethodPost, "/discount", `{"student_ids":[2],"course_code":"C1","discount_cents":50,"reason":"补充活动","confirm":true}`); got.Code != http.StatusOK {
+		t.Fatalf("直接批量折扣失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSON(t, batch, http.MethodPost, "/grant", `{"student_ids":[2],"course_code":"C1","reason":"重复授权","confirm":true}`); got.Code != http.StatusOK {
+		t.Fatalf("直接批量授权失败: %d %s", got.Code, got.Body.String())
 	}
 }
