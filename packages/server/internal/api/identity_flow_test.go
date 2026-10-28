@@ -59,6 +59,15 @@ func TestStudentRegistrationLoginDataChain(t *testing.T) {
 	}
 	adminLogin := performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"ops","password":"Temp@123"}`)
 	adminToken := extractJSONField(t, adminLogin.Body.String(), "token")
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/users/not-a-number/approve-registration", `{"reason":"资料审核通过","confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("非法学员编号应拒绝: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/users/1/approve-registration", `{"reason":" ","confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("空审核事由应拒绝: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/users/1/approve-registration", `{"reason":"审核","confirm":false}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("缺少二次确认应拒绝: %d %s", got.Code, got.Body.String())
+	}
 	list := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/users?type=student", "", adminToken)
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"registration_status":"pending"`) || !strings.Contains(list.Body.String(), `"total":1`) {
 		t.Fatalf("新学员未出现在管理员列表: %d %s", list.Code, list.Body.String())
@@ -74,6 +83,9 @@ func TestStudentRegistrationLoginDataChain(t *testing.T) {
 	approved := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/users/"+strconv.FormatInt(studentID, 10)+"/approve-registration", `{"reason":"资料审核通过","confirm":true}`, adminToken)
 	if approved.Code != http.StatusOK {
 		t.Fatalf("管理员审核失败: %d %s", approved.Code, approved.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/users/"+strconv.FormatInt(studentID, 10)+"/approve-registration", `{"reason":"重复审核","confirm":true}`, adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("重复审核应返回 404: %d %s", got.Code, got.Body.String())
 	}
 	pending = performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/registration-pending", "", adminToken)
 	if pending.Code != http.StatusOK || !strings.Contains(pending.Body.String(), `"count":0`) {

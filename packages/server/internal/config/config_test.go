@@ -42,6 +42,22 @@ func TestLoadFrom_OK(t *testing.T) {
 	}
 }
 
+func TestLoadReadsProcessEnvironment(t *testing.T) {
+	t.Setenv(EnvIDCardEncKey, strings.Repeat("a", IDCardEncKeyBytes))
+	t.Setenv(EnvIDCardHMACKey, strings.Repeat("b", MinHMACKeyBytes))
+	t.Setenv(EnvSessionSecret, strings.Repeat("c", MinHMACKeyBytes))
+	t.Setenv(EnvHost, " 127.0.0.2 ")
+	t.Setenv(EnvServerPort, " 9090 ")
+
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("从进程环境加载配置失败: %v", err)
+	}
+	if c.Host != "127.0.0.2" || c.Port != "9090" || c.Addr() != "127.0.0.2:9090" {
+		t.Fatalf("进程环境未正确加载或清理空格: host=%q port=%q addr=%q", c.Host, c.Port, c.Addr())
+	}
+}
+
 func TestValidate_MissingSecrets(t *testing.T) {
 	// 三项强制密钥全缺 -> 错误信息必须把三项都列出来（便于一次改完）
 	_, err := LoadFrom(getter(map[string]string{}))

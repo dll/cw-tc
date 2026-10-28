@@ -1,0 +1,6 @@
+[allowlist]
+description = "支付环境变量名不是凭据"
+regexTarget = "match"
+regexes = [
+  '''^CWTC_WXPAY_API_V3_KEY$''',
+]
