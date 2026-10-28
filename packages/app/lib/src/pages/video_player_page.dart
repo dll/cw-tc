@@ -24,9 +24,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   bool _failed = false;
   bool _muted = false;
   bool _controlsVisible = true;
+  double _speed = 1.0;
   String _errorDetail = '';
   String? _playHint;
   Timer? _hideTimer;
+
+  static const List<double> _speedOptions = <double>[
+    0.5,
+    0.75,
+    1.0,
+    1.25,
+    1.5,
+    2.0,
+  ];
 
   @override
   void initState() {
@@ -112,6 +122,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     if (!next && !_controller.value.isPlaying) {
       await _controller.play();
     }
+    _showControls();
+  }
+
+  Future<void> _setSpeed(double speed) async {
+    await _controller.setPlaybackSpeed(speed);
+    if (!mounted) return;
+    setState(() => _speed = speed);
     _showControls();
   }
 
@@ -254,11 +271,37 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                 icon: Icon(
                   _muted ? Icons.volume_off : Icons.volume_up,
                   color: Colors.white,
-                  size: 26,
+                  size: 24,
                 ),
                 label: Text(
-                  _muted ? '已静音 · 点此出声' : '有声',
+                  _muted ? '静音' : '音量',
                   style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              PopupMenuButton<double>(
+                initialValue: _speed,
+                tooltip: '播放速度',
+                onSelected: _setSpeed,
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<double>>[
+                  for (final double option in _speedOptions)
+                    PopupMenuItem<double>(
+                      value: option,
+                      child: Text('${option}x'),
+                    ),
+                ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Icon(Icons.speed, color: Colors.white, size: 22),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_speed}x',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
