@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type lecturePrompt struct {
@@ -53,12 +54,14 @@ func answerMarker(line string) (string, bool) {
 		// 去掉 **解答（实测）** 这类限定语。
 		if strings.HasPrefix(rest, "（") || strings.HasPrefix(rest, "(") {
 			if end := strings.IndexAny(rest, "）)"); end >= 0 {
-				rest = strings.TrimSpace(rest[end+1:])
+				_, size := utf8.DecodeRuneInString(rest[end:])
+				rest = strings.TrimSpace(rest[end+size:])
 			}
 		}
 		rest = strings.Trim(rest, "*")
 		rest = strings.TrimSpace(rest)
 		rest = strings.TrimPrefix(rest, "了")
+		rest = strings.Trim(rest, "*")
 		rest = strings.TrimSpace(rest)
 		rest = strings.TrimPrefix(rest, "：")
 		rest = strings.TrimPrefix(rest, ":")
