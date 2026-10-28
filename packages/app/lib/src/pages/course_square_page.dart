@@ -25,6 +25,7 @@ class _CourseSquarePageState extends State<CourseSquarePage> {
 
   final List<Course> _courses = <Course>[];
   List<Major> _majors = const <Major>[];
+  Map<String, String> _entitlementSources = const <String, String>{};
   int? _selectedMajorId;
   String _query = '';
   int _page = 1;
@@ -41,6 +42,7 @@ class _CourseSquarePageState extends State<CourseSquarePage> {
     _scrollCtrl.addListener(_onScroll);
     _load(reset: true);
     _loadMajors();
+    _loadEntitlementSources();
   }
 
   @override
@@ -56,8 +58,23 @@ class _CourseSquarePageState extends State<CourseSquarePage> {
       if (!mounted) return;
       setState(() => _majors = majors);
     } catch (_) {
-      // 专业分类加载失败不阻塞课程列表。
+      // 专业分类加载失败不影响课程列表。
     }
+  }
+
+  Future<void> _loadEntitlementSources() async {
+    try {
+      final sources = await _api.myEntitlementSources();
+      if (!mounted) return;
+      setState(() => _entitlementSources = sources);
+    } catch (_) {
+      // 未登录或查询失败：按公开价展示。
+    }
+  }
+
+  bool _freeGranted(String courseCode) {
+    final source = _entitlementSources[courseCode];
+    return source == 'grant' || source == 'free';
   }
 
   Future<void> _load({required bool reset}) async {
@@ -186,7 +203,11 @@ class _CourseSquarePageState extends State<CourseSquarePage> {
         if (index >= _courses.length) {
           return _FooterIndicator(hasMore: _hasMore, loading: _loadingMore);
         }
-        return _CourseCard(course: _courses[index]);
+        final course = _courses[index];
+        return _CourseCard(
+          course: course,
+          freeGranted: _freeGranted(course.courseCode),
+        );
       },
     );
   }
@@ -261,14 +282,15 @@ class _MajorFilterBar extends StatelessWidget {
 }
 
 class _CourseCard extends StatelessWidget {
-  const _CourseCard({required this.course});
+  const _CourseCard({required this.course, this.freeGranted = false});
 
   final Course course;
+  final bool freeGranted;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final original = course.originalPriceLabel;
+    final original = freeGranted ? null : course.originalPriceLabel;
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
@@ -324,7 +346,7 @@ class _CourseCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: <Widget>[
                   Text(
-                    course.priceLabel,
+                    freeGranted ? '免费' : course.priceLabel,
                     style: theme.textTheme.titleMedium
                         ?.copyWith(color: theme.colorScheme.primary),
                   ),

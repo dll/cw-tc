@@ -24,6 +24,7 @@ class CourseDetailPage extends StatefulWidget {
 class _CourseDetailPageState extends State<CourseDetailPage> {
   late final ApiClient _api = widget.api ?? ApiClient();
   bool _entitled = false;
+  bool _freeGranted = false;
   bool _buying = false;
 
   @override
@@ -34,9 +35,14 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
 
   Future<void> _checkEntitlement() async {
     try {
-      final codes = await _api.myEntitlementCourseCodes();
+      final sources = await _api.myEntitlementSources();
       if (!mounted) return;
-      setState(() => _entitled = codes.contains(widget.courseCode));
+      final source = sources[widget.courseCode];
+      setState(() {
+        _entitled = source != null;
+        // 管理员授权免费（grant）或免费权益（free）→ 界面显示「免费」。
+        _freeGranted = source == 'grant' || source == 'free';
+      });
     } catch (_) {
       // 未登录/查询失败按未购处理。
     }
@@ -112,7 +118,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               const SizedBox(height: 12),
               Row(
                 children: <Widget>[
-                  Text(course.priceLabel,
+                  Text(_freeGranted ? '免费' : course.priceLabel,
                       style: theme.textTheme.titleLarge
                           ?.copyWith(color: theme.colorScheme.primary)),
                   const Spacer(),
