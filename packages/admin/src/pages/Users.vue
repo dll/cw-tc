@@ -62,6 +62,17 @@ const userTypeLabels: Record<UserType, string> = {
   admin_ops: '运营管理员',
 }
 
+// 账号展示：学员以手机号（登录账号）为主、学号为辅；内部人员用账号。
+function accountLabel(row: UserItem): string {
+  if (row.user_type === 'student') return row.phone || row.student_no || '—'
+  return row.account || '—'
+}
+
+function accountSub(row: UserItem): string {
+  if (row.user_type === 'student' && row.phone && row.student_no) return `学号 ${row.student_no}`
+  return ''
+}
+
 async function onReveal(row: UserItem) {
   try {
     const { value } = await ElMessageBox.prompt('看全号必须填写事由（每次都会写审计）', `查看 ${row.name} 手机号`, {
@@ -142,10 +153,15 @@ async function submitGrant() {
       <el-table-column label="用户类型" width="130">
         <template #default="{ row }">{{ userTypeLabels[(row as UserItem).user_type] }}</template>
       </el-table-column>
-      <el-table-column prop="student_no" label="学号" width="120" />
-      <el-table-column prop="account" label="账号" width="130" />
+      <el-table-column label="账号" min-width="200">
+        <template #default="{ row }">
+          <div>{{ accountLabel(row as UserItem) }}</div>
+          <div v-if="accountSub(row as UserItem)" style="color: var(--el-text-color-secondary); font-size: 12px">
+            {{ accountSub(row as UserItem) }}
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column prop="name" label="姓名" width="120" />
-      <el-table-column prop="phone" label="手机号" width="140" />
       <el-table-column prop="status" label="状态" width="100" />
       <el-table-column prop="registration_status" label="注册审核" width="110" />
       <el-table-column prop="created_at" label="注册时间" width="180" />
