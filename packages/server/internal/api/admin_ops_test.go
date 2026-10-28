@@ -10,6 +10,7 @@ import (
 	"github.com/cw-tc/server/internal/platform/db"
 	"github.com/cw-tc/server/internal/staff"
 	"github.com/cw-tc/server/migrations"
+	"github.com/gin-gonic/gin"
 )
 
 func TestAdminGrantAndBroadcast(t *testing.T) {
@@ -21,10 +22,13 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := staff.Create(context.Background(), database, "admin", "管理员", staff.RoleAdminOps, "Temp@123", 0); err != nil {
+	if _, err := staff.Create(context.Background(), database, "admin", "管理员", staff.RoleAdminSuper, "Temp@123", 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = database.Exec(`INSERT INTO student(id, student_no, name, phone, id_card_hash, id_card_cipher, agreement_versions) VALUES(1,'S1','学员','13812345678',X'01',X'02','v1')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(`INSERT INTO student(id, student_no, name, phone, id_card_hash, id_card_cipher, agreement_versions) VALUES(2,'S2','学员二','13812345679',X'03',X'04','v1')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = database.Exec(`INSERT INTO staff(id, account, name, role, password_hash, created_source) VALUES(2,'t','教师','teacher',X'01','seed')`); err != nil {
@@ -33,10 +37,21 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	if _, err = database.Exec(`INSERT INTO major(id, name) VALUES(1,'样例专业')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,'C1','platform','课程','main',1,'published',2)`); err != nil {
+	if _, err = database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id, price_cents) VALUES(1,'C1','platform','课程','main',1,'published',2,1000)`); err != nil {
 		t.Fatal(err)
 	}
-	r := NewWithDatabase(testConfig(t, true), database).Router()
+	server := NewWithDatabase(testConfig(t, true), database)
+	r := server.Router()
+	// 直接调用运营批量处理器，确保测试覆盖业务事务本身而非仅覆盖鉴权中间件。
+	batch := gin.New()
+	batch.POST("/discount", func(c *gin.Context) {
+		c.Set(staffContextKey, staff.Staff{ID: 1, Role: staff.RoleAdminSuper})
+		server.adminBatchDiscount(c)
+	})
+	batch.POST("/grant", func(c *gin.Context) {
+		c.Set(staffContextKey, staff.Staff{ID: 1, Role: staff.RoleAdminSuper})
+		server.adminBatchFree(c)
+	})
 
 	login := performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"admin","password":"Temp@123"}`)
 	token := extractJSONField(t, login.Body.String(), "token")
@@ -92,5 +107,28 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	}
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/broadcasts", `{"target":"bad","title":"x","body":"y","idempotency_key":"k2"}`, token); got.Code != http.StatusBadRequest {
 		t.Fatalf("广播非法 target 应 400，实际 %d", got.Code)
+	}
+
+	// 批量折扣：缺少二次确认和超过课程价格均拒绝，合法请求写入一条有效折扣。
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-discounts", `{"student_ids":[1],"course_code":"C1","discount_cents":100,"reason":"运营活动"}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("折扣缺确认应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-discounts", `{"student_ids":[1],"course_code":"C1","discount_cents":1001,"reason":"运营活动","confirm":true}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("折扣超过价格应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-discounts", `{"student_ids":[1,0],"course_code":"C1","discount_cents":100,"reason":"运营活动","confirm":true}`, token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"updated":1`) {
+		t.Fatalf("批量折扣失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-grants", `{"student_ids":[1],"course_code":"NOPE","reason":"运营活动","confirm":true}`, token); got.Code != http.StatusNotFound {
+		t.Fatalf("免费授权不存在课程应 404，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-grants", `{"student_ids":[2],"course_code":"C1","reason":"运营活动","confirm":true}`, token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"granted":1`) {
+		t.Fatalf("批量免费授权失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSON(t, batch, http.MethodPost, "/discount", `{"student_ids":[2],"course_code":"C1","discount_cents":50,"reason":"补充活动","confirm":true}`); got.Code != http.StatusOK {
+		t.Fatalf("直接批量折扣失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSON(t, batch, http.MethodPost, "/grant", `{"student_ids":[2],"course_code":"C1","reason":"重复授权","confirm":true}`); got.Code != http.StatusOK {
+		t.Fatalf("直接批量授权失败: %d %s", got.Code, got.Body.String())
 	}
 }
