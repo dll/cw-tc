@@ -19,6 +19,19 @@ class _HtmlViewerState extends State<HtmlViewer> {
     ..loadHtmlString(widget.html);
 
   @override
+  void initState() {
+    super.initState();
+    // Android WebView 默认要求用户手势才允许媒体播放；关闭该限制，
+    // 课件里的配音/视频在首次点击后即可有声续播。
+    final platform = _controller.platform;
+    try {
+      (platform as dynamic).setMediaPlaybackRequiresUserGesture(false);
+    } catch (_) {
+      // iOS/其他平台无此设置，忽略。
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return WebViewWidget(controller: _controller);
   }

@@ -85,8 +85,8 @@ class _LearnPageState extends State<LearnPage> {
             Card(
                 child: ListTile(
               leading: const Icon(Icons.quiz_outlined),
-              title: const Text('本讲测评'),
-              subtitle: const Text('思考题练习，提交后查看参考解答'),
+              title: const Text('本讲思考题'),
+              subtitle: const Text('逐题作答，自动评分并给出参考答案'),
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => LecturePracticePage(
                       courseCode: widget.courseCode,

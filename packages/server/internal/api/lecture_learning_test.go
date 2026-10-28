@@ -28,7 +28,7 @@ func learningFixture(t *testing.T) (*Server, *gin.Engine) {
 	INSERT INTO major(id,name) VALUES(1,'样例专业');
 	INSERT INTO course(id,course_code,source,name,line,major_id,status,price_cents,free_preview_lectures,teacher_id) VALUES(1,'C1','platform','课程','main',1,'published',1000,1,2);
 	INSERT INTO lecture(id,course_id,no,title,is_preview) VALUES(1,1,1,'第一讲',0),(2,1,2,'第二讲',0);
-	INSERT INTO lecture_question(id,lecture_id,source_key,prompt,reference_answer,evidence_ref) VALUES(1,1,'1','练习题','参考答案','讲义第一节');
+	INSERT INTO lecture_question(id,lecture_id,source_key,prompt,reference_answer,evidence_ref) VALUES(1,1,'1','练习题','静态链接会把库代码复制进可执行文件，动态链接在运行时共享同一份库代码。','讲义第一节');
 	INSERT INTO question(id,course_id,qno,level,type,gradability,stem,score) VALUES(1,1,'Q1','L1','single','auto','这是一道用于检测题目泄漏的测评题干内容',1);`)
 	if err != nil {
 		t.Fatal(err)
@@ -86,12 +86,12 @@ func TestLecturePracticeAndDiscussionFlow(t *testing.T) {
 		t.Fatalf("未购课不可访问非预览讲次练习: %d %s", got.Code, got.Body.String())
 	}
 	practice := performJSON(t, r, http.MethodGet, "/courses/C1/lectures/1/practice", "")
-	if practice.Code != http.StatusOK || !strings.Contains(practice.Body.String(), "讲义第一节") || strings.Contains(practice.Body.String(), "参考答案") {
+	if practice.Code != http.StatusOK || !strings.Contains(practice.Body.String(), "讲义第一节") || strings.Contains(practice.Body.String(), "静态链接") {
 		t.Fatalf("练习列表必须只返回题目和依据: %d %s", practice.Code, practice.Body.String())
 	}
-	answer := performJSON(t, r, http.MethodPost, "/courses/C1/lectures/1/practice/1/answers", "{\"answer\":\"我的作答\"}")
-	if answer.Code != http.StatusOK || !strings.Contains(answer.Body.String(), "参考答案") {
-		t.Fatalf("提交练习后应返回自评参考答案: %d %s", answer.Code, answer.Body.String())
+	answer := performJSON(t, r, http.MethodPost, "/courses/C1/lectures/1/practice/1/answers", "{\"answer\":\"静态链接把库代码复制进可执行文件，动态链接运行时共享同一份库代码\"}")
+	if answer.Code != http.StatusOK || !strings.Contains(answer.Body.String(), "静态链接会把库代码复制进可执行文件") || !strings.Contains(answer.Body.String(), `"graded":true`) || !strings.Contains(answer.Body.String(), `"score"`) {
+		t.Fatalf("提交练习后应返回自动评分与参考答案: %d %s", answer.Code, answer.Body.String())
 	}
 	for _, tc := range []struct{ path, body string }{
 		{"/courses/C1/lectures/1/practice/0/answers", "{\"answer\":\"有效答案\"}"},
