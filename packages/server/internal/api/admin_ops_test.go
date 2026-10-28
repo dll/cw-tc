@@ -21,7 +21,7 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	if err := db.ApplyMigrations(context.Background(), database, migrations.FS, db.DialectSQLite); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := staff.Create(context.Background(), database, "admin", "管理员", staff.RoleAdminOps, "Temp@123", 0); err != nil {
+	if _, err := staff.Create(context.Background(), database, "admin", "管理员", staff.RoleAdminSuper, "Temp@123", 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = database.Exec(`INSERT INTO student(id, student_no, name, phone, id_card_hash, id_card_cipher, agreement_versions) VALUES(1,'S1','学员','13812345678',X'01',X'02','v1')`); err != nil {
