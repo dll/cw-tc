@@ -27,13 +27,16 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	if _, err = database.Exec(`INSERT INTO student(id, student_no, name, phone, id_card_hash, id_card_cipher, agreement_versions) VALUES(1,'S1','学员','13812345678',X'01',X'02','v1')`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = database.Exec(`INSERT INTO student(id, student_no, name, phone, id_card_hash, id_card_cipher, agreement_versions) VALUES(2,'S2','学员二','13812345679',X'03',X'04','v1')`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = database.Exec(`INSERT INTO staff(id, account, name, role, password_hash, created_source) VALUES(2,'t','教师','teacher',X'01','seed')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = database.Exec(`INSERT INTO major(id, name) VALUES(1,'样例专业')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,'C1','platform','课程','main',1,'published',2)`); err != nil {
+	if _, err = database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id, price_cents) VALUES(1,'C1','platform','课程','main',1,'published',2,1000)`); err != nil {
 		t.Fatal(err)
 	}
 	r := NewWithDatabase(testConfig(t, true), database).Router()
@@ -92,5 +95,22 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	}
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/broadcasts", `{"target":"bad","title":"x","body":"y","idempotency_key":"k2"}`, token); got.Code != http.StatusBadRequest {
 		t.Fatalf("广播非法 target 应 400，实际 %d", got.Code)
+	}
+
+	// 批量折扣：缺少二次确认和超过课程价格均拒绝，合法请求写入一条有效折扣。
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-discounts", `{"student_ids":[1],"course_code":"C1","discount_cents":100,"reason":"运营活动"}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("折扣缺确认应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-discounts", `{"student_ids":[1],"course_code":"C1","discount_cents":1001,"reason":"运营活动","confirm":true}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("折扣超过价格应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-discounts", `{"student_ids":[1,0],"course_code":"C1","discount_cents":100,"reason":"运营活动","confirm":true}`, token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"updated":1`) {
+		t.Fatalf("批量折扣失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-grants", `{"student_ids":[1],"course_code":"NOPE","reason":"运营活动","confirm":true}`, token); got.Code != http.StatusNotFound {
+		t.Fatalf("免费授权不存在课程应 404，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/student-grants", `{"student_ids":[2],"course_code":"C1","reason":"运营活动","confirm":true}`, token); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"granted":1`) {
+		t.Fatalf("批量免费授权失败: %d %s", got.Code, got.Body.String())
 	}
 }

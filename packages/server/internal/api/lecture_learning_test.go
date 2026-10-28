@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/platform/db"
 	"github.com/cw-tc/server/migrations"
 	"github.com/gin-gonic/gin"
@@ -62,5 +64,93 @@ func TestDiscussionLeakAndUnauthenticatedPractice(t *testing.T) {
 	}
 	if publicDiscussionName(12345) != "学员2345" {
 		t.Fatalf("公开讨论名未脱敏")
+	}
+}
+
+func TestLecturePracticeAndDiscussionFlow(t *testing.T) {
+	server, _ := learningFixture(t)
+	r := gin.New()
+	student := func(c *gin.Context) {
+		c.Set(studentContextKey, identity.Student{ID: 1})
+		c.Next()
+	}
+	r.GET("/courses/:courseCode/lectures/:no/practice", student, server.listLecturePractice)
+	r.POST("/courses/:courseCode/lectures/:no/practice/:questionID/answers", student, server.submitLectureAnswer)
+	r.GET("/courses/:courseCode/lectures/:no/topics", server.listLectureTopics)
+	r.POST("/courses/:courseCode/lectures/:no/topics", student, server.createLectureTopic)
+	r.GET("/courses/:courseCode/lectures/:no/topics/:topicID/replies", server.listLectureReplies)
+	r.POST("/courses/:courseCode/lectures/:no/topics/:topicID/replies", student, server.createLectureReply)
+	r.POST("/courses/:courseCode/lectures/:no/topics/:topicID/like", student, server.likeLectureTopic)
+	r.DELETE("/courses/:courseCode/lectures/:no/topics/:topicID/like", student, server.unlikeLectureTopic)
+	if got := performJSON(t, r, http.MethodGet, "/courses/C1/lectures/2/practice", ""); got.Code != http.StatusForbidden {
+		t.Fatalf("未购课不可访问非预览讲次练习: %d %s", got.Code, got.Body.String())
+	}
+	practice := performJSON(t, r, http.MethodGet, "/courses/C1/lectures/1/practice", "")
+	if practice.Code != http.StatusOK || !strings.Contains(practice.Body.String(), "讲义第一节") || strings.Contains(practice.Body.String(), "参考答案") {
+		t.Fatalf("练习列表必须只返回题目和依据: %d %s", practice.Code, practice.Body.String())
+	}
+	answer := performJSON(t, r, http.MethodPost, "/courses/C1/lectures/1/practice/1/answers", "{\"answer\":\"我的作答\"}")
+	if answer.Code != http.StatusOK || !strings.Contains(answer.Body.String(), "参考答案") {
+		t.Fatalf("提交练习后应返回自评参考答案: %d %s", answer.Code, answer.Body.String())
+	}
+	for _, tc := range []struct{ path, body string }{
+		{"/courses/C1/lectures/1/practice/0/answers", "{\"answer\":\"有效答案\"}"},
+		{"/courses/C1/lectures/1/practice/1/answers", "{\"answer\":\" \"}"},
+		{"/courses/C1/lectures/1/practice/999/answers", "{\"answer\":\"有效答案\"}"},
+	} {
+		if got := performJSON(t, r, http.MethodPost, tc.path, tc.body); got.Code < 400 {
+			t.Errorf("非法练习提交应失败: %s => %d %s", tc.path, got.Code, got.Body.String())
+		}
+	}
+
+	created := performJSON(t, r, http.MethodPost, "/courses/C1/lectures/1/topics", "{\"body\":\"讨论本讲的网络结构\"}")
+	if created.Code != http.StatusOK {
+		t.Fatalf("发布讨论失败: %d %s", created.Code, created.Body.String())
+	}
+	for _, body := range []string{
+		"{\"body\":\"这是一道用于检测题目泄漏的测评题干内容\"}",
+		"{\"body\":\"联系我 13812345678\"}",
+	} {
+		if got := performJSON(t, r, http.MethodPost, "/courses/C1/lectures/1/topics", body); got.Code != http.StatusBadRequest {
+			t.Errorf("违规讨论应拒绝: %d %s", got.Code, got.Body.String())
+		}
+	}
+	list := performJSON(t, r, http.MethodGet, "/courses/C1/lectures/1/topics", "")
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "\"author\":\"学员1\"") {
+		t.Fatalf("讨论列表未脱敏显示发布者: %d %s", list.Code, list.Body.String())
+	}
+	reply := performJSON(t, r, http.MethodPost, "/courses/C1/lectures/1/topics/1/replies", "{\"body\":\"我也有类似学习体会\"}")
+	if reply.Code != http.StatusOK {
+		t.Fatalf("发布回复失败: %d %s", reply.Code, reply.Body.String())
+	}
+	replies := performJSON(t, r, http.MethodGet, "/courses/C1/lectures/1/topics/1/replies", "")
+	if replies.Code != http.StatusOK || !strings.Contains(replies.Body.String(), "学员1") {
+		t.Fatalf("回复列表失败: %d %s", replies.Code, replies.Body.String())
+	}
+	if got := performJSON(t, r, http.MethodPost, "/courses/C1/lectures/1/topics/999/replies", "{\"body\":\"有效回复内容\"}"); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在的讨论应返回 404: %d %s", got.Code, got.Body.String())
+	}
+	for i := 0; i < 2; i++ {
+		if got := performJSON(t, r, http.MethodPost, "/courses/C1/lectures/1/topics/1/like", ""); got.Code != http.StatusOK {
+			t.Fatalf("点赞失败: %d %s", got.Code, got.Body.String())
+		}
+	}
+	var likes int
+	if err := server.dbConn.QueryRow("SELECT like_count FROM lecture_topic WHERE id=1").Scan(&likes); err != nil || likes != 1 {
+		t.Fatalf("重复点赞不能重复计数: likes=%d err=%v", likes, err)
+	}
+	if got := performJSON(t, r, http.MethodDelete, "/courses/C1/lectures/1/topics/1/like", ""); got.Code != http.StatusOK {
+		t.Fatalf("取消点赞失败: %d %s", got.Code, got.Body.String())
+	}
+	if err := server.dbConn.QueryRow("SELECT like_count FROM lecture_topic WHERE id=1").Scan(&likes); err != nil || likes != 0 {
+		t.Fatalf("取消点赞后计数错误: likes=%d err=%v", likes, err)
+	}
+	if got := performJSON(t, r, http.MethodPost, "/courses/C1/lectures/2/topics", `{"body":"未购课学员也可发布讨论"}`); got.Code != http.StatusOK {
+		t.Fatalf("登录学员应可发布讲次讨论（购课校验仅针对练习）: %d %s", got.Code, got.Body.String())
+	}
+	for _, path := range []string{"/courses/C1/lectures/x/practice", "/courses/missing/lectures/1/topics"} {
+		if got := performJSON(t, r, http.MethodGet, path, ""); got.Code < 400 {
+			t.Errorf("无效讲次应失败: %s => %d", path, got.Code)
+		}
 	}
 }
