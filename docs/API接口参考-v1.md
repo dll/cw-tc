@@ -434,12 +434,12 @@
 
 #### 2.15.1 每讲开放练习与讨论（当前实现）
 
-以下接口按讲次号 `no` 定位，独立于课程总测评与证书。练习题由上游《思考题.md》同步，`GET practice` 不返回参考解答；学员提交自答后才返回已有的参考解答，未提供解答的题目不自动判分。
+以下接口按讲次号 `no` 定位，独立于课程总测评与证书。练习题由上游《思考题.md》同步（兼容行内解答、章节集中解答、`summary` 折叠、参考要点/判据等实际写法），`GET practice` 不返回参考解答；学员提交自答后才返回已有的参考解答与自动评分。参考答案可用时按关键词重合度给出 `score`（0~100，仅供自查），无参考答案时 `graded=false`、不判分。
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| GET | `/courses/{code}/lectures/{no}/practice` | 有该讲学习权限的学员 | 本讲思考题、出处、题号 |
-| POST | `/courses/{code}/lectures/{no}/practice/{questionID}/answers` | 有该讲学习权限的学员 | 保存自答并返回参考解答；不影响总课程测评 |
+| GET | `/courses/{code}/lectures/{no}/practice` | 有该讲学习权限的学员 | 本讲思考题、出处、题号（不返回答案） |
+| POST | `/courses/{code}/lectures/{no}/practice/{questionID}/answers` | 有该讲学习权限的学员 | 保存自答，返回 `reference_answer` / `graded` / `score`；不影响总课程测评 |
 | GET | `/courses/{code}/lectures/{no}/topics` | 公开 | 帖子列表，点赞数降序，同票按时间与 ID 降序 |
 | POST | `/courses/{code}/lectures/{no}/topics` | 登录学员 | 发帖；隐私与测评泄漏拦截 |
 | GET · POST | `/courses/{code}/lectures/{no}/topics/{topicID}/replies` | 公开读；登录学员写 | 查看与发表公开评论 |

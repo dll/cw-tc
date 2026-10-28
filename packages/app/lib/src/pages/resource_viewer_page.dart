@@ -3,6 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
+import 'html_media_unlock.dart';
 import 'html_viewer_stub.dart' if (dart.library.html) 'html_viewer_web.dart';
 
 /// 资源阅读页：文本类资源端内展示。
@@ -62,14 +63,13 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
             case 'markdown':
               return Markdown(data: content, selectable: true);
             case 'html':
-              return HtmlViewer(
-                html: widget.resource.inlineBaseUrl == null
-                    ? content
-                    : htmlWithBase(
-                        content,
-                        _api.mediaUrl(widget.resource.inlineBaseUrl!),
-                      ),
-              );
+              final html = widget.resource.inlineBaseUrl == null
+                  ? content
+                  : htmlWithBase(
+                      content,
+                      _api.mediaUrl(widget.resource.inlineBaseUrl!),
+                    );
+              return HtmlViewer(html: htmlWithMediaUnlock(html));
             default:
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(16),

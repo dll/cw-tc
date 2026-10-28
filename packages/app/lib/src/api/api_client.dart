@@ -285,15 +285,13 @@ class ApiClient {
         .cast<Map<String, dynamic>>();
   }
 
-  Future<String> submitLectureAnswer(
+  Future<Map<String, dynamic>> submitLectureAnswer(
       String code, int no, int questionId, String answer) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '${_lecturePath(code, no)}/practice/$questionId/answers',
       data: <String, dynamic>{'answer': answer},
     );
-    return (res.data?['data'] as Map<String, dynamic>?)?['reference_answer']
-            as String? ??
-        '';
+    return res.data?['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
   }
 
   Future<List<Map<String, dynamic>>> lectureTopics(String code, int no) async {

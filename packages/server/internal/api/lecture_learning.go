@@ -108,7 +108,17 @@ func (s *Server) submitLectureAnswer(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "保存失败"})
 		return
 	}
-	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"reference_answer": reference.String, "grading": "self_review", "message": "请对照课程资料自行核对，本讲练习不计入总课程测评或证书"}})
+	score, graded := gradeLectureAnswer(req.Answer, reference.String)
+	data := gin.H{"reference_answer": reference.String, "graded": graded}
+	if graded {
+		data["score"] = score
+		data["grading"] = "auto"
+		data["message"] = "已按参考答案给出参考相似度，仅供自查，不计入课程总测评或证书"
+	} else {
+		data["grading"] = "self_review"
+		data["message"] = "本题暂无参考答案，请对照课程资料自行核对，本讲练习不计入总课程测评或证书"
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: data})
 }
 
 func discussionBodyOK(body string) bool {
