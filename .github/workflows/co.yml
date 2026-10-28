@@ -91,9 +91,13 @@ jobs:
             set -euo pipefail
             test -f /opt/cw-tc/shared/.env
             RELEASE_ID='${{ inputs.release_id }}'
-            INSTALLER="/opt/cw-tc/releases/$RELEASE_ID/deploy/server-install-release.sh"
-            test -x "$INSTALLER"
-            DEPLOY_PATH=/opt/cw-tc RELEASE_ID="$RELEASE_ID" bash "$INSTALLER" /opt/cw-tc/incoming/release.tar.gz
+            ARCHIVE=/opt/cw-tc/incoming/release.tar.gz
+            INSTALLER="/opt/cw-tc/incoming/server-install-release-$RELEASE_ID.sh"
+            trap 'rm -f "$INSTALLER"' EXIT
+            test -f "$ARCHIVE"
+            tar -xOzf "$ARCHIVE" "$RELEASE_ID/deploy/server-install-release.sh" > "$INSTALLER"
+            chmod 700 "$INSTALLER"
+            DEPLOY_PATH=/opt/cw-tc RELEASE_ID="$RELEASE_ID" bash "$INSTALLER" "$ARCHIVE"
             rm -f /opt/cw-tc/incoming/release.tar.gz
 
   incident-dedup:
