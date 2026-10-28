@@ -188,16 +188,24 @@ class ApiClient {
         data: <String, dynamic>{});
   }
 
-  /// 我的学习权益（`GET /api/v1/me/entitlements`），返回已购课程码列表。
-  Future<List<String>> myEntitlementCourseCodes() async {
+  /// 我的学习权益来源（`course_code -> order|free|grant`）。
+  Future<Map<String, String>> myEntitlementSources() async {
     final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/entitlements');
     final data = res.data?['data'] as Map<String, dynamic>?;
     final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
-    return items
-        .map((e) => e['course_code'] as String? ?? '')
-        .where((c) => c.isNotEmpty)
-        .toList();
+    final sources = <String, String>{};
+    for (final item in items) {
+      final row = item as Map<String, dynamic>?;
+      final code = row?['course_code'] as String? ?? '';
+      if (code.isEmpty) continue;
+      sources[code] = row?['source'] as String? ?? '';
+    }
+    return sources;
   }
+
+  /// 我的学习权益（`GET /api/v1/me/entitlements`），返回已购课程码列表。
+  Future<List<String>> myEntitlementCourseCodes() async =>
+      (await myEntitlementSources()).keys.toList();
 
   /// 课程详情（`GET /api/v1/courses/:courseCode`，公开只读）。
   Future<Course> courseDetail(String courseCode) async {
