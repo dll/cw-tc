@@ -2,11 +2,15 @@ package cosstore
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tencentyun/cos-go-sdk-v5"
 )
 
 func TestBucketEndpoint(t *testing.T) {
@@ -23,6 +27,32 @@ func TestBucketEndpoint(t *testing.T) {
 		if got := bucketEndpoint(c.bucket, c.region); got != c.want {
 			t.Errorf("bucketEndpoint(%q,%q)=%q, want %q", c.bucket, c.region, got, c.want)
 		}
+	}
+}
+
+func TestUploadAndHeadRequestPaths(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			if _, err := io.ReadAll(r.Body); err != nil {
+				t.Errorf("读取上传内容失败: %v", err)
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+		case http.MethodHead:
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	client := cos.NewClient(&cos.BaseURL{BucketURL: u}, srv.Client())
+	store := &Store{client: client, secretID: "id", secretKey: "key"}
+	if err := store.Upload(context.Background(), "lesson/video.mp4", strings.NewReader("data")); err == nil {
+		t.Fatal("上传返回 500 时应报告错误")
+	}
+	if err := store.Head(context.Background(), "lesson/video.mp4"); err == nil {
+		t.Fatal("HEAD 返回 500 时应报告错误")
 	}
 }
 
