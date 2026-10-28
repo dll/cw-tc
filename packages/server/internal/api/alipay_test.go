@@ -61,3 +61,24 @@ func TestAlipayNotifyRejectsInvalidAndIgnoresNonSuccess(t *testing.T) {
 		}
 	}
 }
+
+func TestAlipayPrecreateRejectsGatewayFailureAfterOrderChecks(t *testing.T) {
+	server, _ := learningFixture(t)
+	server.cfg.AlipayAppID = "app"
+	server.cfg.AlipayPrivKey = "missing-private.pem"
+	server.cfg.AlipayPubKey = "missing-public.pem"
+	server.cfg.AlipayNotify = "https://example.test/notify"
+	server.cfg.AlipayGateway = "https://example.test/gateway"
+	if _, err := server.dbConn.Exec(`INSERT INTO orders(order_no,student_id,course_id,course_name_snapshot,price_snapshot_cents,amount_cents,status,expired_at) VALUES('O-ALIPAY',1,1,'课程',1000,1000,'pending','2099-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	r := gin.New()
+	r.POST("/orders/:orderNo/alipay/precreate", func(c *gin.Context) {
+		c.Set(studentContextKey, identity.Student{ID: 1})
+		server.alipayPrecreate(c)
+	})
+	got := performJSON(t, r, http.MethodPost, "/orders/O-ALIPAY/alipay/precreate", "")
+	if got.Code != http.StatusBadGateway {
+		t.Fatalf("支付宝网关失败应返回 502: %d %s", got.Code, got.Body.String())
+	}
+}
