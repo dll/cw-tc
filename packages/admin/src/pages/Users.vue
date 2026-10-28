@@ -62,15 +62,9 @@ const userTypeLabels: Record<UserType, string> = {
   admin_ops: '运营管理员',
 }
 
-// 账号展示：学员以手机号（登录账号）为主、学号为辅；内部人员用账号。
+// 账号统一展示：学员用手机号（登录账号），内部人员用账号；不回退学号。
 function accountLabel(row: UserItem): string {
-  if (row.user_type === 'student') return row.phone || row.student_no || '—'
-  return row.account || '—'
-}
-
-function accountSub(row: UserItem): string {
-  if (row.user_type === 'student' && row.phone && row.student_no) return `学号 ${row.student_no}`
-  return ''
+  return row.phone || row.account || '—'
 }
 
 async function onReveal(row: UserItem) {
@@ -153,13 +147,8 @@ async function submitGrant() {
       <el-table-column label="用户类型" width="130">
         <template #default="{ row }">{{ userTypeLabels[(row as UserItem).user_type] }}</template>
       </el-table-column>
-      <el-table-column label="账号" min-width="200">
-        <template #default="{ row }">
-          <div>{{ accountLabel(row as UserItem) }}</div>
-          <div v-if="accountSub(row as UserItem)" style="color: var(--el-text-color-secondary); font-size: 12px">
-            {{ accountSub(row as UserItem) }}
-          </div>
-        </template>
+      <el-table-column label="账号" min-width="160">
+        <template #default="{ row }">{{ accountLabel(row as UserItem) }}</template>
       </el-table-column>
       <el-table-column prop="name" label="姓名" width="120" />
       <el-table-column prop="status" label="状态" width="100" />
