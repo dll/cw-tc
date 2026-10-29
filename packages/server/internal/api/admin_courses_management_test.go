@@ -69,6 +69,9 @@ func TestAdminCourseManagementListUnpublishAndRepublish(t *testing.T) {
 	if filtered.Code != http.StatusOK || !containsAll(filtered.Body.String(), `"course_code":"DRAFT"`) || containsAll(filtered.Body.String(), `"course_code":"PUB"`) {
 		t.Fatalf("课程筛选异常: %d %s", filtered.Code, filtered.Body.String())
 	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses?source=platform", "", adminToken); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"total":2`) {
+		t.Fatalf("来源筛选异常: %d %s", got.Code, got.Body.String())
+	}
 
 	// 教师不能下架/上架
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/unpublish", `{"reason":"测试","confirm":true}`, teacherToken); got.Code != http.StatusForbidden {
@@ -103,6 +106,12 @@ func TestAdminCourseManagementListUnpublishAndRepublish(t *testing.T) {
 	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/courses/PUB/lectures/1/resources", "", otherSession.Token); got.Code != http.StatusForbidden {
 		t.Fatalf("未购学员访问下架课程资源应 403: %d %s", got.Code, got.Body.String())
 	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/courses/PUB/lectures/1/practice", "", entitledSession.Token); got.Code != http.StatusOK {
+		t.Fatalf("已购学员访问下架课程练习应 200: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/courses/PUB/lectures/1/practice", "", otherSession.Token); got.Code != http.StatusForbidden {
+		t.Fatalf("未购学员访问下架课程练习应 403: %d %s", got.Code, got.Body.String())
+	}
 	// 重新上架
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/publish", "", adminToken); got.Code != http.StatusOK {
 		t.Fatalf("重新上架失败: %d %s", got.Code, got.Body.String())
@@ -115,8 +124,47 @@ func TestAdminCourseManagementListUnpublishAndRepublish(t *testing.T) {
 	if audits != 1 {
 		t.Fatalf("重新上架应写审计 1 条，实际 %d", audits)
 	}
-	// building 不能直接上架
+	// 专业与免费讲次（管理员 + 审计）
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/major", `{"major_id":1}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("设置专业失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/major", `{"major_id":999}`, adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在的专业应 404: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/major", `{"major_id":1}`, teacherToken); got.Code != http.StatusForbidden {
+		t.Fatalf("教师设置专业应 403: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/free-preview", `{"count":2}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("设置免费讲次失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/free-preview", `{"count":-1}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("负数免费讲次应 400: %d", got.Code)
+	}
+	_ = database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='course.major_change'`).Scan(&audits)
+	if audits != 1 {
+		t.Fatalf("专业变更应写审计 1 条，实际 %d", audits)
+	}
+	_ = database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='course.free_preview_change'`).Scan(&audits)
+	if audits != 1 {
+		t.Fatalf("免费讲次变更应写审计 1 条，实际 %d", audits)
+	}
+	// building 不能直接上架 / 下架
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/DRAFT/publish", "", adminToken); got.Code != http.StatusConflict {
 		t.Fatalf("building 直接上架应 409: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/DRAFT/unpublish", `{"reason":"x","confirm":true}`, adminToken); got.Code != http.StatusConflict {
+		t.Fatalf("building 下架应 409: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/unpublish", `{"reason":"x","confirm":false}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("未二次确认下架应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/NOPE/publish", "", adminToken); got.Code != http.StatusConflict {
+		t.Fatalf("不存在课程上架应 409: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/NOPE/free-preview", `{"count":1}`, adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在课程设置免费讲次应 404: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/free-preview", `{`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("非法 JSON 应 400: %d", got.Code)
 	}
 }
