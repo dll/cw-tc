@@ -284,6 +284,44 @@ export async function bulkUnpublishCourses(
     http.post('/admin/bulk-courses/unpublish', { course_codes: courseCodes, reason, confirm: true }),
   )
 }
+export interface ContentRequestItem {
+  id: number
+  course_code: string
+  course_name: string
+  teacher_id: number
+  teacher_name: string
+  kind: string
+  reason_kind: string
+  reason_text: string
+  status: string
+  handled_by: number | null
+  handled_at: string | null
+  created_at: string
+}
+export async function createContentRequest(
+  code: string,
+  input: { kind: string; reason_kind: string; reason_text: string },
+): Promise<void> {
+  await unwrap<unknown>(http.post(`/teacher/courses/${code}/requests`, input))
+}
+export async function listMyContentRequests(status = ''): Promise<ContentRequestItem[]> {
+  const r = await unwrap<{ items: ContentRequestItem[] }>(
+    http.get('/teacher/requests', { params: { status } }),
+  )
+  return r.items
+}
+export async function listContentRequests(status = ''): Promise<ContentRequestItem[]> {
+  const r = await unwrap<{ items: ContentRequestItem[] }>(
+    http.get('/admin/requests', { params: { status } }),
+  )
+  return r.items
+}
+export async function approveContentRequest(id: number): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/requests/${id}/approve`, { confirm: true }))
+}
+export async function rejectContentRequest(id: number, reason: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/requests/${id}/reject`, { reason, confirm: true }))
+}
 export async function listCourseRevisions(code: string): Promise<CourseRevision[]> {
   const r = await unwrap<{ items: CourseRevision[] }>(http.get(`/admin/courses/${code}/revisions`))
   return r.items
@@ -432,3 +470,4 @@ export async function gradeDetail(resultId: number): Promise<{ result_id: number
 export async function submitGrade(resultId: number, questionId: number, input: { score: number; comment?: string; points?: string }): Promise<void> {
   await unwrap<unknown>(http.post(`/teacher/grade/${resultId}/questions/${questionId}`, input))
 }
+

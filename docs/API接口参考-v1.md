@@ -347,7 +347,9 @@
 | POST | `/admin/batch/courses` | 管理员 | **批量上架 / 下架 / 改价 / 挂专业**（先预览，§7.10.8） |
 | GET | `/admin/batch/{batchId}` | 管理员 | 批量结果**逐条明细**（可导出） |
 | POST | `/admin/exports` | **仅 super** | **代学员导出数据**（须填事由；写审计，§7.10.9） |
-| GET | `/admin/requests` | 管理员 | 教师下架 / 纠错申请待办（§7.9 J-8） |
+| GET | `/admin/requests` | 管理员 | 教师下架 / 纠错申请待办（§7.9 J-8；`status=pending` 默认） |
+| POST | `/admin/requests/{id}/approve` | 管理员 | 批准并执行下架（写审计；已购学员仍可学习与测评） |
+| POST | `/admin/requests/{id}/reject` | 管理员 | 驳回申请（原因必填，写审计） |
 | GET | `/admin/comments` | 管理员 | **UGC 统一待办**（评论 + 讨论帖 + 回复；机审疑似 + 被举报），按 `target_type` 筛选 |
 | POST | `/admin/comments/{id}/remove` | 管理员 | **下架评论**：**`reason_kind` 必填**（广告/辱骂/隐私/违法/无关/其他，**无"差评"选项**），写审计 + 通知评论者 |
 | POST | `/admin/comments/{id}/restore` | 管理员 | 恢复（误判纠正，写审计） |

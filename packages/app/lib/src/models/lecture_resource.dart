@@ -9,6 +9,7 @@ class LectureResource {
     required this.signature,
     this.url,
     this.inlineBaseUrl,
+    this.contentReviewing = false,
   });
 
   final String kind; // 讲义 / 课件 / 视频 等
@@ -24,6 +25,9 @@ class LectureResource {
   /// HTML 内相对音频等资源使用的短时授权基址。
   final String? inlineBaseUrl;
 
+  /// 课程存在待处理的紧急纠错申请：学习不受影响，但暂停新测评/发证。
+  final bool contentReviewing;
+
   factory LectureResource.fromJson(Map<String, dynamic> json) {
     return LectureResource(
       kind: json['kind'] as String,
@@ -34,6 +38,7 @@ class LectureResource {
       signature: json['signature'] as String,
       url: json['url'] as String?,
       inlineBaseUrl: json['inline_base_url'] as String?,
+      contentReviewing: json['content_reviewing'] == true,
     );
   }
 
