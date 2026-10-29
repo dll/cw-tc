@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listTeacherCourses, createTeacherCourse, updateTeacherCourse, deleteTeacherCourse, submitCourse, listMajors, type AdminCourse, type MajorItem } from '@/api/client'
+import { listTeacherCourses, createTeacherCourse, updateTeacherCourse, deleteTeacherCourse, submitCourse, listPublicMajors, type AdminCourse, type MajorItem } from '@/api/client'
 
 const rows = ref<AdminCourse[]>([])
 const loading = ref(false)
@@ -21,7 +21,7 @@ async function load() {
   }
 }
 async function loadMajors() {
-  majors.value = await listMajors().catch(() => [])
+  majors.value = await listPublicMajors().catch(() => [])
 }
 onMounted(() => {
   load()
