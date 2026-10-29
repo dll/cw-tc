@@ -318,7 +318,7 @@
 | POST | `/admin/courses/{code}/review` | 管理员（**特色标需 super**） | **提交审核结论**：**六维打分 + 逐维评语**；`verdict=rejected` **必须带 `issue_list`**（§J-2.3） |
 | POST | `/admin/courses/{code}/publish` | 管理员 | 上架 / 重新上架（`approved` 或 `unpublished` → `published`，写审计）；上架前三项配置须齐备（价格 / 专业 / 证书），§J-2.4 |
 | POST | `/admin/courses/{code}/unpublish` | 管理员 | 下架：须带 `reason` + `confirm:true`，写审计；未购学员不可见，**已购学员仍可学习与测评**（不撤销权益/证书） |
-| GET · POST | `/admin/courses/{code}/quality` | 管理员 | **质量分与 AI 化等级**查询 / 核定覆写（写审计） |
+| GET · POST | `/admin/courses/{code}/quality` | 管理员 | **质量分与 AI 化等级**：GET 返回质量分 / AI 等级 / AI 开关 / 知识库状态 / 最近一次六维审核；POST 覆写须带 `reason` + `confirm:true`（0~100；LA/LB/LC），写审计 |
 | GET | `/admin/courses/{code}/checkup` | 管理员 | **内容体检**：九件套齐备度 + 交错序列校验 + 题库一致性（§B-9 / §B-10） |
 | POST | `/admin/courses/{code}/kb/rebuild` | 管理员 | 触发知识库重建 |
 | GET | `/admin/kb/status` | 管理员 | 知识库状态（**切片数 / 向量数 / 最后构建时间**） |

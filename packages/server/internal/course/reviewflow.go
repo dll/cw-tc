@@ -37,9 +37,10 @@ func ReviewCourse(ctx context.Context, db *sql.DB, in ReviewInput) error {
 		rejectReason = in.IssueList
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	total := in.ScoreMaterial + in.ScoreObjective + in.ScoreCase + in.ScoreLessonPlan + in.ScoreSlides + in.ScoreLab
 	_, err := db.ExecContext(ctx,
-		`UPDATE course SET status=$1, reviewed_at=$2, reviewed_by=$3, reject_reason=$4 WHERE course_code=$5`,
-		in.Verdict, now, in.ReviewerID, rejectReason, in.CourseCode)
+		`UPDATE course SET status=$1, reviewed_at=$2, reviewed_by=$3, reject_reason=$4, quality_score=$5 WHERE course_code=$6`,
+		in.Verdict, now, in.ReviewerID, rejectReason, total, in.CourseCode)
 	return err
 }
 

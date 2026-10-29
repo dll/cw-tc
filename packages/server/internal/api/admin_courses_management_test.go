@@ -31,9 +31,13 @@ func TestAdminCourseManagementListUnpublishAndRepublish(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO major(id,name) VALUES(1,'样例专业')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`INSERT INTO course(course_code,source,name,intro,line,lecture_count,major_id,status,teacher_id,price_cents,cert_names,cert_pass_lines,content_version,published_version) VALUES
-		('PUB','platform','已上架课程','这是课程简介，用于列表展示','main',12,1,'published',2,5000,'{"L1":"证书"}','{"L1":60}',2,1),
-		('DRAFT','platform','建设中课程','建设中简介','main',3,1,'building',2,0,NULL,NULL,1,NULL)`); err != nil {
+	if _, err := database.Exec(`INSERT INTO course(course_code,source,name,intro,line,lecture_count,major_id,status,teacher_id,price_cents,cert_names,cert_pass_lines,content_version,published_version,quality_score,ai_level) VALUES
+		('PUB','platform','已上架课程','这是课程简介，用于列表展示','main',12,1,'published',2,5000,'{"L1":"证书"}','{"L1":60}',2,1,88,'LB'),
+		('DRAFT','platform','建设中课程','建设中简介','main',3,1,'building',2,0,NULL,NULL,1,NULL,NULL,NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO course_review(course_code,round,content_version,reviewer_id,reviewer_role,score_material,score_objective,score_case,score_lesson_plan,score_slides,score_lab,verdict,reviewed_at)
+		VALUES('PUB',1,2,1,'admin_ops',25,15,15,15,15,15,'approved','2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
 	var pubID int64
@@ -72,6 +76,97 @@ func TestAdminCourseManagementListUnpublishAndRepublish(t *testing.T) {
 	}
 	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses?source=platform", "", adminToken); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"total":2`) {
 		t.Fatalf("来源筛选异常: %d %s", got.Code, got.Body.String())
+	}
+	quality := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/PUB/quality", "", adminToken)
+	if quality.Code != http.StatusOK || !containsAll(quality.Body.String(),
+		`"quality_score":88`, `"ai_level":"LB"`, `"total_score":100`, `"latest_review":{`, `"round":1`) {
+		t.Fatalf("质量面板异常: %d %s", quality.Code, quality.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/PUB/quality", "", teacherToken); got.Code != http.StatusForbidden {
+		t.Fatalf("教师查看质量面板应 403: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/quality", `{"quality_score":90,"ai_level":"LA","reason":"复核下调","confirm":true}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("覆写质量分失败: %d %s", got.Code, got.Body.String())
+	}
+	var qualityScore float64
+	var aiLevel string
+	_ = database.QueryRow(`SELECT quality_score, ai_level FROM course WHERE course_code='PUB'`).Scan(&qualityScore, &aiLevel)
+	if qualityScore != 90 || aiLevel != "LA" {
+		t.Fatalf("覆写后质量分/等级=%v/%s", qualityScore, aiLevel)
+	}
+	var qualityAudits int
+	_ = database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='course.quality_override'`).Scan(&qualityAudits)
+	if qualityAudits != 1 {
+		t.Fatalf("质量覆写应写审计 1 条，实际 %d", qualityAudits)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/quality", `{"quality_score":101,"reason":"x","confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("质量分越界应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/quality", `{"ai_level":"XD","reason":"x","confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("非法 AI 等级应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/quality", `{"quality_score":90,"confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("缺事由应 400: %d", got.Code)
+	}
+	draftQuality := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/DRAFT/quality", "", adminToken)
+	if draftQuality.Code != http.StatusOK || !containsAll(draftQuality.Body.String(), `"quality_score":null`, `"ai_level":null`, `"latest_review":null`) {
+		t.Fatalf("未审核课程质量面板异常: %d %s", draftQuality.Code, draftQuality.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/NOPE/quality", "", adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在课程质量面板应 404: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/quality", `{"reason":"x","confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("未填质量分/AI 等级应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/quality", `{`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("非法 JSON 应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/DRAFT/quality", `{"ai_level":"LC","reason":"补齐等级","confirm":true}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("仅覆写 AI 等级失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/NOPE/quality", `{"quality_score":90,"reason":"x","confirm":true}`, adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在课程覆写应 404: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/DRAFT/quality", `{"quality_score":66,"reason":"仅质量分","confirm":true}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("仅覆写质量分失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/DRAFT/revisions", "", adminToken); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"items":[]`) {
+		t.Fatalf("无版本记录应返回空列表: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/major", `{`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("专业非法 JSON 应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/NOPE/major", `{"major_id":1}`, adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在课程设置专业应 404: %d", got.Code)
+	}
+
+	// 审核与改价边界（补充既有管理动作覆盖）
+	if _, err := database.Exec(`INSERT INTO course(course_code,source,name,line,lecture_count,major_id,status,teacher_id,price_cents,cert_names,cert_pass_lines,content_version) VALUES('SUB','platform','待审课程','main',0,1,'submitted',2,0,'{"L1":"证书"}','{"L1":60}',1)`); err != nil {
+		t.Fatal(err)
+	}
+	reviewBody := `{"verdict":"rejected","content_version":1,"score_material":10,"score_objective":10,"score_case":10,"score_lesson_plan":10,"score_slides":10,"score_lab":10,"issue_list":"[{\"dim\":\"material\",\"issue\":\"缺资源\"}]"}`
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/SUB/review", reviewBody, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("驳回审核失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/SUB/review", reviewBody, adminToken); got.Code != http.StatusConflict {
+		t.Fatalf("重复审核非 submitted 课程应 409: %d", got.Code)
+	}
+	_ = database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='course.review'`).Scan(&qualityAudits)
+	if qualityAudits != 1 {
+		t.Fatalf("审核应写审计 1 条，实际 %d", qualityAudits)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/price", `{"price_cents":-1,"confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("负数价格应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/price", `{"price_cents":6000}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("未确认改价应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/price", `{"price_cents":6000,"confirm":true}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("改价失败: %d %s", got.Code, got.Body.String())
+	}
+	_ = database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='course.price_change'`).Scan(&qualityAudits)
+	if qualityAudits != 1 {
+		t.Fatalf("改价应写审计 1 条，实际 %d", qualityAudits)
 	}
 
 	// 教师不能下架/上架

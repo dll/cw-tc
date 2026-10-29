@@ -150,6 +150,8 @@ func (s *Server) Router() *gin.Engine {
 	admin.POST("/change-password", s.adminChangePassword)
 	admin.GET("/courses", s.adminCourses)
 	admin.GET("/courses/:code/revisions", s.requireAdmin, s.adminCourseRevisions)
+	admin.GET("/courses/:code/quality", s.requireAdmin, s.adminCourseQuality)
+	admin.POST("/courses/:code/quality", s.requireAdmin, s.adminCourseQualityOverride)
 	admin.GET("/orders", s.adminOrders)
 	admin.GET("/refunds", s.adminRefunds)
 	admin.GET("/certs", s.adminCerts)

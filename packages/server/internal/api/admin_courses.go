@@ -2,9 +2,11 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cw-tc/server/internal/audit"
 	"github.com/cw-tc/server/internal/staff"
@@ -212,4 +214,119 @@ func (s *Server) adminCourseRevisions(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"items": items}})
+}
+
+// adminCourseQuality GET /admin/courses/:code/quality —— 质量分、AI 等级与最近一次审核。
+func (s *Server) adminCourseQuality(c *gin.Context) {
+	if s.dbConn == nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
+	var quality sql.NullFloat64
+	var aiLevel, kbStatus, status sql.NullString
+	var aiEnabled bool
+	var contentVersion int
+	var publishedVersion *int64
+	err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT CAST(quality_score AS REAL), ai_level, ai_enabled, kb_status, status, content_version, published_version
+		 FROM course WHERE course_code = $1 AND deleted_at IS NULL`, c.Param("code")).
+		Scan(&quality, &aiLevel, &aiEnabled, &kbStatus, &status, &contentVersion, &publishedVersion)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "课程不存在"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
+	data := gin.H{
+		"course_code": c.Param("code"), "status": status.String,
+		"quality_score": nil, "ai_level": nil,
+		"ai_enabled": aiEnabled, "kb_status": kbStatus.String,
+		"content_version": contentVersion, "published_version": publishedVersion,
+		"latest_review": nil,
+	}
+	if quality.Valid {
+		data["quality_score"] = quality.Float64
+	}
+	if aiLevel.Valid {
+		data["ai_level"] = aiLevel.String
+	}
+
+	var round, reviewContentVersion int
+	var reviewerID int64
+	var reviewerRole, reviewerName, verdict, issueList, reviewedAt sql.NullString
+	var scoreMaterial, scoreObjective, scoreCase, scoreLessonPlan, scoreSlides, scoreLab, totalScore sql.NullFloat64
+	err = s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT r.round, r.content_version, r.reviewer_id, r.reviewer_role, st.name,
+		        CAST(r.score_material AS REAL), CAST(r.score_objective AS REAL), CAST(r.score_case AS REAL),
+		        CAST(r.score_lesson_plan AS REAL), CAST(r.score_slides AS REAL), CAST(r.score_lab AS REAL),
+		        CAST(r.total_score AS REAL), r.verdict, CAST(r.issue_list AS TEXT), r.reviewed_at
+		 FROM course_review r LEFT JOIN staff st ON st.id = r.reviewer_id
+		 WHERE r.course_code = $1 ORDER BY r.round DESC, r.reviewed_at DESC LIMIT 1`, c.Param("code")).
+		Scan(&round, &reviewContentVersion, &reviewerID, &reviewerRole, &reviewerName,
+			&scoreMaterial, &scoreObjective, &scoreCase, &scoreLessonPlan, &scoreSlides, &scoreLab,
+			&totalScore, &verdict, &issueList, &reviewedAt)
+	if err == nil {
+		data["latest_review"] = gin.H{
+			"round": round, "content_version": reviewContentVersion,
+			"reviewer_id": reviewerID, "reviewer_role": reviewerRole.String,
+			"reviewer_name":  nullableString(reviewerName),
+			"score_material": scoreMaterial.Float64, "score_objective": scoreObjective.Float64,
+			"score_case": scoreCase.Float64, "score_lesson_plan": scoreLessonPlan.Float64,
+			"score_slides": scoreSlides.Float64, "score_lab": scoreLab.Float64,
+			"total_score": totalScore.Float64, "verdict": verdict.String,
+			"issue_list": nullableString(issueList), "reviewed_at": reviewedAt.String,
+		}
+	} else if err != sql.ErrNoRows {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: data})
+}
+
+// adminCourseQualityOverride POST /admin/courses/:code/quality —— 核定覆写质量分 / AI 等级（写审计）。
+func (s *Server) adminCourseQualityOverride(c *gin.Context) {
+	var req struct {
+		QualityScore *float64 `json:"quality_score"`
+		AILevel      string   `json:"ai_level"`
+		Reason       string   `json:"reason"`
+		Confirm      bool     `json:"confirm"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || !req.Confirm || strings.TrimSpace(req.Reason) == "" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "事由必填且需二次确认"})
+		return
+	}
+	if req.QualityScore == nil && req.AILevel == "" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "质量分与 AI 等级至少填写一项"})
+		return
+	}
+	if req.QualityScore != nil && (*req.QualityScore < 0 || *req.QualityScore > 100) {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "质量分应在 0~100"})
+		return
+	}
+	if req.AILevel != "" && req.AILevel != "LA" && req.AILevel != "LB" && req.AILevel != "LC" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "AI 等级只能为 LA / LB / LC"})
+		return
+	}
+	admin := c.MustGet(staffContextKey).(staff.Staff)
+	res, err := s.dbConn.ExecContext(c.Request.Context(),
+		`UPDATE course SET quality_score = COALESCE($1, quality_score), ai_level = COALESCE(NULLIF($2,''), ai_level), updated_at = $3
+		 WHERE course_code = $4 AND deleted_at IS NULL`,
+		req.QualityScore, req.AILevel, time.Now().UTC().Format(time.RFC3339), c.Param("code"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "课程不存在"})
+		return
+	}
+	after, _ := json.Marshal(map[string]any{"quality_score": req.QualityScore, "ai_level": req.AILevel, "reason": req.Reason})
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "course.quality_override", TargetType: "course", TargetID: c.Param("code"),
+		After: string(after), IP: c.ClientIP(),
+	})
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"status": "ok"}})
 }
