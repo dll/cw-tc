@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../api/api_client.dart';
 
-/// 忘记密码 / 管理员重置码：用一次性重置码自行设置新密码（不依赖短信）。
+/// 忘记密码：管理员授权后，学员可用站内重置码或身份证验证重置密码。
 class ResetPasswordPage extends StatefulWidget {
   const ResetPasswordPage({super.key, this.api});
 
@@ -18,6 +18,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   final _formKey = GlobalKey<FormState>();
   final _phone = TextEditingController();
   final _code = TextEditingController();
+  final _idCard = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   bool _submitting = false;
@@ -27,23 +28,40 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   void dispose() {
     _phone.dispose();
     _code.dispose();
+    _idCard.dispose();
     _password.dispose();
     _confirm.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _reset({required bool byIdentity}) async {
     if (!_formKey.currentState!.validate()) return;
+    if (byIdentity && !_validIDCard(_idCard.text.trim())) {
+      setState(() => _error = '身份证号格式或校验位不正确');
+      return;
+    }
+    if (!byIdentity && _code.text.trim().isEmpty) {
+      setState(() => _error = '请输入站内重置码');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
-      await _api.resetPasswordWithCode(
-        phone: _phone.text.trim(),
-        code: _code.text.trim(),
-        newPassword: _password.text,
-      );
+      if (byIdentity) {
+        await _api.resetPasswordByIdentity(
+          phone: _phone.text.trim(),
+          idCard: _idCard.text.trim(),
+          newPassword: _password.text,
+        );
+      } else {
+        await _api.resetPasswordWithCode(
+          phone: _phone.text.trim(),
+          code: _code.text.trim(),
+          newPassword: _password.text,
+        );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('密码已重置，请用新密码登录')));
@@ -68,7 +86,8 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Text('重置码由管理员发放（有效期 30 分钟）。管理员不会获知你的新密码。',
+              Text(
+                  '管理员授权后，重置码会通过站内消息发送给你；也可直接用身份证验证重置，无需管理员转交。',
                   style: theme.textTheme.bodySmall),
               const SizedBox(height: 16),
               TextFormField(
@@ -85,11 +104,15 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 controller: _code,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
-                    labelText: '重置码', hintText: '8 位数字，由管理员提供'),
-                validator: (v) =>
-                    RegExp(r'^[0-9]{6,12}$').hasMatch(v?.trim() ?? '')
-                        ? null
-                        : '请输入有效重置码',
+                    labelText: '站内重置码（可在「我的 → 消息」查看）',
+                    hintText: '8 位数字'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _idCard,
+                decoration: const InputDecoration(
+                    labelText: '身份证号（用身份证验证时填写）',
+                    hintText: '18 位，仅用于身份核验'),
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -97,7 +120,8 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 obscureText: true,
                 decoration: const InputDecoration(
                     labelText: '新密码', hintText: '8~20 位，同时包含字母和数字'),
-                validator: (v) => _validPassword(v ?? '') ? null : '密码需 8~20 位且包含字母和数字',
+                validator: (v) =>
+                    _validPassword(v ?? '') ? null : '密码需 8~20 位且包含字母和数字',
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -112,8 +136,13 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
               ],
               const SizedBox(height: 20),
               FilledButton(
-                onPressed: _submitting ? null : _submit,
-                child: Text(_submitting ? '提交中…' : '重置密码'),
+                onPressed: _submitting ? null : () => _reset(byIdentity: false),
+                child: Text(_submitting ? '提交中…' : '用重置码重置'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _submitting ? null : () => _reset(byIdentity: true),
+                child: const Text('用身份证验证重置'),
               ),
             ],
           ),
@@ -128,3 +157,14 @@ bool _validPassword(String value) =>
     value.length <= 20 &&
     RegExp(r'[A-Za-z]').hasMatch(value) &&
     RegExp(r'[0-9]').hasMatch(value);
+
+bool _validIDCard(String value) {
+  if (!RegExp(r'^\d{17}[\dXx]$').hasMatch(value)) return false;
+  const weights = <int>[7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+  const checks = '10X98765432';
+  var sum = 0;
+  for (var i = 0; i < 17; i++) {
+    sum += int.parse(value[i]) * weights[i];
+  }
+  return value[17].toUpperCase() == checks[sum % 11];
+}

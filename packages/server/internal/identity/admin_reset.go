@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -56,6 +57,14 @@ func (s *Service) CreateAdminResetCode(ctx context.Context, studentID, createdBy
 	if _, err = tx.ExecContext(ctx,
 		`INSERT INTO sms_code(phone, scene, code_hash, expires_at, created_at) VALUES($1,'reset',$2,$3,$4)`,
 		phone, digest[:], expires.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339)); err != nil {
+		return "", time.Time{}, "", err
+	}
+	// 站内送达：写入学员消息中心，避免管理员通过微信/电话等站外渠道转交。
+	body := fmt.Sprintf("你的密码重置码：%s，有效期至 %s。请在登录页「忘记密码」中输入重置码设置新密码；请勿转发给他人。",
+		code, expires.Format(time.RFC3339))
+	if _, err = tx.ExecContext(ctx,
+		`INSERT INTO notification(student_id, type, title, body, link) VALUES($1,'system','密码重置码',$2,'/reset-password')`,
+		studentID, body); err != nil {
 		return "", time.Time{}, "", err
 	}
 	if err = tx.Commit(); err != nil {
@@ -123,6 +132,66 @@ func (s *Service) ResetPasswordByAdminCode(ctx context.Context, phone, code, new
 	}
 	if _, err = tx.ExecContext(ctx,
 		`UPDATE student_session SET revoked_at = CURRENT_TIMESTAMP WHERE student_id = $1 AND revoked_at IS NULL`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ResetPasswordByIdentity 学员用手机号 + 身份证号验证身份后直接重置密码。
+// 前提：管理员已在 30 分钟内为该手机号生成过重置授权；码本身无需站外转交。
+func (s *Service) ResetPasswordByIdentity(ctx context.Context, phone, idCard, newPassword string, now time.Time) error {
+	if s.db == nil {
+		return ErrDatabaseNotConfigured
+	}
+	if ValidatePhone(phone) != nil || ValidateIDCard(idCard) != nil || newPassword == "" {
+		return ErrInvalidInput
+	}
+	var studentID int64
+	var stored []byte
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT id, id_card_hash FROM student WHERE phone = $1 AND status = 'active'`, phone).Scan(&studentID, &stored); err != nil {
+		return ErrResetCodeInvalid
+	}
+	if len(stored) == 0 {
+		return ErrResetCodeInvalid
+	}
+	_, digest, err := ProtectIDCard(idCard, s.encKey, s.hmacKey)
+	if err != nil || subtle.ConstantTimeCompare(digest, stored) != 1 {
+		return ErrResetCodeInvalid
+	}
+	var codeID int64
+	var expiresAt string
+	err = s.db.QueryRowContext(ctx,
+		`SELECT id, expires_at FROM sms_code WHERE phone = $1 AND scene = 'reset' AND consumed_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1`,
+		phone).Scan(&codeID, &expiresAt)
+	if err != nil {
+		return ErrResetCodeInvalid
+	}
+	expires, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil || !now.Before(expires) {
+		return ErrResetCodeInvalid
+	}
+	if err := ValidatePasswordAgainstIDCard(newPassword, idCard); err != nil {
+		return err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx,
+		`UPDATE student SET password_hash = $1, password_updated_at = $2, failed_login_count = 0, locked_until = NULL WHERE id = $3`,
+		hashPassword(newPassword), now.UTC().Format(time.RFC3339), studentID); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx,
+		`UPDATE sms_code SET consumed_at = $1 WHERE id = $2 AND consumed_at IS NULL`,
+		now.UTC().Format(time.RFC3339), codeID); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx,
+		`UPDATE student_session SET revoked_at = CURRENT_TIMESTAMP WHERE student_id = $1 AND revoked_at IS NULL`, studentID); err != nil {
 		return err
 	}
 	return tx.Commit()

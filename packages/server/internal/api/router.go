@@ -124,6 +124,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.POST("/auth/sms-login", s.smsLogin)
 	v1.POST("/auth/reset-password", s.resetPassword)
 	v1.POST("/auth/password/reset", s.resetPasswordByAdminCode)
+	v1.POST("/auth/password/reset-identity", s.resetPasswordByIdentity)
 	v1.POST("/auth/register", s.register)
 	v1.POST("/me/phone", authRequired(s.identity), s.rebindPhone)
 	v1.POST("/me/delete", authRequired(s.identity), s.deleteAccount)

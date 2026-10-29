@@ -181,6 +181,7 @@
 | POST | `/auth/logout` | 登录 | 销毁当前会话 |
 | POST | `/auth/logout-all` | 登录 | 登出全部设备 |
 | POST | `/auth/password/reset` | 公开 | 用管理员下发的一次性重置码设置新密码（**不暴露是否已注册**；重置码 30 分钟、仅存哈希） |
+| POST | `/auth/password/reset-identity` | 公开 | **身份证验证直接重置**（手机号 + 身份证号 + 新密码；需管理员 30 分钟内已授权，站内完成、无需转交重置码） |
 | GET | `/me` | 登录 | 我的资料（**身份证号与手机号均脱敏**） |
 | POST | `/me/password` | 登录 | 改密码（需旧密码；成功后全部会话失效） |
 | POST | `/me/phone` | 登录 | 换绑手机号（**旧号 + 新号双向验证**） |
@@ -334,7 +335,7 @@
 | GET | `/admin/users/{id}` | 管理员 | **用户详情**（**默认脱敏**，见 §1.10） |
 | GET | `/admin/users/{id}/reveal` | **super**（手机号 ops 可） | **查看全号**：须带 `reason`，**每次写审计**（§7.10.10（二）） |
 | PATCH | `/admin/users/{id}/status` | 管理员（永久封禁仅 super） | **封禁 / 解封**：须带 `reason_kind` + `note`（+ `until`） |
-| POST | `/admin/users/{id}/reset-password` | 管理员 | **生成一次性重置码**（30 分钟，须带 `reason` + `confirm:true`）：返回 `reset_code` / `expires_at` / `phone_last4`，**绝不返回密码**；管理员转交学员后用 `/auth/password/reset` 自行设新密码；写审计 |
+| POST | `/admin/users/{id}/reset-password` | 管理员 | **生成一次性重置码**（30 分钟，须带 `reason` + `confirm:true`）：同时写入学员**站内消息**（`notification`），学员登录后可在「消息」查看；也可在登录页用 `/auth/password/reset-identity` 身份证验证后直接重置。返回 `reset_code` / `expires_at` / `phone_last4`，**绝不返回密码**；写审计 |
 | POST | `/admin/users/teachers` | 管理员 | **开通教师账号** |
 | POST | `/admin/users/{id}/transfer-courses` | 管理员 | **教师停用前的课程移交**（`to_teacher_id`，§7.9 J-9） |
 | GET · PATCH | `/admin/settings` | **仅 super** | **系统配置**：读业务参数列表（含 `min_value`/`max_value`/`description`）；写**逐个 key**（如 `stats.display_threshold`）—— **低于 `min_value` 返回 400**；**密钥只读状态**（§7.10.6） |

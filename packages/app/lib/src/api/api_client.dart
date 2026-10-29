@@ -163,6 +163,40 @@ class ApiClient {
     _ensureSuccess(res.data);
   }
 
+  /// 用手机号 + 身份证号验证身份后直接重置密码（需管理员已授权）。
+  Future<void> resetPasswordByIdentity({
+    required String phone,
+    required String idCard,
+    required String newPassword,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/auth/password/reset-identity',
+        data: <String, dynamic>{
+          'phone': phone,
+          'id_card': idCard,
+          'new_password': newPassword,
+        });
+    _ensureSuccess(res.data);
+  }
+
+  /// 站内消息列表（管理员授权重置等系统通知）。
+  Future<List<Map<String, dynamic>>> notifications() async {
+    final res =
+        await _dio.get<Map<String, dynamic>>('/api/v1/me/notifications');
+    _ensureSuccess(res.data);
+    return ((res.data?['data'] as Map<String, dynamic>?)?['items']
+                as List<dynamic>? ??
+            const <dynamic>[])
+        .cast<Map<String, dynamic>>();
+  }
+
+  /// 标记站内消息已读。
+  Future<void> markNotificationRead(int id) async {
+    final res =
+        await _dio.post<Map<String, dynamic>>('/api/v1/me/notifications/$id/read');
+    _ensureSuccess(res.data);
+  }
+
   /// 换绑手机号（旧号 + 新号双向验证；短信未接入时后端 fail-closed）。
   Future<void> rebindPhone({
     required String oldCode,

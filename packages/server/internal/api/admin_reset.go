@@ -66,6 +66,37 @@ func (s *Server) adminResetStudentPassword(c *gin.Context) {
 	}})
 }
 
+// resetPasswordByIdentity POST /auth/password/reset-identity
+//
+// 学员用手机号 + 身份证号验证身份后直接重置密码（管理员需在 30 分钟内生成过重置授权）。
+// 该路径不要求管理员把重置码通过站外渠道转交。
+func (s *Server) resetPasswordByIdentity(c *gin.Context) {
+	var req struct {
+		Phone       string `json:"phone"`
+		IDCard      string `json:"id_card"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Phone == "" || req.IDCard == "" || req.NewPassword == "" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10002, Msg: "请求参数格式错误"})
+		return
+	}
+	if s.identity == nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "账号服务暂不可用"})
+		return
+	}
+	err := s.identity.ResetPasswordByIdentity(c.Request.Context(), req.Phone, req.IDCard, req.NewPassword, time.Now().UTC())
+	switch {
+	case err == nil:
+		c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"status": "ok"}})
+	case err == identity.ErrResetCodeInvalid || err == identity.ErrInvalidCredentials:
+		c.JSON(http.StatusUnauthorized, envelope{Code: 10105, Msg: "身份校验失败，或管理员尚未授权本次重置"})
+	case err == identity.ErrInvalidInput:
+		c.JSON(http.StatusBadRequest, envelope{Code: 10003, Msg: "手机号 / 身份证号 / 新密码格式不正确"})
+	default:
+		c.JSON(http.StatusBadRequest, envelope{Code: 10003, Msg: err.Error()})
+	}
+}
+
 // resetPasswordByAdminCode POST /auth/password/reset
 //
 // 学员用管理员下发的重置码设置新密码（不依赖短信服务）。
