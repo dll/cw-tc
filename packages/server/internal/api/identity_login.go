@@ -33,7 +33,7 @@ func (s *Server) login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, envelope{Code: 10101, Msg: "手机号或密码错误"})
 		return
 	}
-	session, err := s.identity.CreateSession(c.Request.Context(), student.ID, timeNowUTC())
+	session, err := s.identity.CreateSessionWithDevice(c.Request.Context(), student.ID, c.Request.UserAgent(), c.ClientIP(), timeNowUTC())
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "会话服务暂不可用"})
 		return

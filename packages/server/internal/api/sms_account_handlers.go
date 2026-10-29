@@ -26,7 +26,7 @@ func (s *Server) smsLogin(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, envelope{Code: 10101, Msg: "验证码错误或过期"})
 		return
 	}
-	session, err := s.identity.CreateSession(c.Request.Context(), student.ID, timeNowUTC())
+	session, err := s.identity.CreateSessionWithDevice(c.Request.Context(), student.ID, c.Request.UserAgent(), c.ClientIP(), timeNowUTC())
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "会话服务暂不可用"})
 		return

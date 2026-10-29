@@ -143,6 +143,11 @@ class _LoginPageState extends State<LoginPage> {
                 }),
                 child: Text(_registerMode ? '已有账号？去登录' : '没有账号？去注册'),
               ),
+              if (!_registerMode)
+                TextButton(
+                  onPressed: () => context.push('/reset-password'),
+                  child: const Text('忘记密码 / 使用管理员重置码'),
+                ),
             ],
           ),
         ),

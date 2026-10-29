@@ -129,6 +129,87 @@ class ApiClient {
     return (phone == null || phone.isEmpty) ? null : phone;
   }
 
+  /// 当前学员资料（`GET /api/v1/me`，手机号已脱敏）。
+  Future<Map<String, dynamic>> me() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me');
+    _ensureSuccess(res.data);
+    return res.data?['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
+  }
+
+  /// 修改密码（需旧密码；成功后服务端会撤销全部会话）。
+  Future<void> changePassword(
+      {required String oldPassword, required String newPassword}) async {
+    final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/password',
+        data: <String, dynamic>{
+          'old_password': oldPassword,
+          'new_password': newPassword,
+        });
+    _ensureSuccess(res.data);
+  }
+
+  /// 用管理员下发的重置码设置新密码（不依赖短信）。
+  Future<void> resetPasswordWithCode({
+    required String phone,
+    required String code,
+    required String newPassword,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/auth/password/reset',
+        data: <String, dynamic>{
+          'phone': phone,
+          'code': code,
+          'new_password': newPassword,
+        });
+    _ensureSuccess(res.data);
+  }
+
+  /// 换绑手机号（旧号 + 新号双向验证；短信未接入时后端 fail-closed）。
+  Future<void> rebindPhone({
+    required String oldCode,
+    required String phone,
+    required String newCode,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/phone',
+        data: <String, dynamic>{
+          'old_code': oldCode,
+          'phone': phone,
+          'new_code': newCode,
+        });
+    _ensureSuccess(res.data);
+  }
+
+  /// 登录设备列表。
+  Future<List<Map<String, dynamic>>> devices() async {
+    final res =
+        await _dio.get<Map<String, dynamic>>('/api/v1/me/devices');
+    _ensureSuccess(res.data);
+    return ((res.data?['data'] as Map<String, dynamic>?)?['items']
+                as List<dynamic>? ??
+            const <dynamic>[])
+        .cast<Map<String, dynamic>>();
+  }
+
+  /// 踢出指定设备。
+  Future<void> revokeDevice(int id) async {
+    final res = await _dio
+        .post<Map<String, dynamic>>('/api/v1/me/devices/$id/revoke');
+    _ensureSuccess(res.data);
+  }
+
+  /// 退出全部设备并清除本地凭据。
+  Future<void> logoutAll() async {
+    final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/logout-all');
+    _ensureSuccess(res.data);
+    await logout();
+  }
+
+  /// 注销账号（服务端匿名化；证书台账保留）。
+  Future<void> deleteAccount() async {
+    final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/delete');
+    _ensureSuccess(res.data);
+    await logout();
+  }
+
   /// 课程广场列表（`GET /api/v1/courses`，公开只读）。
   ///
   /// 支持 `majorId` / `line`(main|aux) / `q`(关键词) 与分页（`pageSize` 上限 100）。

@@ -106,6 +106,7 @@ class _MePageState extends State<MePage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     if (title == '我的证书') context.push('/certs');
+                    if (title == '设置') context.push('/settings');
                   },
                 );
               },

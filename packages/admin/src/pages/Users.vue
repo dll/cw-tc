@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { listUsers, pendingRegistrationCount, revealUser, approveRegistration, grantEntitlement, batchDiscount, batchGrant, type UserItem, type UserType } from '@/api/client'
+import { listUsers, pendingRegistrationCount, revealUser, approveRegistration, grantEntitlement, batchDiscount, batchGrant, resetUserPassword, type UserItem, type UserType, type ResetPasswordResult } from '@/api/client'
 
 const rows = ref<UserItem[]>([])
 const loading = ref(false)
@@ -95,6 +95,24 @@ async function onApproveRegistration(row: UserItem) {
   }
 }
 
+const resetVisible = ref(false)
+const resetResult = ref<ResetPasswordResult | null>(null)
+
+async function onResetPassword(row: UserItem) {
+  try {
+    const { value } = await ElMessageBox.prompt('重置密码必须填写事由（会写审计）', `重置 ${row.name} 的密码`, {
+      confirmButtonText: '生成重置码',
+      cancelButtonText: '取消',
+      inputValidator: (v: string) => (v && v.trim() ? true : '事由必填'),
+    })
+    await ElMessageBox.confirm('重置码有效期 30 分钟，学员使用后旧密码立即失效。确认生成？', '二次确认', { type: 'warning' })
+    resetResult.value = await resetUserPassword(row.id, value.trim())
+    resetVisible.value = true
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessageBox.alert(e.message, '重置失败')
+  }
+}
+
 const grantVisible = ref(false)
 const grantTarget = ref<UserItem | null>(null)
 const grantForm = ref({ course_code: '', grant_reason: '' })
@@ -154,12 +172,13 @@ async function submitGrant() {
       <el-table-column prop="status" label="状态" width="100" />
       <el-table-column prop="registration_status" label="注册审核" width="110" />
       <el-table-column prop="created_at" label="注册时间" width="180" />
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="300">
         <template #default="{ row }">
           <template v-if="row.user_type === 'student'">
             <el-button size="small" @click="onReveal(row)">看全号</el-button>
             <el-button v-if="row.registration_status === 'pending'" size="small" type="success" @click="onApproveRegistration(row)">审核通过</el-button>
             <el-button size="small" type="warning" @click="openGrant(row)">授权学习</el-button>
+            <el-button size="small" type="danger" plain @click="onResetPassword(row)">重置密码</el-button>
           </template>
         </template>
       </el-table-column>
@@ -185,6 +204,24 @@ async function submitGrant() {
       <template #footer>
         <el-button @click="grantVisible = false">取消</el-button>
         <el-button type="primary" @click="submitGrant">确认授权</el-button>
+      </template>
+    </el-dialog>
+    <el-dialog v-model="resetVisible" title="重置密码（一次性重置码）" width="520px">
+      <el-alert
+        type="warning"
+        :closable="false"
+        title="请将重置码转交学员，由学员在「忘记密码」页面自行设置新密码；管理员不会获知新密码。"
+        style="margin-bottom: 12px"
+      />
+      <el-descriptions v-if="resetResult" :column="1" border>
+        <el-descriptions-item label="重置码">
+          <span style="font-family: monospace; font-size: 20px; letter-spacing: 2px">{{ resetResult.reset_code }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="有效期至">{{ resetResult.expires_at }}</el-descriptions-item>
+        <el-descriptions-item label="学员手机号后 4 位">{{ resetResult.phone_last4 }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button type="primary" @click="resetVisible = false">我已转交</el-button>
       </template>
     </el-dialog>
     <el-dialog v-model="batchVisible" title="批量审批学习优惠" width="480px">
