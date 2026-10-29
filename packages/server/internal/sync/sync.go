@@ -211,8 +211,8 @@ func upsertCourse(ctx context.Context, database *sql.DB, course Course) error {
 	certNames := buildCertNames(course.Testbank)
 	certPassLines := buildCertPassLines(course.Testbank)
 	_, err := database.ExecContext(ctx,
-		`INSERT INTO course(course_code, source, name, line, lecture_count, dir, cert_names, cert_pass_lines, price_cents, status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'published')
-		 ON CONFLICT(course_code) DO UPDATE SET source='upstream', name=excluded.name, line=excluded.line, lecture_count=excluded.lecture_count, dir=excluded.dir, cert_names=excluded.cert_names, cert_pass_lines=excluded.cert_pass_lines`,
+		`INSERT INTO course(course_code, source, name, line, lecture_count, dir, cert_names, cert_pass_lines, price_cents, status, published_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'published',1)
+		 ON CONFLICT(course_code) DO UPDATE SET source='upstream', name=excluded.name, line=excluded.line, lecture_count=excluded.lecture_count, dir=excluded.dir, cert_names=excluded.cert_names, cert_pass_lines=excluded.cert_pass_lines, published_version=COALESCE(course.published_version, course.content_version)`,
 		course.ID, "upstream", name, line, course.Lectures, course.Dir, certNames, certPassLines, defaultPriceCents)
 	return err
 }

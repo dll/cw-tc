@@ -149,6 +149,7 @@ func (s *Server) Router() *gin.Engine {
 	admin := v1.Group("/admin", s.staffRequired)
 	admin.POST("/change-password", s.adminChangePassword)
 	admin.GET("/courses", s.adminCourses)
+	admin.GET("/courses/:code/revisions", s.requireAdmin, s.adminCourseRevisions)
 	admin.GET("/orders", s.adminOrders)
 	admin.GET("/refunds", s.adminRefunds)
 	admin.GET("/certs", s.adminCerts)

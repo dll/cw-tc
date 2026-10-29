@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -15,8 +16,9 @@ func ReviewCourse(ctx context.Context, db *sql.DB, in ReviewInput) error {
 		return ErrCourseInput
 	}
 	var status string
+	var contentVersion int
 	if err := db.QueryRowContext(ctx,
-		`SELECT status FROM course WHERE course_code = $1`, in.CourseCode).Scan(&status); err != nil {
+		`SELECT status, content_version FROM course WHERE course_code = $1`, in.CourseCode).Scan(&status, &contentVersion); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrCourseNotFound
 		}
@@ -25,6 +27,8 @@ func ReviewCourse(ctx context.Context, db *sql.DB, in ReviewInput) error {
 	if status != "submitted" {
 		return ErrInvalidTransition
 	}
+	// 审核绑定课程当前内容版本（不信任客户端传入的版本号）。
+	in.ContentVersion = contentVersion
 	if _, err := SubmitReview(ctx, db, in); err != nil {
 		return err
 	}
@@ -45,12 +49,18 @@ func PublishCourse(ctx context.Context, db *sql.DB, courseCode string, adminID i
 	if db == nil || courseCode == "" || adminID <= 0 {
 		return ErrCourseInput
 	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var status, source string
 	var certNames, certLines sql.NullString
 	var majorID sql.NullInt64
-	if err := db.QueryRowContext(ctx,
-		`SELECT status, source, cert_names, cert_pass_lines, major_id FROM course WHERE course_code = $1`, courseCode).
-		Scan(&status, &source, &certNames, &certLines, &majorID); err != nil {
+	var contentVersion int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT status, source, cert_names, cert_pass_lines, major_id, content_version FROM course WHERE course_code = $1`, courseCode).
+		Scan(&status, &source, &certNames, &certLines, &majorID, &contentVersion); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrCourseNotFound
 		}
@@ -68,9 +78,25 @@ func PublishCourse(ctx context.Context, db *sql.DB, courseCode string, adminID i
 		return ErrCertConfigRequired
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.ExecContext(ctx,
-		`UPDATE course SET status='published', updated_at=$1 WHERE course_code=$2`, now, courseCode)
-	return err
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE course SET status='published', published_version=content_version, updated_at=$1 WHERE course_code=$2`,
+		now, courseCode); err != nil {
+		return err
+	}
+	// 每次发布追加改版记录（revision_no 递增，历史不可覆盖）。
+	var revisionNo int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(revision_no),0)+1 FROM course_revision WHERE course_code = $1`, courseCode).
+		Scan(&revisionNo); err != nil {
+		return err
+	}
+	digest := fmt.Sprintf("从 %s 上架到 published（内容版本 v%d）", status, contentVersion)
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO course_revision(course_code, revision_no, content_version, changed_digest, published_at) VALUES($1,$2,$3,$4,$5)`,
+		courseCode, revisionNo, contentVersion, digest, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // UnpublishCourse 管理员下架：published → unpublished。

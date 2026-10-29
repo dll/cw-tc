@@ -31,9 +31,9 @@ func TestAdminCourseManagementListUnpublishAndRepublish(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO major(id,name) VALUES(1,'样例专业')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`INSERT INTO course(course_code,source,name,intro,line,lecture_count,major_id,status,teacher_id,price_cents,cert_names,cert_pass_lines) VALUES
-		('PUB','platform','已上架课程','这是课程简介，用于列表展示','main',12,1,'published',2,5000,'{"L1":"证书"}','{"L1":60}'),
-		('DRAFT','platform','建设中课程','建设中简介','main',3,1,'building',2,0,NULL,NULL)`); err != nil {
+	if _, err := database.Exec(`INSERT INTO course(course_code,source,name,intro,line,lecture_count,major_id,status,teacher_id,price_cents,cert_names,cert_pass_lines,content_version,published_version) VALUES
+		('PUB','platform','已上架课程','这是课程简介，用于列表展示','main',12,1,'published',2,5000,'{"L1":"证书"}','{"L1":60}',2,1),
+		('DRAFT','platform','建设中课程','建设中简介','main',3,1,'building',2,0,NULL,NULL,1,NULL)`); err != nil {
 		t.Fatal(err)
 	}
 	var pubID int64
@@ -62,8 +62,9 @@ func TestAdminCourseManagementListUnpublishAndRepublish(t *testing.T) {
 	list := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses", "", adminToken)
 	if list.Code != http.StatusOK || !containsAll(list.Body.String(),
 		`"intro":"这是课程简介，用于列表展示"`, `"lecture_count":12`,
+		`"content_version":2`, `"published_version":1`, `"has_unpublished_changes":true`,
 		`"stats":{"building":1,"published":1}`, `"total":2`, `"total_lectures":15`) {
-		t.Fatalf("课程列表统计/简介/讲次异常: %d %s", list.Code, list.Body.String())
+		t.Fatalf("课程列表统计/简介/讲次/版本异常: %d %s", list.Code, list.Body.String())
 	}
 	filtered := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses?status=building&q=建设中", "", adminToken)
 	if filtered.Code != http.StatusOK || !containsAll(filtered.Body.String(), `"course_code":"DRAFT"`) || containsAll(filtered.Body.String(), `"course_code":"PUB"`) {
@@ -123,6 +124,19 @@ func TestAdminCourseManagementListUnpublishAndRepublish(t *testing.T) {
 	_ = database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='course.publish'`).Scan(&audits)
 	if audits != 1 {
 		t.Fatalf("重新上架应写审计 1 条，实际 %d", audits)
+	}
+	var publishedVersion, revisionCount int
+	_ = database.QueryRow(`SELECT published_version FROM course WHERE course_code='PUB'`).Scan(&publishedVersion)
+	if publishedVersion != 2 {
+		t.Fatalf("重新上架后 published_version=%d，期望 2", publishedVersion)
+	}
+	_ = database.QueryRow(`SELECT COUNT(*) FROM course_revision WHERE course_code='PUB'`).Scan(&revisionCount)
+	if revisionCount != 1 {
+		t.Fatalf("重新上架应新增 1 条版本记录，实际 %d", revisionCount)
+	}
+	rev := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/PUB/revisions", "", adminToken)
+	if rev.Code != http.StatusOK || !containsAll(rev.Body.String(), `"revision_no":1`, `"content_version":2`) {
+		t.Fatalf("版本历史异常: %d %s", rev.Code, rev.Body.String())
 	}
 	// 专业与免费讲次（管理员 + 审计）
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/major", `{"major_id":1}`, adminToken); got.Code != http.StatusOK {

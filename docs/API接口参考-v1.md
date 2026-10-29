@@ -310,7 +310,8 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| GET | `/admin/courses` | 管理员 | 全部课程（含草稿 / 待审 / 已下架）；支持 `status` / `source` / `q` 筛选；每项带 `intro` / `lecture_count` / 更新时间等；响应含 `stats`（各状态数量）与 `total_lectures` |
+| GET | `/admin/courses` | 管理员 | 全部课程（含草稿 / 待审 / 已下架）；支持 `status` / `source` / `q` 筛选；每项带 `intro` / `lecture_count` / `content_version` / `published_version` / `has_unpublished_changes`；响应含 `stats` 与 `total_lectures` |
+| GET | `/admin/courses/{code}/revisions` | 管理员 | **课程版本历史**：`revision_no` / `content_version` / 变更摘要 / 发布时间（每次上架或重新上架追加一条） |
 | PATCH | `/admin/courses/{code}` | 管理员 | **课程设置面板**（价格、专业、上架状态、试学讲次、AI 开关与额度…） |
 | GET | `/admin/reviews` | 管理员 | **审核待办队列**（含等待天数，**超 SLA 高亮**，§J-2.2） |
 | GET | `/admin/courses/{code}/review` | 管理员 | **审核详情**：内容快照 + **六维自动初值**（材料完整性）+ 历史轮次 |
