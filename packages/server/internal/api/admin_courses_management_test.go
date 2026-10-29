@@ -108,6 +108,66 @@ func TestAdminCourseManagementListUnpublishAndRepublish(t *testing.T) {
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/quality", `{"quality_score":90,"confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
 		t.Fatalf("缺事由应 400: %d", got.Code)
 	}
+	draftQuality := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/DRAFT/quality", "", adminToken)
+	if draftQuality.Code != http.StatusOK || !containsAll(draftQuality.Body.String(), `"quality_score":null`, `"ai_level":null`, `"latest_review":null`) {
+		t.Fatalf("未审核课程质量面板异常: %d %s", draftQuality.Code, draftQuality.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/NOPE/quality", "", adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在课程质量面板应 404: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/quality", `{"reason":"x","confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("未填质量分/AI 等级应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/quality", `{`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("非法 JSON 应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/DRAFT/quality", `{"ai_level":"LC","reason":"补齐等级","confirm":true}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("仅覆写 AI 等级失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/NOPE/quality", `{"quality_score":90,"reason":"x","confirm":true}`, adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在课程覆写应 404: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/DRAFT/quality", `{"quality_score":66,"reason":"仅质量分","confirm":true}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("仅覆写质量分失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/DRAFT/revisions", "", adminToken); got.Code != http.StatusOK || !containsAll(got.Body.String(), `"items":[]`) {
+		t.Fatalf("无版本记录应返回空列表: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/major", `{`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("专业非法 JSON 应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/NOPE/major", `{"major_id":1}`, adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在课程设置专业应 404: %d", got.Code)
+	}
+
+	// 审核与改价边界（补充既有管理动作覆盖）
+	if _, err := database.Exec(`INSERT INTO course(course_code,source,name,line,lecture_count,major_id,status,teacher_id,price_cents,cert_names,cert_pass_lines,content_version) VALUES('SUB','platform','待审课程','main',0,1,'submitted',2,0,'{"L1":"证书"}','{"L1":60}',1)`); err != nil {
+		t.Fatal(err)
+	}
+	reviewBody := `{"verdict":"rejected","content_version":1,"score_material":10,"score_objective":10,"score_case":10,"score_lesson_plan":10,"score_slides":10,"score_lab":10,"issue_list":"[{\"dim\":\"material\",\"issue\":\"缺资源\"}]"}`
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/SUB/review", reviewBody, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("驳回审核失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/SUB/review", reviewBody, adminToken); got.Code != http.StatusConflict {
+		t.Fatalf("重复审核非 submitted 课程应 409: %d", got.Code)
+	}
+	_ = database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='course.review'`).Scan(&qualityAudits)
+	if qualityAudits != 1 {
+		t.Fatalf("审核应写审计 1 条，实际 %d", qualityAudits)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/price", `{"price_cents":-1,"confirm":true}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("负数价格应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/price", `{"price_cents":6000}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("未确认改价应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/price", `{"price_cents":6000,"confirm":true}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("改价失败: %d %s", got.Code, got.Body.String())
+	}
+	_ = database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='course.price_change'`).Scan(&qualityAudits)
+	if qualityAudits != 1 {
+		t.Fatalf("改价应写审计 1 条，实际 %d", qualityAudits)
+	}
 
 	// 教师不能下架/上架
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/PUB/unpublish", `{"reason":"测试","confirm":true}`, teacherToken); got.Code != http.StatusForbidden {
