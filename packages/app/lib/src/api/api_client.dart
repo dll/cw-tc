@@ -9,6 +9,7 @@ import '../models/exam.dart';
 import '../models/lecture.dart';
 import '../models/lecture_resource.dart';
 import '../models/major.dart';
+import '../models/operation_slot.dart';
 import '../models/verify_result.dart';
 
 /// 后端 API 客户端（M0 骨架）。
@@ -242,6 +243,19 @@ class ApiClient {
     final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/delete');
     _ensureSuccess(res.data);
     await logout();
+  }
+
+  /// 运营位（`GET /api/v1/public/operations`，公开只读）。
+  Future<List<OperationSlot>> operations(String position) async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/public/operations',
+        queryParameters: <String, dynamic>{'position': position});
+    _ensureSuccess(res.data);
+    final items = (res.data?['data'] as Map<String, dynamic>?)?['items']
+            as List<dynamic>? ??
+        const <dynamic>[];
+    return items
+        .map((e) => OperationSlot.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   /// 课程广场列表（`GET /api/v1/courses`，公开只读）。

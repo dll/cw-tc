@@ -10,6 +10,7 @@ import Broadcast from '@/pages/Broadcast.vue'
 import Staff from '@/pages/Staff.vue'
 import Courses from '@/pages/Courses.vue'
 import ContentRequests from '@/pages/ContentRequests.vue'
+import Operations from '@/pages/Operations.vue'
 import Majors from '@/pages/Majors.vue'
 import TeacherCourses from '@/pages/TeacherCourses.vue'
 import TeacherGrade from '@/pages/TeacherGrade.vue'
@@ -27,6 +28,7 @@ const routes: RouteRecordRaw[] = [
   // —— 管理端（角色：管理员）——
   { path: '/admin/courses', component: Courses },
   { path: '/admin/content-requests', component: ContentRequests },
+  { path: '/admin/operations', component: Operations },
   { path: '/admin/majors', component: Majors },
   { path: '/admin/orders', component: Orders },
   { path: '/admin/refunds', component: Refunds },
