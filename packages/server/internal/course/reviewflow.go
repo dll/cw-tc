@@ -39,23 +39,29 @@ func ReviewCourse(ctx context.Context, db *sql.DB, in ReviewInput) error {
 	return err
 }
 
-// PublishCourse 管理员上架：approved → published（platform 课上架前 cert_names/cert_pass_lines 必填）。
+// PublishCourse 管理员上架/重新上架：approved 或 unpublished → published。
+// 上架前三项配置必须齐备：专业（本函数校验）、价格（默认值可改）、证书配置（platform 必填）。
 func PublishCourse(ctx context.Context, db *sql.DB, courseCode string, adminID int64) error {
 	if db == nil || courseCode == "" || adminID <= 0 {
 		return ErrCourseInput
 	}
 	var status, source string
 	var certNames, certLines sql.NullString
+	var majorID sql.NullInt64
 	if err := db.QueryRowContext(ctx,
-		`SELECT status, source, cert_names, cert_pass_lines FROM course WHERE course_code = $1`, courseCode).
-		Scan(&status, &source, &certNames, &certLines); err != nil {
+		`SELECT status, source, cert_names, cert_pass_lines, major_id FROM course WHERE course_code = $1`, courseCode).
+		Scan(&status, &source, &certNames, &certLines, &majorID); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrCourseNotFound
 		}
 		return err
 	}
-	if status != "approved" {
+	// approved → published（首次上架）；unpublished → published（重新上架）
+	if status != "approved" && status != "unpublished" {
 		return ErrInvalidTransition
+	}
+	if !majorID.Valid {
+		return ErrMajorRequired
 	}
 	// platform 课上架前必填（上游课已有冻结值）
 	if source == "platform" && (!certNames.Valid || certNames.String == "" || !certLines.Valid || certLines.String == "") {
@@ -64,5 +70,28 @@ func PublishCourse(ctx context.Context, db *sql.DB, courseCode string, adminID i
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.ExecContext(ctx,
 		`UPDATE course SET status='published', updated_at=$1 WHERE course_code=$2`, now, courseCode)
+	return err
+}
+
+// UnpublishCourse 管理员下架：published → unpublished。
+// 已购学员的权益与证书不受影响（仍可学可测），不在此处撤销。
+func UnpublishCourse(ctx context.Context, db *sql.DB, courseCode string, adminID int64) error {
+	if db == nil || courseCode == "" || adminID <= 0 {
+		return ErrCourseInput
+	}
+	var status string
+	if err := db.QueryRowContext(ctx,
+		`SELECT status FROM course WHERE course_code = $1`, courseCode).Scan(&status); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrCourseNotFound
+		}
+		return err
+	}
+	if status != "published" {
+		return ErrInvalidTransition
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := db.ExecContext(ctx,
+		`UPDATE course SET status='unpublished', updated_at=$1 WHERE course_code=$2`, now, courseCode)
 	return err
 }

@@ -5,6 +5,7 @@ import {
   listAdminCourses,
   reviewCourse,
   publishCourse,
+  unpublishCourse,
   setPrice,
   setCourseMajor,
   setCourseFreePreview,
@@ -16,20 +17,45 @@ import {
 const rows = ref<AdminCourse[]>([])
 const loading = ref(false)
 const majors = ref<MajorItem[]>([])
+const stats = ref<Record<string, number>>({})
+const totalCourses = ref(0)
+const totalLectures = ref(0)
+const filter = ref({ status: '', source: '', q: '' })
 
 const statusLabel: Record<string, string> = {
-  proposed: '立项', building: '建设中', submitted: '待审', rejected: '已驳回',
+  proposed: '立项', building: '建设中', submitted: '待审核', rejected: '已驳回',
   approved: '待上架', published: '已上架', unpublished: '已下架',
+}
+const statusOptions = Object.entries(statusLabel).map(([value, label]) => ({ value, label }))
+
+function statCount(key: string): number {
+  return stats.value[key] ?? 0
 }
 
 async function load() {
   loading.value = true
   try {
-    rows.value = await listAdminCourses()
+    const result = await listAdminCourses({
+      status: filter.value.status || undefined,
+      source: filter.value.source || undefined,
+      q: filter.value.q.trim() || undefined,
+    })
+    rows.value = result.items
+    stats.value = result.stats
+    totalCourses.value = result.total
+    totalLectures.value = result.total_lectures
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '课程列表加载失败')
   } finally {
     loading.value = false
   }
 }
+
+function resetFilters() {
+  filter.value = { status: '', source: '', q: '' }
+  load()
+}
+
 async function loadMajors() {
   majors.value = await listMajors().catch(() => [])
 }
@@ -38,7 +64,7 @@ onMounted(() => {
   loadMajors()
 })
 
-// 设置专业分类对话框
+// —— 专业分类对话框 ——
 const majorVisible = ref(false)
 const majorTarget = ref<AdminCourse | null>(null)
 const majorForm = ref<number | null>(null)
@@ -54,15 +80,15 @@ async function submitMajor() {
   if (!target || majorForm.value == null) return
   try {
     await setCourseMajor(target.course_code, majorForm.value)
-    ElMessage.success('已设置专业分类')
+    ElMessage.success('已更新专业分类')
     majorVisible.value = false
     load()
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '设置失败')
+    ElMessage.error(e instanceof Error ? e.message : '更新失败')
   }
 }
 
-// 设置免费预览讲次对话框
+// —— 免费试学讲次对话框 ——
 const freeVisible = ref(false)
 const freeTarget = ref<AdminCourse | null>(null)
 const freeForm = ref(0)
@@ -78,39 +104,73 @@ async function submitFree() {
   if (!target) return
   try {
     await setCourseFreePreview(target.course_code, freeForm.value)
-    ElMessage.success('已设置免费预览讲次')
+    ElMessage.success('已更新免费试学讲次')
     freeVisible.value = false
     load()
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '设置失败')
+    ElMessage.error(e instanceof Error ? e.message : '更新失败')
   }
 }
 
 async function onPublish(row: AdminCourse) {
-  await ElMessageBox.confirm(`确认上架「${row.name}」？`, '上架确认', { type: 'warning' })
+  const action = row.status === 'unpublished' ? '重新上架' : '上架'
   try {
+    await ElMessageBox.confirm(
+      `确认${action}「${row.name}」？上架后学员可见并可购买。`,
+      `${action}确认`,
+      { type: 'warning' },
+    )
     await publishCourse(row.course_code)
-    ElMessage.success('已上架')
+    ElMessage.success(`已${action}`)
     load()
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '上架失败')
+    if (e instanceof Error && e.message !== 'cancel') {
+      ElMessage.error(e.message)
+    }
+  }
+}
+
+async function onUnpublish(row: AdminCourse) {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '下架必须填写事由（会写审计）。下架后课程从课程广场隐藏；已购学员仍可学习与测评。',
+      `下架「${row.name}」`,
+      {
+        confirmButtonText: '确认下架',
+        cancelButtonText: '取消',
+        inputValidator: (v: string) => (v && v.trim() ? true : '事由必填'),
+      },
+    )
+    await ElMessageBox.confirm('确认下架该课程？此操作会立即对未购买学员隐藏。', '二次确认', {
+      type: 'warning',
+    })
+    await unpublishCourse(row.course_code, value.trim())
+    ElMessage.success('已下架')
+    load()
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') {
+      ElMessage.error(e.message)
+    }
   }
 }
 
 async function onPrice(row: AdminCourse) {
-  const { value } = await ElMessageBox.prompt('输入新价格（分）', `改价 · ${row.name}`, {
-    inputValue: String(row.price_cents),
-    inputValidator: (v) => (/^\d+$/.test(v) ? true : '请输入非负整数（分）'),
-  })
   try {
+    const { value } = await ElMessageBox.prompt('请输入新价格（分）', `改价 · ${row.name}`, {
+      inputValue: String(row.price_cents),
+      inputValidator: (v) => (/^\d+$/.test(v) ? true : '请输入非负整数（分）'),
+    })
     await setPrice(row.course_code, Number(value), true)
-    ElMessage.success('已改价（写审计）')
+    ElMessage.success('已改价（写入审计）')
     load()
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '改价失败')
+    if (e instanceof Error && e.message !== 'cancel') {
+      ElMessage.error(e.message)
+    }
   }
 }
 
+// —— 六维审核对话框 ——
 const reviewVisible = ref(false)
 const reviewTarget = ref<AdminCourse | null>(null)
 const reviewForm = ref({
@@ -156,12 +216,78 @@ async function submitReview() {
 
 <template>
   <el-card>
-    <template #header>课程管理（含未上架/待审）</template>
+    <template #header>课程管理（含草稿 / 待审 / 已下架；上架与下架都会写审计）</template>
+
+    <el-row :gutter="12" style="margin-bottom: 14px">
+      <el-col :span="4">
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-label">全部课程</div>
+          <div class="stat-value">{{ totalCourses }}</div>
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-label">已上架</div>
+          <div class="stat-value">{{ statCount('published') }}</div>
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-label">已下架</div>
+          <div class="stat-value">{{ statCount('unpublished') }}</div>
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-label">待审核</div>
+          <div class="stat-value">{{ statCount('submitted') }}</div>
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-label">待上架</div>
+          <div class="stat-value">{{ statCount('approved') }}</div>
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-label">总讲次</div>
+          <div class="stat-value">{{ totalLectures }}</div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-form :inline="true" style="margin-bottom: 10px">
+      <el-form-item label="状态">
+        <el-select v-model="filter.status" placeholder="全部" clearable style="width: 130px" @change="load">
+          <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="来源">
+        <el-select v-model="filter.source" placeholder="全部" clearable style="width: 120px" @change="load">
+          <el-option label="上游" value="upstream" />
+          <el-option label="平台" value="platform" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="关键词">
+        <el-input v-model="filter.q" placeholder="课程码 / 名称 / 简介" clearable style="width: 240px" @keyup.enter="load" />
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="load">查询</el-button>
+        <el-button @click="resetFilters">重置</el-button>
+      </el-form-item>
+    </el-form>
+
     <el-table v-loading="loading" :data="rows" stripe>
       <el-table-column prop="course_code" label="课程码" width="120" />
-      <el-table-column prop="name" label="课程名" />
+      <el-table-column label="课程" min-width="220">
+        <template #default="{ row }">
+          <div>{{ row.name }}</div>
+          <div v-if="row.intro" class="course-intro">{{ row.intro }}</div>
+        </template>
+      </el-table-column>
       <el-table-column prop="source" label="来源" width="90" />
-      <el-table-column label="专业分类" width="140">
+      <el-table-column label="专业分类" width="130">
         <template #default="{ row }">{{ row.major_name ?? '未分类' }}</template>
       </el-table-column>
       <el-table-column label="状态" width="100">
@@ -170,15 +296,27 @@ async function submitReview() {
       <el-table-column label="价格" width="90">
         <template #default="{ row }">¥{{ (row.price_cents / 100).toFixed(2) }}</template>
       </el-table-column>
+      <el-table-column label="讲次" width="80">
+        <template #default="{ row }">{{ row.lecture_count }} 讲</template>
+      </el-table-column>
       <el-table-column label="免费讲次" width="90">
         <template #default="{ row }">{{ row.free_preview_lectures ?? 0 }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="360">
+      <el-table-column label="更新时间" width="170">
+        <template #default="{ row }">{{ row.updated_at || row.created_at }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="430">
         <template #default="{ row }">
           <el-button v-if="row.status === 'submitted'" size="small" type="primary" @click="openReview(row)">审核</el-button>
-          <el-button v-if="row.status === 'approved'" size="small" type="success" @click="onPublish(row)">上架</el-button>
+          <el-button
+            v-if="row.status === 'approved' || row.status === 'unpublished'"
+            size="small"
+            type="success"
+            @click="onPublish(row)"
+          >{{ row.status === 'unpublished' ? '重新上架' : '上架' }}</el-button>
+          <el-button v-if="row.status === 'published'" size="small" type="danger" plain @click="onUnpublish(row)">下架</el-button>
           <el-button v-if="row.status === 'published'" size="small" @click="onPrice(row)">改价</el-button>
-          <el-button size="small" @click="openMajor(row)">设置专业</el-button>
+          <el-button size="small" @click="openMajor(row)">专业</el-button>
           <el-button size="small" @click="openFree(row)">免费讲次</el-button>
         </template>
       </el-table-column>
@@ -193,14 +331,14 @@ async function submitReview() {
           </el-radio-group>
         </el-form-item>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
-          <el-form-item label="材料完整性(0-25)"><el-input-number v-model="reviewForm.score_material" :min="0" :max="25" /></el-form-item>
-          <el-form-item label="目标合规(0-15)"><el-input-number v-model="reviewForm.score_objective" :min="0" :max="15" /></el-form-item>
+          <el-form-item label="内容与结构(0-25)"><el-input-number v-model="reviewForm.score_material" :min="0" :max="25" /></el-form-item>
+          <el-form-item label="目标契合(0-15)"><el-input-number v-model="reviewForm.score_objective" :min="0" :max="15" /></el-form-item>
           <el-form-item label="案例贯穿(0-15)"><el-input-number v-model="reviewForm.score_case" :min="0" :max="15" /></el-form-item>
           <el-form-item label="教案(0-15)"><el-input-number v-model="reviewForm.score_lesson_plan" :min="0" :max="15" /></el-form-item>
           <el-form-item label="课件(0-15)"><el-input-number v-model="reviewForm.score_slides" :min="0" :max="15" /></el-form-item>
           <el-form-item label="实验(0-15)"><el-input-number v-model="reviewForm.score_lab" :min="0" :max="15" /></el-form-item>
         </div>
-        <el-form-item v-if="reviewForm.verdict === 'rejected'" label="问题清单（驳回必填）">
+        <el-form-item v-if="reviewForm.verdict === 'rejected'" label="问题清单（必填）">
           <el-input v-model="reviewForm.issue_list" type="textarea" :rows="3" placeholder='[{"dim":"material","issue":"..."}]' />
         </el-form-item>
       </el-form>
@@ -210,7 +348,7 @@ async function submitReview() {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="majorVisible" title="设置专业分类" width="400px">
+    <el-dialog v-model="majorVisible" title="更新专业分类" width="400px">
       <el-form label-position="top">
         <el-form-item label="专业分类">
           <el-select v-model="majorForm" placeholder="请选择专业分类" style="width: 100%">
@@ -224,9 +362,9 @@ async function submitReview() {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="freeVisible" title="设置免费预览讲次" width="400px">
+    <el-dialog v-model="freeVisible" title="设置免费试学讲次" width="400px">
       <el-form label-position="top">
-        <el-form-item label="免费预览讲次数（前 N 讲免购可学，0 = 无）">
+        <el-form-item label="免费试学讲次数（前 N 讲对未购学员开放；0 = 关闭）">
           <el-input-number v-model="freeForm" :min="0" :max="999" />
         </el-form-item>
       </el-form>
@@ -237,3 +375,27 @@ async function submitReview() {
     </el-dialog>
   </el-card>
 </template>
+
+<style scoped>
+.stat-card {
+  text-align: center;
+}
+.stat-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.course-intro {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+</style>

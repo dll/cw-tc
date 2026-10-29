@@ -211,25 +211,42 @@ export interface AdminCourse {
   course_code: string
   source: string
   name: string
+  intro: string | null
   line: string
+  lecture_count: number
   status: string
   price_cents: number
   teacher_id: number | null
   created_at: string
+  updated_at: string
   major_id: number | null
   major_name: string | null
   free_preview_lectures: number
-  intro: string | null
+  sort_weight: number
+  reviewed_at: string | null
+  reject_reason: string | null
+  ai_enabled: boolean
+  kb_status: string
 }
-export async function listAdminCourses(): Promise<AdminCourse[]> {
-  const r = await unwrap<{ items: AdminCourse[] }>(http.get('/admin/courses'))
-  return r.items
+export interface AdminCourseList {
+  items: AdminCourse[]
+  stats: Record<string, number>
+  total: number
+  total_lectures: number
+}
+export async function listAdminCourses(
+  params: { status?: string; source?: string; q?: string } = {},
+): Promise<AdminCourseList> {
+  return unwrap<AdminCourseList>(http.get('/admin/courses', { params }))
 }
 export async function reviewCourse(code: string, input: Record<string, unknown>): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/review`, input))
 }
 export async function publishCourse(code: string): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/publish`, {}))
+}
+export async function unpublishCourse(code: string, reason: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/courses/${code}/unpublish`, { reason, confirm: true }))
 }
 export async function setPrice(code: string, priceCents: number, confirm: boolean): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/price`, { price_cents: priceCents, confirm }))

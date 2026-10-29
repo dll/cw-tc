@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -100,16 +101,61 @@ func (s *Server) adminReviewCourse(c *gin.Context) {
 		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: err.Error()})
 		return
 	}
+	after, _ := json.Marshal(map[string]any{
+		"verdict":         req.Verdict,
+		"content_version": req.ContentVersion,
+		"total_score":     req.ScoreMaterial + req.ScoreObjective + req.ScoreCase + req.ScoreLessonPlan + req.ScoreSlides + req.ScoreLab,
+	})
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "course.review", TargetType: "course", TargetID: c.Param("code"),
+		After: string(after), IP: c.ClientIP(),
+	})
 	c.JSON(http.StatusOK, envelope{Code: 0})
 }
 
-// adminPublishCourse POST /admin/courses/:code/publish —— 上架。
+// adminPublishCourse POST /admin/courses/:code/publish —— 上架 / 重新上架。
 func (s *Server) adminPublishCourse(c *gin.Context) {
 	admin := c.MustGet(staffContextKey).(staff.Staff)
+	var from string
+	_ = s.dbConn.QueryRowContext(c.Request.Context(), `SELECT status FROM course WHERE course_code = $1`, c.Param("code")).Scan(&from)
 	if err := course.PublishCourse(c.Request.Context(), s.dbConn, c.Param("code"), admin.ID); err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: err.Error()})
 		return
 	}
+	after, _ := json.Marshal(map[string]string{"from": from, "to": "published"})
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "course.publish", TargetType: "course", TargetID: c.Param("code"),
+		After: string(after), IP: c.ClientIP(),
+	})
+	c.JSON(http.StatusOK, envelope{Code: 0})
+}
+
+// adminUnpublishCourse POST /admin/courses/:code/unpublish —— 下架（二次确认 + 事由 + 审计）。
+// 已购学员权益与证书不受影响，仍可继续学习与测评。
+func (s *Server) adminUnpublishCourse(c *gin.Context) {
+	var req struct {
+		Reason  string `json:"reason"`
+		Confirm bool   `json:"confirm"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || !req.Confirm || req.Reason == "" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "下架事由必填且需二次确认"})
+		return
+	}
+	admin := c.MustGet(staffContextKey).(staff.Staff)
+	if err := course.UnpublishCourse(c.Request.Context(), s.dbConn, c.Param("code"), admin.ID); err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: err.Error()})
+		return
+	}
+	after, _ := json.Marshal(map[string]string{
+		"from": "published", "to": "unpublished", "reason": req.Reason,
+	})
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "course.unpublish", TargetType: "course", TargetID: c.Param("code"),
+		After: string(after), IP: c.ClientIP(),
+	})
 	c.JSON(http.StatusOK, envelope{Code: 0})
 }
 

@@ -310,13 +310,13 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| GET | `/admin/courses` | 管理员 | 全部课程（含未上架 / 待审） |
+| GET | `/admin/courses` | 管理员 | 全部课程（含草稿 / 待审 / 已下架）；支持 `status` / `source` / `q` 筛选；每项带 `intro` / `lecture_count` / 更新时间等；响应含 `stats`（各状态数量）与 `total_lectures` |
 | PATCH | `/admin/courses/{code}` | 管理员 | **课程设置面板**（价格、专业、上架状态、试学讲次、AI 开关与额度…） |
 | GET | `/admin/reviews` | 管理员 | **审核待办队列**（含等待天数，**超 SLA 高亮**，§J-2.2） |
 | GET | `/admin/courses/{code}/review` | 管理员 | **审核详情**：内容快照 + **六维自动初值**（材料完整性）+ 历史轮次 |
 | POST | `/admin/courses/{code}/review` | 管理员（**特色标需 super**） | **提交审核结论**：**六维打分 + 逐维评语**；`verdict=rejected` **必须带 `issue_list`**（§J-2.3） |
-| POST | `/admin/courses/{code}/publish` | 管理员 | **上架三联动**：`publish` / `notify`（广播）/ `promote`（宣传位）**三个开关独立**，§J-2.4 |
-| POST | `/admin/courses/{code}/unpublish` | 管理员 | 下架（**宣传位自动移除**；已购学员不受影响） |
+| POST | `/admin/courses/{code}/publish` | 管理员 | 上架 / 重新上架（`approved` 或 `unpublished` → `published`，写审计）；上架前三项配置须齐备（价格 / 专业 / 证书），§J-2.4 |
+| POST | `/admin/courses/{code}/unpublish` | 管理员 | 下架：须带 `reason` + `confirm:true`，写审计；未购学员不可见，**已购学员仍可学习与测评**（不撤销权益/证书） |
 | GET · POST | `/admin/courses/{code}/quality` | 管理员 | **质量分与 AI 化等级**查询 / 核定覆写（写审计） |
 | GET | `/admin/courses/{code}/checkup` | 管理员 | **内容体检**：九件套齐备度 + 交错序列校验 + 题库一致性（§B-9 / §B-10） |
 | POST | `/admin/courses/{code}/kb/rebuild` | 管理员 | 触发知识库重建 |

@@ -30,9 +30,10 @@ func (s *Server) listLectureResources(c *gin.Context) {
 	var courseID, lectureID int64
 	var isPreview bool
 	var freePreviewLectures int
+	var status string
 	err = s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT c.id, l.id, l.is_preview, c.free_preview_lectures FROM course c JOIN lecture l ON l.course_id = c.id WHERE c.course_code = $1 AND c.status = 'published' AND l.no = $2`,
-		c.Param("courseCode"), no).Scan(&courseID, &lectureID, &isPreview, &freePreviewLectures)
+		`SELECT c.id, l.id, l.is_preview, c.free_preview_lectures, c.status FROM course c JOIN lecture l ON l.course_id = c.id WHERE c.course_code = $1 AND c.deleted_at IS NULL AND l.no = $2`,
+		c.Param("courseCode"), no).Scan(&courseID, &lectureID, &isPreview, &freePreviewLectures, &status)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "讲次不存在"})
 		return
@@ -41,9 +42,15 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		return
 	}
 	// 免费讲次 = 上游试学标记 OR 讲次号 <= 平台配置的免费预览讲次数。
-	isPreview = isPreview || no <= freePreviewLectures
+	// 下架课程不再对外提供试学；已购学员仍可继续访问（PRD B-8）。
+	isPreview = status == "published" && (isPreview || no <= freePreviewLectures)
 	student := c.MustGet(studentContextKey).(identity.Student)
-	if !s.checkResourceAccess(c, student.ID, courseID, isPreview) {
+	if status != "published" {
+		if !s.hasActiveEntitlement(c.Request.Context(), student.ID, courseID) {
+			c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+			return
+		}
+	} else if !s.checkResourceAccess(c, student.ID, courseID, isPreview) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
@@ -125,8 +132,9 @@ func (s *Server) downloadAsset(c *gin.Context) {
 	var courseID int64
 	var isPreview bool
 	var lectureNo, previewCount int
+	var status string
 	err = s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT a.kind, l.course_id, l.no, l.is_preview, co.free_preview_lectures FROM asset a JOIN lecture l ON l.id = a.lecture_id JOIN course co ON co.id = l.course_id WHERE a.storage_key = $1`, key).Scan(&kind, &courseID, &lectureNo, &isPreview, &previewCount)
+		`SELECT a.kind, l.course_id, l.no, l.is_preview, co.free_preview_lectures, co.status FROM asset a JOIN lecture l ON l.id = a.lecture_id JOIN course co ON co.id = l.course_id WHERE a.storage_key = $1 AND co.deleted_at IS NULL`, key).Scan(&kind, &courseID, &lectureNo, &isPreview, &previewCount, &status)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不存在"})
 		return
@@ -135,7 +143,12 @@ func (s *Server) downloadAsset(c *gin.Context) {
 		return
 	}
 	student := c.MustGet(studentContextKey).(identity.Student)
-	if !s.checkResourceAccess(c, student.ID, courseID, isPreview || lectureNo <= previewCount) {
+	if status != "published" {
+		if !s.hasActiveEntitlement(c.Request.Context(), student.ID, courseID) {
+			c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+			return
+		}
+	} else if !s.checkResourceAccess(c, student.ID, courseID, isPreview || lectureNo <= previewCount) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
@@ -161,17 +174,23 @@ func (s *Server) streamSignedMedia(c *gin.Context) {
 	var courseID int64
 	var lectureNo, previewCount int
 	var isPreview bool
+	var status string
 	err := s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT a.kind, l.course_id, l.no, l.is_preview, co.free_preview_lectures
+		`SELECT a.kind, l.course_id, l.no, l.is_preview, co.free_preview_lectures, co.status
 		 FROM asset a JOIN lecture l ON l.id = a.lecture_id JOIN course co ON co.id = l.course_id
 		 JOIN student st ON st.id = $2 AND st.status = 'active'
-		 WHERE a.storage_key = $1 AND co.status = 'published'`, key, studentID,
-	).Scan(&kind, &courseID, &lectureNo, &isPreview, &previewCount)
+		 WHERE a.storage_key = $1 AND co.deleted_at IS NULL`, key, studentID,
+	).Scan(&kind, &courseID, &lectureNo, &isPreview, &previewCount, &status)
 	if err != nil || (kind != "video" && kind != "audio") {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不存在"})
 		return
 	}
-	if !s.checkResourceAccess(c, studentID, courseID, isPreview || lectureNo <= previewCount) {
+	if status != "published" {
+		if !s.hasActiveEntitlement(c.Request.Context(), studentID, courseID) {
+			c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+			return
+		}
+	} else if !s.checkResourceAccess(c, studentID, courseID, isPreview || lectureNo <= previewCount) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
@@ -205,17 +224,23 @@ func (s *Server) streamInlineAsset(c *gin.Context) {
 	var lectureID, courseID int64
 	var lectureNo, previewCount int
 	var isPreview bool
+	var status string
 	err := s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT a.storage_key, l.id, l.course_id, l.no, l.is_preview, co.free_preview_lectures
+		`SELECT a.storage_key, l.id, l.course_id, l.no, l.is_preview, co.free_preview_lectures, co.status
 		 FROM asset a JOIN lecture l ON l.id = a.lecture_id JOIN course co ON co.id = l.course_id
 		 JOIN student st ON st.id = $2 AND st.status = 'active'
-		 WHERE a.id = $1 AND a.kind = 'html' AND co.status = 'published'`, assetID, studentID,
-	).Scan(&htmlKey, &lectureID, &courseID, &lectureNo, &isPreview, &previewCount)
+		 WHERE a.id = $1 AND a.kind = 'html' AND co.deleted_at IS NULL`, assetID, studentID,
+	).Scan(&htmlKey, &lectureID, &courseID, &lectureNo, &isPreview, &previewCount, &status)
 	if err != nil {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源不存在"})
 		return
 	}
-	if !s.checkResourceAccess(c, studentID, courseID, isPreview || lectureNo <= previewCount) {
+	if status != "published" {
+		if !s.hasActiveEntitlement(c.Request.Context(), studentID, courseID) {
+			c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+			return
+		}
+	} else if !s.checkResourceAccess(c, studentID, courseID, isPreview || lectureNo <= previewCount) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
@@ -294,8 +319,13 @@ func (s *Server) checkResourceAccess(c *gin.Context, studentID, courseID int64, 
 		`SELECT price_cents FROM course WHERE id = $1`, courseID).Scan(&priceCents); err == nil && priceCents == 0 {
 		return true
 	}
+	return s.hasActiveEntitlement(c.Request.Context(), studentID, courseID)
+}
+
+// hasActiveEntitlement 判断学员是否已购/被授权该课程（未撤销即有效）。
+func (s *Server) hasActiveEntitlement(ctx context.Context, studentID, courseID int64) bool {
 	var n int
-	if err := s.dbConn.QueryRowContext(c.Request.Context(),
+	if err := s.dbConn.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM entitlement WHERE student_id = $1 AND course_id = $2 AND revoked_at IS NULL`,
 		studentID, courseID).Scan(&n); err != nil {
 		return false
