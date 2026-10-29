@@ -13,6 +13,9 @@ import {
   listCourseRevisions,
   getCourseQuality,
   setCourseQuality,
+  bulkPublishCourses,
+  bulkUnpublishCourses,
+  type BulkCourseResult,
   type AdminCourse,
   type CourseRevision,
   type CourseQuality,
@@ -20,6 +23,8 @@ import {
 } from '@/api/client'
 
 const rows = ref<AdminCourse[]>([])
+const selected = ref<AdminCourse[]>([])
+const tableRef = ref()
 const loading = ref(false)
 const majors = ref<MajorItem[]>([])
 const stats = ref<Record<string, number>>({})
@@ -116,6 +121,8 @@ async function load() {
     stats.value = result.stats
     totalCourses.value = result.total
     totalLectures.value = result.total_lectures
+    selected.value = []
+    tableRef.value?.clearSelection?.()
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '课程列表加载失败')
   } finally {
@@ -126,6 +133,50 @@ async function load() {
 function resetFilters() {
   filter.value = { status: '', source: '', q: '' }
   load()
+}
+
+function onSelectionChange(items: AdminCourse[]) {
+  selected.value = items
+}
+
+function failureText(result: BulkCourseResult): string {
+  if (!result.failed.length) return ''
+  return '\n失败：\n' + result.failed.map((f) => `${f.course_code}：${f.reason}`).join('\n')
+}
+
+async function onBulkPublish() {
+  const codes = selected.value.map((row) => row.course_code)
+  if (!codes.length) return
+  try {
+    await ElMessageBox.confirm(`确认批量上架 ${codes.length} 门课程？`, '批量上架', { type: 'warning' })
+    const result = await bulkPublishCourses(codes)
+    ElMessageBox.alert(`成功 ${result.published ?? 0} 门${failureText(result)}`, '批量上架结果')
+    load()
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessage.error(e.message)
+  }
+}
+
+async function onBulkUnpublish() {
+  const codes = selected.value.map((row) => row.course_code)
+  if (!codes.length) return
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '批量下架必须填写事由（会写审计）。已购学员仍可学习与测评。',
+      '批量下架',
+      {
+        confirmButtonText: '确认下架',
+        cancelButtonText: '取消',
+        inputValidator: (v: string) => (v && v.trim() ? true : '事由必填'),
+      },
+    )
+    await ElMessageBox.confirm(`确认下架 ${codes.length} 门课程？`, '二次确认', { type: 'warning' })
+    const result = await bulkUnpublishCourses(codes, value.trim())
+    ElMessageBox.alert(`成功 ${result.unpublished ?? 0} 门${failureText(result)}`, '批量下架结果')
+    load()
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessage.error(e.message)
+  }
 }
 
 async function loadMajors() {
@@ -350,7 +401,20 @@ async function submitReview() {
       </el-form-item>
     </el-form>
 
-    <el-table v-loading="loading" :data="rows" stripe>
+    <div style="margin-bottom: 10px">
+      <el-button type="success" :disabled="!selected.length" @click="onBulkPublish">批量上架</el-button>
+      <el-button type="danger" plain :disabled="!selected.length" @click="onBulkUnpublish">批量下架</el-button>
+      <span style="margin-left: 8px; color: var(--el-text-color-secondary)">已选 {{ selected.length }} 门</span>
+    </div>
+
+    <el-table
+      ref="tableRef"
+      v-loading="loading"
+      :data="rows"
+      stripe
+      @selection-change="onSelectionChange"
+    >
+      <el-table-column type="selection" width="50" />
       <el-table-column prop="course_code" label="课程码" width="120" />
       <el-table-column label="课程" min-width="220">
         <template #default="{ row }">

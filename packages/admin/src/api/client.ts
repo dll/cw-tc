@@ -266,6 +266,24 @@ export async function publishCourse(code: string): Promise<void> {
 export async function unpublishCourse(code: string, reason: string): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/unpublish`, { reason, confirm: true }))
 }
+export interface BulkCourseResult {
+  published?: number
+  unpublished?: number
+  failed: { course_code: string; reason: string }[]
+}
+export async function bulkPublishCourses(courseCodes: string[]): Promise<BulkCourseResult> {
+  return unwrap<BulkCourseResult>(
+    http.post('/admin/bulk-courses/publish', { course_codes: courseCodes, confirm: true }),
+  )
+}
+export async function bulkUnpublishCourses(
+  courseCodes: string[],
+  reason: string,
+): Promise<BulkCourseResult> {
+  return unwrap<BulkCourseResult>(
+    http.post('/admin/bulk-courses/unpublish', { course_codes: courseCodes, reason, confirm: true }),
+  )
+}
 export async function listCourseRevisions(code: string): Promise<CourseRevision[]> {
   const r = await unwrap<{ items: CourseRevision[] }>(http.get(`/admin/courses/${code}/revisions`))
   return r.items
