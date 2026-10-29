@@ -364,6 +364,10 @@ export async function listMajors(): Promise<MajorItem[]> {
   const r = await unwrap<{ items: MajorItem[] }>(http.get('/admin/majors'))
   return r.items
 }
+export async function listPublicMajors(): Promise<MajorItem[]> {
+  const r = await unwrap<{ items: MajorItem[] }>(http.get('/majors'))
+  return r.items
+}
 export async function createMajor(name: string, sort: number): Promise<void> {
   await unwrap<unknown>(http.post('/admin/majors', { name, sort }))
 }

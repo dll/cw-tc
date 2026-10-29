@@ -41,6 +41,12 @@ func TestAdminBulkCourseActions(t *testing.T) {
 	adminToken := extractJSONField(t, performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"admin","password":"Temp@123"}`).Body.String(), "token")
 	teacherToken := extractJSONField(t, performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"teacher","password":"Temp@123"}`).Body.String(), "token")
 
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/users", "", teacherToken); got.Code != http.StatusForbidden {
+		t.Fatalf("教师读取用户列表必须 403: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/users", "", adminToken); got.Code != http.StatusOK {
+		t.Fatalf("管理员读取用户列表应 200: %d", got.Code)
+	}
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/bulk-courses/publish", `{"course_codes":["B1","B2","B3"],"confirm":true}`, teacherToken); got.Code != http.StatusForbidden {
 		t.Fatalf("教师批量上架应 403: %d", got.Code)
 	}
