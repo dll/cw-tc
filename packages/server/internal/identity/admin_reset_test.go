@@ -46,6 +46,39 @@ func TestAdminResetCodeFlow(t *testing.T) {
 	}
 }
 
+func TestResetPasswordByIdentity(t *testing.T) {
+	service, database := accountTestService(t)
+	defer database.Close()
+	student := registerAccount(t, service, "13812345678", "password-1")
+	ctx := context.Background()
+	now := time.Now().UTC()
+	session, err := service.CreateSession(ctx, student.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := service.CreateAdminResetCode(ctx, student.ID, 1, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ResetPasswordByIdentity(ctx, "13812345678", "110101199001011245", "new-pass-1", now); err != ErrResetCodeInvalid {
+		t.Fatalf("身份证不匹配应拒绝: %v", err)
+	}
+	if err := service.ResetPasswordByIdentity(ctx, "13812345678", "110101199001011237", "new-pass-1", now); err != nil {
+		t.Fatalf("身份证验证重置应成功: %v", err)
+	}
+	if _, err := service.Login(ctx, "13812345678", "password-1"); err == nil {
+		t.Fatal("旧密码应立即失效")
+	}
+	if _, err := service.Login(ctx, "13812345678", "new-pass-1"); err != nil {
+		t.Fatalf("新密码应可登录: %v", err)
+	}
+	if _, err := service.Authenticate(ctx, session.Token, now); err == nil {
+		t.Fatal("重置后旧会话应失效")
+	}
+	if err := service.ResetPasswordByIdentity(ctx, "13812345678", "110101199001011237", "another-1", now); err != ErrResetCodeInvalid {
+		t.Fatalf("授权只能使用一次: %v", err)
+	}
+}
+
 func TestAdminResetCodeExpiredAndDisabled(t *testing.T) {
 	service, database := accountTestService(t)
 	defer database.Close()

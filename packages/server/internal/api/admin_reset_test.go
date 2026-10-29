@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -102,5 +103,52 @@ func TestAdminResetStudentPasswordFlow(t *testing.T) {
 	}
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/users/1/reset-password", `{"reason":"x","confirm":true}`, adminToken); got.Code != http.StatusConflict {
 		t.Fatalf("停用账号应 409: %d %s", got.Code, got.Body.String())
+	}
+}
+
+func TestResetPasswordByIdentityFlow(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.Open(ctx, db.DialectSQLite, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := db.ApplyMigrations(ctx, database, migrations.FS, db.DialectSQLite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := staff.Create(ctx, database, "admin", "管理员", staff.RoleAdminOps, "Temp@123", 0); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, true)
+	identityService := identity.NewService(database, []byte(cfg.IDCardEncKey), []byte(cfg.IDCardHMACKey))
+	student, err := identityService.Register(ctx, identity.RegisterInput{
+		Name: "学员", Phone: "13812345678", IDCard: "110101199001011237", Password: "old-pass-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldSession, err := identityService.CreateSession(ctx, student.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := NewWithIdentityAndDatabase(cfg, identityService, database).Router()
+	adminToken := extractJSONField(t, performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"admin","password":"Temp@123"}`).Body.String(), "token")
+	studentPath := strconv.FormatInt(student.ID, 10)
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/users/"+studentPath+"/reset-password", `{"reason":"学员忘记密码","confirm":true}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("管理员授权失败: %d %s", got.Code, got.Body.String())
+	}
+	// 身份证不匹配
+	if got := performJSON(t, r, http.MethodPost, "/api/v1/auth/password/reset-identity", `{"phone":"13812345678","id_card":"110101199001011245","new_password":"new-pass-1"}`); got.Code != http.StatusUnauthorized {
+		t.Fatalf("身份证不匹配应 401: %d %s", got.Code, got.Body.String())
+	}
+	// 身份证验证通过，直接重置
+	if got := performJSON(t, r, http.MethodPost, "/api/v1/auth/password/reset-identity", `{"phone":"13812345678","id_card":"110101199001011237","new_password":"new-pass-1"}`); got.Code != http.StatusOK {
+		t.Fatalf("身份证验证重置失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/me", "", oldSession.Token); got.Code != http.StatusUnauthorized {
+		t.Fatalf("重置后旧会话应失效: %d", got.Code)
+	}
+	if login := performJSON(t, r, http.MethodPost, "/api/v1/auth/login", `{"phone":"13812345678","password":"new-pass-1"}`); login.Code != http.StatusOK {
+		t.Fatalf("新密码登录失败: %d %s", login.Code, login.Body.String())
 	}
 }

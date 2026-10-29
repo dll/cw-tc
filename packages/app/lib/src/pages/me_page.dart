@@ -64,6 +64,7 @@ class _MePageState extends State<MePage> {
       (Icons.receipt_long_outlined, '我的订单', '订单与发票'),
       (Icons.assignment_turned_in_outlined, '我的成绩', '测评记录与分数'),
       (Icons.verified_outlined, '我的证书', '查看 / 下载 / 验真'),
+      (Icons.notifications_outlined, '消息', '系统通知 / 重置码'),
       (Icons.settings_outlined, '设置', '账号与安全'),
     ];
     return Scaffold(
@@ -106,6 +107,7 @@ class _MePageState extends State<MePage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     if (title == '我的证书') context.push('/certs');
+                    if (title == '消息') context.push('/notifications');
                     if (title == '设置') context.push('/settings');
                   },
                 );

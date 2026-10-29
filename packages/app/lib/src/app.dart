@@ -11,6 +11,7 @@ import 'pages/home_page.dart';
 import 'pages/learn_page.dart';
 import 'pages/login_page.dart';
 import 'pages/me_page.dart';
+import 'pages/notifications_page.dart';
 import 'pages/verify_page.dart';
 import 'shell.dart';
 
@@ -70,6 +71,10 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/settings',
       builder: (_, __) => const AccountSecurityPage(),
+    ),
+    GoRoute(
+      path: '/notifications',
+      builder: (_, __) => const NotificationsPage(),
     ),
     GoRoute(
       path: '/certs',

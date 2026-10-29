@@ -206,22 +206,19 @@ async function submitGrant() {
         <el-button type="primary" @click="submitGrant">确认授权</el-button>
       </template>
     </el-dialog>
-    <el-dialog v-model="resetVisible" title="重置密码（一次性重置码）" width="520px">
+    <el-dialog v-model="resetVisible" title="密码重置已授权" width="540px">
       <el-alert
-        type="warning"
+        type="success"
         :closable="false"
-        title="请将重置码转交学员，由学员在「忘记密码」页面自行设置新密码；管理员不会获知新密码。"
+        title="重置码已通过系统站内消息发送给学员（登录后可在「我的 → 消息」查看）；学员也可在登录页「忘记密码」中用身份证验证直接重置。请勿通过微信/电话等站外渠道转交。"
         style="margin-bottom: 12px"
       />
       <el-descriptions v-if="resetResult" :column="1" border>
-        <el-descriptions-item label="重置码">
-          <span style="font-family: monospace; font-size: 20px; letter-spacing: 2px">{{ resetResult.reset_code }}</span>
-        </el-descriptions-item>
         <el-descriptions-item label="有效期至">{{ resetResult.expires_at }}</el-descriptions-item>
         <el-descriptions-item label="学员手机号后 4 位">{{ resetResult.phone_last4 }}</el-descriptions-item>
       </el-descriptions>
       <template #footer>
-        <el-button type="primary" @click="resetVisible = false">我已转交</el-button>
+        <el-button type="primary" @click="resetVisible = false">关闭</el-button>
       </template>
     </el-dialog>
     <el-dialog v-model="batchVisible" title="批量审批学习优惠" width="480px">
