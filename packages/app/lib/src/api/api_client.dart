@@ -9,6 +9,7 @@ import '../models/exam.dart';
 import '../models/lecture.dart';
 import '../models/lecture_resource.dart';
 import '../models/major.dart';
+import '../models/my_course.dart';
 import '../models/operation_slot.dart';
 import '../models/verify_result.dart';
 
@@ -243,6 +244,37 @@ class ApiClient {
     final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/delete');
     _ensureSuccess(res.data);
     await logout();
+  }
+
+  /// 我的课程（已解锁）+ 学习进度。
+  Future<List<MyCourse>> myCourses() async {
+    final res =
+        await _dio.get<Map<String, dynamic>>('/api/v1/me/courses');
+    _ensureSuccess(res.data);
+    final items = (res.data?['data'] as Map<String, dynamic>?)?['items']
+            as List<dynamic>? ??
+        const <dynamic>[];
+    return items
+        .map((e) => MyCourse.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 上报本讲学习进度（打开讲次即标记为已学）。
+  Future<void> reportLectureProgress(
+    String code,
+    int no, {
+    int positionSeconds = 0,
+    bool completed = true,
+  }) async {
+    final res = await _dio.put<Map<String, dynamic>>(
+      '/api/v1/me/courses/$code/progress',
+      data: <String, dynamic>{
+        'lecture_no': no,
+        'position_seconds': positionSeconds,
+        'completed': completed,
+      },
+    );
+    _ensureSuccess(res.data);
   }
 
   /// 运营位（`GET /api/v1/public/operations`，公开只读）。

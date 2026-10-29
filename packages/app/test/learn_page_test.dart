@@ -43,6 +43,10 @@ class _FakeApiClient extends ApiClient {
 
   @override
   Future<String> fetchResourceText(LectureResource r) async => '# 讲义内容';
+
+  @override
+  Future<void> reportLectureProgress(String code, int no,
+      {int positionSeconds = 0, bool completed = true}) async {}
 }
 
 /// 未购课（403）假客户端。
@@ -54,6 +58,10 @@ class _ForbiddenApiClient extends ApiClient {
       response: Response(requestOptions: RequestOptions(path: 'x'), statusCode: 403),
     );
   }
+
+  @override
+  Future<void> reportLectureProgress(String code, int no,
+      {int positionSeconds = 0, bool completed = true}) async {}
 }
 
 void main() {
