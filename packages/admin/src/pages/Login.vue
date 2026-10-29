@@ -20,7 +20,7 @@ async function submit() {
     if (res.must_change_password) {
       router.replace('/change-password')
     } else {
-      router.replace('/admin/courses')
+      router.replace(res.role === 'teacher' ? '/teacher/courses' : '/admin/courses')
     }
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '账号或密码错误')

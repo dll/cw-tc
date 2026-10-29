@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { pendingRegistrationCount } from '@/api/client'
+import { getRole, pendingRegistrationCount } from '@/api/client'
 
 // M0 骨架：左侧菜单 + 路由出口。菜单项与 router.ts 一一对应，
 // M1 起按登录角色（管理员 / 教师）过滤可见项。
@@ -20,24 +20,30 @@ onMounted(() => {
 })
 onUnmounted(() => { if (pendingTimer) clearInterval(pendingTimer) })
 
-const menus = [
-  { group: '管理端', items: [
-    { path: '/admin/courses', label: '课程管理' },
-    { path: '/admin/majors', label: '专业分类' },
-    { path: '/admin/orders', label: '订单与退款' },
-    { path: '/admin/certs', label: '证书台账' },
-    { path: '/admin/kb', label: '知识库重建' },
-    { path: '/admin/broadcast', label: '广播通知' },
-    { path: '/admin/users', label: '用户管理' },
-    { path: '/admin/staff', label: '内部人员' },
-    { path: '/admin/audit', label: '审计日志' },
-  ] },
-  { group: '教师工作台', items: [
-    { path: '/teacher/courses', label: '我的课程' },
-    { path: '/teacher/courses/new', label: '新建课程' },
-    { path: '/teacher/review', label: '阅卷台' },
-  ] },
-]
+const adminMenus = { group: '管理端', items: [
+  { path: '/admin/courses', label: '课程管理' },
+  { path: '/admin/majors', label: '专业分类' },
+  { path: '/admin/orders', label: '订单与退款' },
+  { path: '/admin/certs', label: '证书台账' },
+  { path: '/admin/kb', label: '知识库重建' },
+  { path: '/admin/broadcast', label: '广播通知' },
+  { path: '/admin/users', label: '用户管理' },
+  { path: '/admin/staff', label: '内部人员' },
+  { path: '/admin/audit', label: '审计日志' },
+] }
+const teacherMenus = { group: '教师工作台', items: [
+  { path: '/teacher/courses', label: '我的课程' },
+  { path: '/teacher/courses/new', label: '新建课程' },
+  { path: '/teacher/review', label: '阅卷台' },
+] }
+
+const menus = computed(() => {
+  const role = getRole()
+  if (role === 'teacher') return [teacherMenus]
+  if (role === 'admin_ops' || role === 'admin_super') return [adminMenus]
+  // 旧会话尚未写入角色时保持兼容；重新登录后按角色收敛。
+  return [adminMenus, teacherMenus]
+})
 </script>
 
 <template>

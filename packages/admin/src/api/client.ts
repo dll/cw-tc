@@ -15,12 +15,20 @@ export const http: AxiosInstance = axios.create({
 })
 
 const TOKEN_KEY = 'cw_tc_admin_token'
+const ROLE_KEY = 'cw_tc_admin_role'
 
 export function saveToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token)
 }
+export function saveRole(role: string) {
+  localStorage.setItem(ROLE_KEY, role)
+}
+export function getRole(): string {
+  return localStorage.getItem(ROLE_KEY) ?? ''
+}
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(ROLE_KEY)
 }
 export function hasToken(): boolean {
   return !!localStorage.getItem(TOKEN_KEY)
@@ -65,6 +73,7 @@ export interface AdminLoginResult {
 export async function login(account: string, password: string): Promise<AdminLoginResult> {
   const res = await unwrap<AdminLoginResult>(http.post('/admin/login', { account, password }))
   saveToken(res.token)
+  saveRole(res.role)
   return res
 }
 export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
