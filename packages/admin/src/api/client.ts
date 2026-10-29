@@ -270,6 +270,43 @@ export async function listCourseRevisions(code: string): Promise<CourseRevision[
   const r = await unwrap<{ items: CourseRevision[] }>(http.get(`/admin/courses/${code}/revisions`))
   return r.items
 }
+export interface CourseReviewDetail {
+  round: number
+  content_version: number
+  reviewer_id: number
+  reviewer_role: string
+  reviewer_name: string | null
+  score_material: number
+  score_objective: number
+  score_case: number
+  score_lesson_plan: number
+  score_slides: number
+  score_lab: number
+  total_score: number
+  verdict: string
+  issue_list: string | null
+  reviewed_at: string
+}
+export interface CourseQuality {
+  course_code: string
+  status: string
+  quality_score: number | null
+  ai_level: string | null
+  ai_enabled: boolean
+  kb_status: string
+  content_version: number
+  published_version: number | null
+  latest_review: CourseReviewDetail | null
+}
+export async function getCourseQuality(code: string): Promise<CourseQuality> {
+  return unwrap<CourseQuality>(http.get(`/admin/courses/${code}/quality`))
+}
+export async function setCourseQuality(
+  code: string,
+  input: { quality_score?: number; ai_level?: string; reason: string; confirm: boolean },
+): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/courses/${code}/quality`, input))
+}
 export async function setPrice(code: string, priceCents: number, confirm: boolean): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/price`, { price_cents: priceCents, confirm }))
 }

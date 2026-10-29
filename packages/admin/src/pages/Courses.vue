@@ -11,8 +11,11 @@ import {
   setCourseFreePreview,
   listMajors,
   listCourseRevisions,
+  getCourseQuality,
+  setCourseQuality,
   type AdminCourse,
   type CourseRevision,
+  type CourseQuality,
   type MajorItem,
 } from '@/api/client'
 
@@ -34,6 +37,60 @@ async function openRevisions(row: AdminCourse) {
     revisionVisible.value = true
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '版本历史加载失败')
+  }
+}
+
+const qualityVisible = ref(false)
+const qualityLoading = ref(false)
+const qualityTarget = ref<AdminCourse | null>(null)
+const quality = ref<CourseQuality | null>(null)
+const qualityForm = ref<{ quality_score?: number; ai_level: string; reason: string }>({
+  quality_score: undefined,
+  ai_level: '',
+  reason: '',
+})
+
+async function openQuality(row: AdminCourse) {
+  qualityTarget.value = row
+  qualityVisible.value = true
+  qualityLoading.value = true
+  qualityForm.value = { quality_score: undefined, ai_level: '', reason: '' }
+  try {
+    quality.value = await getCourseQuality(row.course_code)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '质量信息加载失败')
+  } finally {
+    qualityLoading.value = false
+  }
+}
+
+async function submitQuality() {
+  const target = qualityTarget.value
+  if (!target) return
+  if (!qualityForm.value.reason.trim()) {
+    ElMessage.warning('覆写必须填写事由')
+    return
+  }
+  if (qualityForm.value.quality_score === undefined && !qualityForm.value.ai_level) {
+    ElMessage.warning('质量分与 AI 等级至少填写一项')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('覆写质量分 / AI 等级会影响对外展示，确认提交？', '二次确认', { type: 'warning' })
+    await setCourseQuality(target.course_code, {
+      quality_score: qualityForm.value.quality_score,
+      ai_level: qualityForm.value.ai_level,
+      reason: qualityForm.value.reason.trim(),
+      confirm: true,
+    })
+    ElMessage.success('已覆写（写入审计）')
+    quality.value = await getCourseQuality(target.course_code)
+    qualityForm.value = { quality_score: undefined, ai_level: '', reason: '' }
+    load()
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') {
+      ElMessage.error(e.message)
+    }
   }
 }
 
@@ -327,7 +384,7 @@ async function submitReview() {
       <el-table-column label="更新时间" width="170">
         <template #default="{ row }">{{ row.updated_at || row.created_at }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="430">
+      <el-table-column label="操作" width="490">
         <template #default="{ row }">
           <el-button v-if="row.status === 'submitted'" size="small" type="primary" @click="openReview(row)">审核</el-button>
           <el-button
@@ -340,6 +397,7 @@ async function submitReview() {
           <el-button v-if="row.status === 'published'" size="small" @click="onPrice(row)">改价</el-button>
           <el-button size="small" @click="openMajor(row)">专业</el-button>
           <el-button size="small" @click="openFree(row)">免费讲次</el-button>
+          <el-button size="small" type="info" plain @click="openQuality(row)">质量/AI</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -407,6 +465,65 @@ async function submitReview() {
       </el-table>
       <el-empty v-if="!revisions.length" description="尚无发布记录" />
     </el-dialog>
+
+    <el-drawer v-model="qualityVisible" title="课程质量与 AI 等级" size="560px">
+      <div v-loading="qualityLoading">
+        <el-descriptions v-if="quality" :column="2" border>
+          <el-descriptions-item label="质量分">{{ quality.quality_score ?? '—' }}</el-descriptions-item>
+          <el-descriptions-item label="AI 等级">{{ quality.ai_level ?? '—' }}</el-descriptions-item>
+          <el-descriptions-item label="AI 开关">{{ quality.ai_enabled ? '开启' : '关闭' }}</el-descriptions-item>
+          <el-descriptions-item label="知识库">{{ quality.kb_status }}</el-descriptions-item>
+          <el-descriptions-item label="内容版本">v{{ quality.content_version }}</el-descriptions-item>
+          <el-descriptions-item label="线上版本">{{ quality.published_version ? `v${quality.published_version}` : '未发布' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-divider>最近一次审核</el-divider>
+        <template v-if="quality?.latest_review">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="轮次">{{ quality.latest_review.round }}</el-descriptions-item>
+            <el-descriptions-item label="结论">{{ quality.latest_review.verdict === 'approved' ? '通过' : '驳回' }}</el-descriptions-item>
+            <el-descriptions-item label="总分">{{ quality.latest_review.total_score }}</el-descriptions-item>
+            <el-descriptions-item label="审核版本">v{{ quality.latest_review.content_version }}</el-descriptions-item>
+            <el-descriptions-item label="审核人">{{ quality.latest_review.reviewer_name ?? quality.latest_review.reviewer_role }}</el-descriptions-item>
+            <el-descriptions-item label="时间">{{ quality.latest_review.reviewed_at }}</el-descriptions-item>
+          </el-descriptions>
+          <div class="score-grid">
+            <span>材料 {{ quality.latest_review.score_material }}/25</span>
+            <span>目标 {{ quality.latest_review.score_objective }}/15</span>
+            <span>案例 {{ quality.latest_review.score_case }}/15</span>
+            <span>教案 {{ quality.latest_review.score_lesson_plan }}/15</span>
+            <span>课件 {{ quality.latest_review.score_slides }}/15</span>
+            <span>实验 {{ quality.latest_review.score_lab }}/15</span>
+          </div>
+          <el-alert
+            v-if="quality.latest_review.issue_list"
+            :title="quality.latest_review.issue_list"
+            type="warning"
+            :closable="false"
+            style="margin-top: 8px"
+          />
+        </template>
+        <el-empty v-else description="尚无审核记录" />
+
+        <el-divider>核定覆写（写审计）</el-divider>
+        <el-form label-position="top">
+          <el-form-item label="质量分（0-100，留空不改）">
+            <el-input-number v-model="qualityForm.quality_score" :min="0" :max="100" :precision="1" />
+          </el-form-item>
+          <el-form-item label="AI 等级（留空不改）">
+            <el-select v-model="qualityForm.ai_level" clearable placeholder="不修改" style="width: 100%">
+              <el-option label="LA" value="LA" />
+              <el-option label="LB" value="LB" />
+              <el-option label="LC" value="LC" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="事由（必填）">
+            <el-input v-model="qualityForm.reason" type="textarea" :rows="2" />
+          </el-form-item>
+          <el-button type="primary" @click="submitQuality">保存覆写</el-button>
+        </el-form>
+      </div>
+    </el-drawer>
   </el-card>
 </template>
 
@@ -433,6 +550,14 @@ async function submitReview() {
   overflow: hidden;
 }
 .course-version {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }

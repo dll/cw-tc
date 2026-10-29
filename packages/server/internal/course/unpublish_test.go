@@ -100,4 +100,11 @@ func TestReviewCourseBindsDatabaseContentVersion(t *testing.T) {
 	if version != 7 {
 		t.Fatalf("审核应绑定数据库内容版本 7，实际 %d", version)
 	}
+	var quality float64
+	if err := database.QueryRow(`SELECT quality_score FROM course WHERE course_code='C1'`).Scan(&quality); err != nil {
+		t.Fatal(err)
+	}
+	if quality != 100 {
+		t.Fatalf("审核后质量分应为六维总分 100，实际 %v", quality)
+	}
 }
