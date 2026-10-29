@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'pages/account_security_page.dart';
 import 'pages/course_square_page.dart';
 import 'pages/course_detail_page.dart';
+import 'pages/reset_password_page.dart';
 import 'pages/cert_list_page.dart';
 import 'pages/exam_page.dart';
 import 'pages/home_page.dart';
@@ -60,6 +62,14 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/login',
       builder: (_, __) => const LoginPage(),
+    ),
+    GoRoute(
+      path: '/reset-password',
+      builder: (_, __) => const ResetPasswordPage(),
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (_, __) => const AccountSecurityPage(),
     ),
     GoRoute(
       path: '/certs',

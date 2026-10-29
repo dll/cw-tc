@@ -37,5 +37,9 @@ func (s *Service) ChangePassword(ctx context.Context, studentID int64, oldPasswo
 	if affected, err := updated.RowsAffected(); err == nil && affected == 0 {
 		return ErrInvalidCredentials
 	}
+	// PRD §7.13 L-6：改密后全部会话失效。
+	if err := s.RevokeAllSessions(ctx, studentID); err != nil {
+		return err
+	}
 	return nil
 }

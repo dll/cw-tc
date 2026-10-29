@@ -143,6 +143,17 @@ export async function listUsers(userType: UserType | '' = '', limit = 20, offset
 export async function revealUser(id: number, reason: string): Promise<{ phone: string }> {
   return unwrap<{ phone: string }>(http.post(`/admin/users/${id}/reveal`, { reason }))
 }
+export interface ResetPasswordResult {
+  reset_code: string
+  expires_at: string
+  phone_last4: string
+  message: string
+}
+export async function resetUserPassword(id: number, reason: string): Promise<ResetPasswordResult> {
+  return unwrap<ResetPasswordResult>(
+    http.post(`/admin/users/${id}/reset-password`, { reason, confirm: true }),
+  )
+}
 export async function grantEntitlement(input: {
   student_id: number
   course_code: string
