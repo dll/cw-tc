@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
@@ -45,6 +47,10 @@ class _LearnPageState extends State<LearnPage> {
   void initState() {
     super.initState();
     _future = _api.lectureResources(widget.courseCode, widget.no);
+    // 打开讲次即记为本讲已学（失败不影响阅读，如预览/未解锁）。
+    unawaited(_api
+        .reportLectureProgress(widget.courseCode, widget.no)
+        .catchError((_) {}));
   }
 
   @override
