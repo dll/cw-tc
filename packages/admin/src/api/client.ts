@@ -227,6 +227,15 @@ export interface AdminCourse {
   reject_reason: string | null
   ai_enabled: boolean
   kb_status: string
+  content_version: number
+  published_version: number | null
+  has_unpublished_changes: boolean
+}
+export interface CourseRevision {
+  revision_no: number
+  content_version: number
+  changed_digest: string
+  published_at: string
 }
 export interface AdminCourseList {
   items: AdminCourse[]
@@ -247,6 +256,10 @@ export async function publishCourse(code: string): Promise<void> {
 }
 export async function unpublishCourse(code: string, reason: string): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/unpublish`, { reason, confirm: true }))
+}
+export async function listCourseRevisions(code: string): Promise<CourseRevision[]> {
+  const r = await unwrap<{ items: CourseRevision[] }>(http.get(`/admin/courses/${code}/revisions`))
+  return r.items
 }
 export async function setPrice(code: string, priceCents: number, confirm: boolean): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/courses/${code}/price`, { price_cents: priceCents, confirm }))

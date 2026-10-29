@@ -96,7 +96,8 @@ func (s *Server) teacherUpdateCourse(c *gin.Context) {
 		line = "main"
 	}
 	res, err := s.dbConn.ExecContext(c.Request.Context(),
-		`UPDATE course SET name = $1, intro = $2, line = $3, major_id = $4, updated_at = $5
+		`UPDATE course SET name = $1, intro = $2, line = $3, major_id = $4, updated_at = $5,
+		        content_version = content_version + 1
 		 WHERE course_code = $6 AND teacher_id = $7 AND status IN ('proposed','rejected')`,
 		req.Name, req.Intro, line, req.MajorID, time.Now().UTC(), c.Param("code"), st.ID)
 	if err != nil {

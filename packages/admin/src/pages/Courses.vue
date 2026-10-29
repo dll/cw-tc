@@ -10,7 +10,9 @@ import {
   setCourseMajor,
   setCourseFreePreview,
   listMajors,
+  listCourseRevisions,
   type AdminCourse,
+  type CourseRevision,
   type MajorItem,
 } from '@/api/client'
 
@@ -21,6 +23,19 @@ const stats = ref<Record<string, number>>({})
 const totalCourses = ref(0)
 const totalLectures = ref(0)
 const filter = ref({ status: '', source: '', q: '' })
+const revisionVisible = ref(false)
+const revisionTarget = ref<AdminCourse | null>(null)
+const revisions = ref<CourseRevision[]>([])
+
+async function openRevisions(row: AdminCourse) {
+  revisionTarget.value = row
+  try {
+    revisions.value = await listCourseRevisions(row.course_code)
+    revisionVisible.value = true
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '版本历史加载失败')
+  }
+}
 
 const statusLabel: Record<string, string> = {
   proposed: '立项', building: '建设中', submitted: '待审核', rejected: '已驳回',
@@ -293,6 +308,13 @@ async function submitReview() {
       <el-table-column label="状态" width="100">
         <template #default="{ row }">{{ statusLabel[row.status] ?? row.status }}</template>
       </el-table-column>
+      <el-table-column label="版本" width="150">
+        <template #default="{ row }">
+          <el-link type="primary" @click="openRevisions(row)">内容 v{{ row.content_version }}</el-link>
+          <div class="course-version">线上 {{ row.published_version ? `v${row.published_version}` : '未发布' }}</div>
+          <el-tag v-if="row.has_unpublished_changes" type="warning" size="small">待发布</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="价格" width="90">
         <template #default="{ row }">¥{{ (row.price_cents / 100).toFixed(2) }}</template>
       </el-table-column>
@@ -373,6 +395,18 @@ async function submitReview() {
         <el-button type="primary" @click="submitFree">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="revisionVisible" :title="`版本历史 · ${revisionTarget?.name ?? ''}`" width="680px">
+      <el-table :data="revisions" size="small">
+        <el-table-column prop="revision_no" label="改版" width="80" />
+        <el-table-column label="内容版本" width="100">
+          <template #default="{ row }">v{{ row.content_version }}</template>
+        </el-table-column>
+        <el-table-column prop="changed_digest" label="变更摘要" />
+        <el-table-column prop="published_at" label="发布时间" width="200" />
+      </el-table>
+      <el-empty v-if="!revisions.length" description="尚无发布记录" />
+    </el-dialog>
   </el-card>
 </template>
 
@@ -397,5 +431,9 @@ async function submitReview() {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.course-version {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

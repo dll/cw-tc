@@ -38,7 +38,7 @@ func (s *Server) adminCourses(c *gin.Context) {
 	query := `SELECT c.course_code, c.source, c.name, c.intro, c.line, c.lecture_count, c.status,
 	                 c.price_cents, c.teacher_id, c.created_at, c.updated_at, c.major_id, m.name,
 	                 c.free_preview_lectures, c.sort_weight, c.reviewed_at, c.reject_reason,
-	                 c.ai_enabled, c.kb_status
+	                 c.ai_enabled, c.kb_status, c.content_version, c.published_version
 	          FROM course c LEFT JOIN major m ON m.id = c.major_id
 	          WHERE ` + strings.Join(where, " AND ") + ` ORDER BY c.id DESC`
 	rows, err := s.dbConn.QueryContext(c.Request.Context(), query, args...)
@@ -52,15 +52,17 @@ func (s *Server) adminCourses(c *gin.Context) {
 		var code, source, name, line, status, createdAt, updatedAt, kbStatus string
 		var intro, majorName, reviewedAt, rejectReason sql.NullString
 		var priceCents int64
-		var teacherID, majorID *int64
-		var lectureCount, freePreviewLectures, sortWeight int
+		var teacherID, majorID, publishedVersion *int64
+		var lectureCount, freePreviewLectures, sortWeight, contentVersion int
 		var aiEnabled bool
 		if err := rows.Scan(&code, &source, &name, &intro, &line, &lectureCount, &status,
 			&priceCents, &teacherID, &createdAt, &updatedAt, &majorID, &majorName,
-			&freePreviewLectures, &sortWeight, &reviewedAt, &rejectReason, &aiEnabled, &kbStatus); err != nil {
+			&freePreviewLectures, &sortWeight, &reviewedAt, &rejectReason, &aiEnabled, &kbStatus,
+			&contentVersion, &publishedVersion); err != nil {
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 			return
 		}
+		hasUnpublishedChanges := publishedVersion != nil && int(*publishedVersion) != contentVersion
 		items = append(items, gin.H{
 			"course_code": code, "source": source, "name": name, "intro": nullableString(intro),
 			"line": line, "lecture_count": lectureCount, "status": status,
@@ -69,6 +71,8 @@ func (s *Server) adminCourses(c *gin.Context) {
 			"free_preview_lectures": freePreviewLectures, "sort_weight": sortWeight,
 			"reviewed_at": nullableString(reviewedAt), "reject_reason": nullableString(rejectReason),
 			"ai_enabled": aiEnabled, "kb_status": kbStatus,
+			"content_version": contentVersion, "published_version": publishedVersion,
+			"has_unpublished_changes": hasUnpublishedChanges,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -174,4 +178,38 @@ func (s *Server) adminSetCourseFreePreview(c *gin.Context) {
 		After: strconv.Itoa(in.Count), IP: c.ClientIP(),
 	})
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"course_code": c.Param("code"), "free_preview_lectures": in.Count}})
+}
+
+// adminCourseRevisions GET /admin/courses/:code/revisions —— 课程改版（发布）历史。
+func (s *Server) adminCourseRevisions(c *gin.Context) {
+	if s.dbConn == nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
+	rows, err := s.dbConn.QueryContext(c.Request.Context(),
+		`SELECT revision_no, content_version, changed_digest, published_at FROM course_revision WHERE course_code = $1 ORDER BY revision_no DESC`,
+		c.Param("code"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
+	defer rows.Close()
+	items := make([]gin.H, 0)
+	for rows.Next() {
+		var revisionNo, contentVersion int
+		var digest, publishedAt string
+		if err := rows.Scan(&revisionNo, &contentVersion, &digest, &publishedAt); err != nil {
+			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+			return
+		}
+		items = append(items, gin.H{
+			"revision_no": revisionNo, "content_version": contentVersion,
+			"changed_digest": digest, "published_at": publishedAt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"items": items}})
 }
