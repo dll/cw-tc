@@ -152,6 +152,8 @@ func (s *Server) Router() *gin.Engine {
 	admin.GET("/courses/:code/revisions", s.requireAdmin, s.adminCourseRevisions)
 	admin.GET("/courses/:code/quality", s.requireAdmin, s.adminCourseQuality)
 	admin.POST("/courses/:code/quality", s.requireAdmin, s.adminCourseQualityOverride)
+	admin.POST("/bulk-courses/publish", s.requireAdmin, s.adminBulkPublishCourses)
+	admin.POST("/bulk-courses/unpublish", s.requireAdmin, s.adminBulkUnpublishCourses)
 	admin.GET("/orders", s.adminOrders)
 	admin.GET("/refunds", s.adminRefunds)
 	admin.GET("/certs", s.adminCerts)

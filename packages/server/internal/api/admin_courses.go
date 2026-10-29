@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cw-tc/server/internal/audit"
+	"github.com/cw-tc/server/internal/course"
 	"github.com/cw-tc/server/internal/staff"
 	"github.com/gin-gonic/gin"
 )
@@ -329,4 +330,83 @@ func (s *Server) adminCourseQualityOverride(c *gin.Context) {
 		After: string(after), IP: c.ClientIP(),
 	})
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"status": "ok"}})
+}
+
+// adminBulkPublishCourses POST /admin/bulk-courses/publish —— 批量上架 / 重新上架。
+func (s *Server) adminBulkPublishCourses(c *gin.Context) {
+	var req struct {
+		CourseCodes []string `json:"course_codes"`
+		Confirm     bool     `json:"confirm"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || !req.Confirm || len(req.CourseCodes) == 0 || len(req.CourseCodes) > 100 {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "课程码必填、单次不超过 100 门且需二次确认"})
+		return
+	}
+	admin := c.MustGet(staffContextKey).(staff.Staff)
+	published := 0
+	failed := make([]gin.H, 0)
+	seen := make(map[string]struct{}, len(req.CourseCodes))
+	for _, raw := range req.CourseCodes {
+		code := strings.TrimSpace(raw)
+		if code == "" {
+			continue
+		}
+		if _, ok := seen[code]; ok {
+			continue
+		}
+		seen[code] = struct{}{}
+		var from string
+		_ = s.dbConn.QueryRowContext(c.Request.Context(), `SELECT status FROM course WHERE course_code = $1`, code).Scan(&from)
+		if err := course.PublishCourse(c.Request.Context(), s.dbConn, code, admin.ID); err != nil {
+			failed = append(failed, gin.H{"course_code": code, "reason": err.Error()})
+			continue
+		}
+		after, _ := json.Marshal(map[string]any{"from": from, "to": "published", "batch": true})
+		_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+			ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+			Action: "course.publish", TargetType: "course", TargetID: code,
+			After: string(after), IP: c.ClientIP(),
+		})
+		published++
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"published": published, "failed": failed}})
+}
+
+// adminBulkUnpublishCourses POST /admin/bulk-courses/unpublish —— 批量下架（事由必填 + 审计）。
+func (s *Server) adminBulkUnpublishCourses(c *gin.Context) {
+	var req struct {
+		CourseCodes []string `json:"course_codes"`
+		Reason      string   `json:"reason"`
+		Confirm     bool     `json:"confirm"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || !req.Confirm || strings.TrimSpace(req.Reason) == "" || len(req.CourseCodes) == 0 || len(req.CourseCodes) > 100 {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "课程码、下架事由必填，单次不超过 100 门且需二次确认"})
+		return
+	}
+	admin := c.MustGet(staffContextKey).(staff.Staff)
+	unpublished := 0
+	failed := make([]gin.H, 0)
+	seen := make(map[string]struct{}, len(req.CourseCodes))
+	for _, raw := range req.CourseCodes {
+		code := strings.TrimSpace(raw)
+		if code == "" {
+			continue
+		}
+		if _, ok := seen[code]; ok {
+			continue
+		}
+		seen[code] = struct{}{}
+		if err := course.UnpublishCourse(c.Request.Context(), s.dbConn, code, admin.ID); err != nil {
+			failed = append(failed, gin.H{"course_code": code, "reason": err.Error()})
+			continue
+		}
+		after, _ := json.Marshal(map[string]any{"from": "published", "to": "unpublished", "reason": req.Reason, "batch": true})
+		_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+			ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+			Action: "course.unpublish", TargetType: "course", TargetID: code,
+			After: string(after), IP: c.ClientIP(),
+		})
+		unpublished++
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"unpublished": unpublished, "failed": failed}})
 }
