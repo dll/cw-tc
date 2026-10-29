@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cw-tc/server/internal/course"
 	"github.com/cw-tc/server/internal/exam"
 	"github.com/cw-tc/server/internal/identity"
 	"github.com/gin-gonic/gin"
@@ -43,8 +44,15 @@ func (s *Server) startExam(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
 		return
 	}
-	student := c.MustGet(studentContextKey).(identity.Student)
 	ctx := c.Request.Context()
+	// 紧急纠错处理中：暂停新测评与发证，但不影响已购学员继续学习。
+	var courseCode string
+	_ = s.dbConn.QueryRowContext(ctx, `SELECT course_code FROM course WHERE id = $1`, req.CourseID).Scan(&courseCode)
+	if course.HasPendingUrgentFix(ctx, s.dbConn, courseCode) {
+		c.JSON(http.StatusConflict, envelope{Code: 10803, Msg: "课程内容核对中，暂不能开始测评"})
+		return
+	}
+	student := c.MustGet(studentContextKey).(identity.Student)
 	paper, err := exam.BuildPaper(ctx, s.dbConn, req.CourseID, req.Level, 0)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: err.Error()})

@@ -79,9 +79,20 @@ class _LearnPageState extends State<LearnPage> {
               ),
             );
           }
-          final resources =
-              _grouped(snapshot.data ?? const <LectureResource>[]);
+          final rawResources = snapshot.data ?? const <LectureResource>[];
+          final reviewing = rawResources.any((r) => r.contentReviewing);
+          final resources = _grouped(rawResources);
           final children = <Widget>[
+            if (reviewing)
+              Card(
+                color: Colors.orange.shade50,
+                child: ListTile(
+                  leading: Icon(Icons.info_outline,
+                      color: Colors.orange.shade800),
+                  title: const Text('课程内容核对中'),
+                  subtitle: const Text('学习不受影响；新测评与发证暂停，待管理员处理完成。'),
+                ),
+              ),
             Card(
                 child: ListTile(
               leading: const Icon(Icons.quiz_outlined),

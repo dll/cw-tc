@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cw-tc/server/internal/course"
 	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/resource"
 	"github.com/gin-gonic/gin"
@@ -54,6 +55,7 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
+	reviewing := course.HasPendingUrgentFix(c.Request.Context(), s.dbConn, c.Param("courseCode"))
 	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT id, kind, title, storage_key, size_bytes FROM asset WHERE lecture_id = $1 ORDER BY CASE WHEN kind = 'video' THEN 0 ELSE 1 END, sort ASC, id ASC`, lectureID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
@@ -72,7 +74,7 @@ func (s *Server) listLectureResources(c *gin.Context) {
 		}
 		expires := time.Now().Add(10 * time.Minute)
 		sig := resource.Sign(secret, storageKey, expires)
-		item := gin.H{"kind": kind, "title": title, "storage_key": storageKey, "size_bytes": sizeBytes.Int64, "expires_at": expires.Unix(), "signature": sig}
+		item := gin.H{"kind": kind, "title": title, "storage_key": storageKey, "size_bytes": sizeBytes.Int64, "expires_at": expires.Unix(), "signature": sig, "content_reviewing": reviewing}
 		if kind == "html" {
 			inlineExpires := time.Now().Add(2 * time.Hour)
 			item["inline_base_url"] = "/api/v1/assets/inline/" + strconv.FormatInt(student.ID, 10) + "/" + strconv.FormatInt(assetID, 10) + "/" + strconv.FormatInt(inlineExpires.Unix(), 10) + "/" + resource.Sign(secret, inlineSignatureKey(assetID, student.ID), inlineExpires) + "/"
