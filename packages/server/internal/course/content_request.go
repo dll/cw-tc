@@ -184,6 +184,10 @@ func HandleContentRequest(ctx context.Context, db *sql.DB, id, adminID int64, ap
 			now, req.CourseCode); err != nil {
 			return ContentRequest{}, err
 		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE operation_slot SET status='removed' WHERE course_code=$1 AND status IN ('draft','active')`, req.CourseCode); err != nil {
+			return ContentRequest{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return ContentRequest{}, err

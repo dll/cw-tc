@@ -322,6 +322,43 @@ export async function approveContentRequest(id: number): Promise<void> {
 export async function rejectContentRequest(id: number, reason: string): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/requests/${id}/reject`, { reason, confirm: true }))
 }
+export interface OperationSlotItem {
+  id: number
+  position: string
+  course_code: string
+  title: string
+  image_url: string
+  link_url: string
+  starts_at: string
+  ends_at: string
+  weight: number
+  status: string
+  created_by: number | null
+}
+export interface OperationSlotInput {
+  position: string
+  course_code: string
+  title: string
+  image_url: string
+  link_url: string
+  starts_at: string
+  ends_at: string
+  weight: number
+  status: string
+}
+export async function listOperationSlots(): Promise<OperationSlotItem[]> {
+  const r = await unwrap<{ items: OperationSlotItem[] }>(http.get('/admin/operations'))
+  return r.items
+}
+export async function createOperationSlot(input: OperationSlotInput): Promise<{ id: number }> {
+  return unwrap<{ id: number }>(http.post('/admin/operations', input))
+}
+export async function updateOperationSlot(id: number, input: OperationSlotInput): Promise<void> {
+  await unwrap<unknown>(http.patch(`/admin/operations/${id}`, input))
+}
+export async function removeOperationSlot(id: number): Promise<void> {
+  await unwrap<unknown>(http.delete(`/admin/operations/${id}`))
+}
 export async function listCourseRevisions(code: string): Promise<CourseRevision[]> {
   const r = await unwrap<{ items: CourseRevision[] }>(http.get(`/admin/courses/${code}/revisions`))
   return r.items

@@ -188,6 +188,10 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.GET("/requests", s.adminListContentRequests)
 	adminOnly.POST("/requests/:id/approve", s.adminApproveContentRequest)
 	adminOnly.POST("/requests/:id/reject", s.adminRejectContentRequest)
+	adminOnly.GET("/operations", s.adminListOperations)
+	adminOnly.POST("/operations", s.adminCreateOperation)
+	adminOnly.PATCH("/operations/:id", s.adminUpdateOperation)
+	adminOnly.DELETE("/operations/:id", s.adminRemoveOperation)
 	teacher := v1.Group("/teacher", s.staffRequired)
 	teacher.GET("/courses", s.teacherCourses)
 	teacher.POST("/courses", s.teacherCreateCourse)
@@ -224,6 +228,7 @@ func (s *Server) Router() *gin.Engine {
 	// 未启用时路由不注册，避免"存在但不可用"的暧昧状态。
 	if s.cfg.PublicStatusEnabled {
 		v1.GET("/public/status", s.publicStatus)
+		v1.GET("/public/operations", s.publicOperations)
 	}
 	return r
 }

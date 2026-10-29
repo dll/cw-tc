@@ -118,7 +118,19 @@ func UnpublishCourse(ctx context.Context, db *sql.DB, courseCode string, adminID
 		return ErrInvalidTransition
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.ExecContext(ctx,
-		`UPDATE course SET status='unpublished', updated_at=$1 WHERE course_code=$2`, now, courseCode)
-	return err
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE course SET status='unpublished', updated_at=$1 WHERE course_code=$2`, now, courseCode); err != nil {
+		return err
+	}
+	// 下架即移除关联运营位，避免首页/广场留死链（PRD §7.10.12）。
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE operation_slot SET status='removed' WHERE course_code=$1 AND status IN ('draft','active')`, courseCode); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

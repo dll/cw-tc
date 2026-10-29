@@ -1,8 +1,9 @@
 import 'package:cw_tc_app/src/api/api_client.dart';
-import 'package:cw_tc_app/src/app.dart';
 import 'package:cw_tc_app/src/models/course.dart';
 import 'package:cw_tc_app/src/models/major.dart';
+import 'package:cw_tc_app/src/models/operation_slot.dart';
 import 'package:cw_tc_app/src/pages/course_square_page.dart';
+import 'package:cw_tc_app/src/pages/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -29,11 +30,16 @@ class _FakeApiClient extends ApiClient {
 
   @override
   Future<List<Major>> majors() async => const <Major>[];
+
+  @override
+  Future<List<OperationSlot>> operations(String position) async =>
+      const <OperationSlot>[];
 }
 
 void main() {
   testWidgets('首页渲染标题与入口按钮', (WidgetTester tester) async {
-    await tester.pumpWidget(const CwTcApp());
+    final api = _FakeApiClient(const <Course>[]);
+    await tester.pumpWidget(MaterialApp(home: HomePage(api: api)));
     await tester.pumpAndSettle();
 
     expect(find.text('第三课堂'), findsWidgets);
