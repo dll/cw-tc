@@ -24,7 +24,8 @@ func (s *Server) learningLecture(c *gin.Context) (int64, int64, bool, bool) {
 	var courseID, lectureID int64
 	var preview bool
 	var previewCount int
-	err = s.dbConn.QueryRowContext(c.Request.Context(), `SELECT co.id,l.id,l.is_preview,co.free_preview_lectures FROM course co JOIN lecture l ON l.course_id=co.id WHERE co.course_code=$1 AND co.status='published' AND l.no=$2`, c.Param("courseCode"), no).Scan(&courseID, &lectureID, &preview, &previewCount)
+	var status string
+	err = s.dbConn.QueryRowContext(c.Request.Context(), `SELECT co.id,l.id,l.is_preview,co.free_preview_lectures,co.status FROM course co JOIN lecture l ON l.course_id=co.id WHERE co.course_code=$1 AND co.deleted_at IS NULL AND l.no=$2`, c.Param("courseCode"), no).Scan(&courseID, &lectureID, &preview, &previewCount, &status)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "讲次不存在"})
 		return 0, 0, false, false
@@ -32,6 +33,16 @@ func (s *Server) learningLecture(c *gin.Context) (int64, int64, bool, bool) {
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "数据不可用"})
 		return 0, 0, false, false
+	}
+	// 下架课程不再对外提供试学；已购学员仍可继续学习与测评（PRD B-8）。
+	if status != "published" {
+		value, exists := c.Get(studentContextKey)
+		student, valid := value.(identity.Student)
+		if !exists || !valid || !s.hasActiveEntitlement(c.Request.Context(), student.ID, courseID) {
+			c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
+			return 0, 0, false, false
+		}
+		return courseID, lectureID, false, true
 	}
 	return courseID, lectureID, preview || no <= previewCount, true
 }
