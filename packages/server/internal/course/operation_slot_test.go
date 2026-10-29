@@ -30,6 +30,17 @@ func TestOperationSlotLifecycle(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("公开运营位=%d err=%v", len(items), err)
 	}
+	// 更新运营位
+	slot.ID = id
+	slot.Title = "更新后的推荐"
+	slot.Weight = 20
+	if err := UpdateOperationSlot(ctx, database, id, slot, 1); err != nil {
+		t.Fatalf("更新运营位失败: %v", err)
+	}
+	adminItems, err := ListOperationSlots(ctx, database, now)
+	if err != nil || len(adminItems) != 1 || adminItems[0].Title != "更新后的推荐" {
+		t.Fatalf("更新后列表异常: %#v %v", adminItems, err)
+	}
 	// 未上架课程不能关联
 	bad := slot
 	bad.CourseCode = "C2"

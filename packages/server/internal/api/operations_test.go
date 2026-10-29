@@ -82,4 +82,19 @@ func TestAdminOperationsFlow(t *testing.T) {
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/operations", `{"position":"bad","title":"x","starts_at":"2026-01-01T00:00:00Z","ends_at":"2026-01-02T00:00:00Z","status":"active"}`, adminToken); got.Code != http.StatusBadRequest {
 		t.Fatalf("非法位置应 400: %d", got.Code)
 	}
+	if got := performJSONWithBearer(t, r, http.MethodPatch, "/api/v1/admin/operations/999", updatePayload, adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("更新不存在运营位应 404: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodDelete, "/api/v1/admin/operations/999", "", adminToken); got.Code != http.StatusNotFound {
+		t.Fatalf("下线不存在运营位应 404: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/operations", `{"position":"home_banner","title":"x","starts_at":"2026-01-02T00:00:00Z","ends_at":"2026-01-01T00:00:00Z","status":"active"}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("结束早于开始应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/operations", `{"position":"home_banner","starts_at":"2026-01-01T00:00:00Z","ends_at":"2026-01-02T00:00:00Z","status":"active"}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("缺标题与图片应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/operations", `{"position":"home_recommend","title":"x","starts_at":"2026-01-01T00:00:00Z","ends_at":"2026-01-02T00:00:00Z","status":"active"}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("推荐位缺课程应 400: %d", got.Code)
+	}
 }
