@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -106,6 +108,36 @@ class _AccountSecurityPageState extends State<AccountSecurityPage> {
       if (mounted) context.go('/login');
     } catch (e) {
       _toast(_friendly(e));
+    }
+  }
+
+  Future<void> _exportData() async {
+    try {
+      final data = await _api.exportMyData();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('我的数据'),
+          content: SizedBox(
+            width: 480,
+            height: 360,
+            child: SingleChildScrollView(
+              child: SelectableText(const JsonEncoder.withIndent('  ').convert(data)),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('关闭')),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('导出失败，请稍后重试')));
+      }
     }
   }
 
@@ -298,6 +330,16 @@ class _AccountSecurityPageState extends State<AccountSecurityPage> {
                       ),
                     ),
                   ],
+                ),
+              ),
+              _sectionTitle(theme, '我的数据'),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.download_outlined),
+                  title: const Text('导出我的数据'),
+                  subtitle: const Text('账号、学习记录、成绩、证书、笔记（脱敏）'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _exportData,
                 ),
               ),
               _sectionTitle(theme, '注销账号'),

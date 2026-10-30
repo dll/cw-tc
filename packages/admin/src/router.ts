@@ -9,6 +9,7 @@ import Users from '@/pages/Users.vue'
 import Broadcast from '@/pages/Broadcast.vue'
 import Staff from '@/pages/Staff.vue'
 import Courses from '@/pages/Courses.vue'
+import Comments from '@/pages/Comments.vue'
 import ContentRequests from '@/pages/ContentRequests.vue'
 import Operations from '@/pages/Operations.vue'
 import Majors from '@/pages/Majors.vue'
@@ -33,6 +34,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/orders', component: Orders },
   { path: '/admin/refunds', component: Refunds },
   { path: '/admin/certs', component: Certs },
+  { path: '/admin/comments', component: Comments },
   { path: '/admin/kb', component: Placeholder, props: { title: '知识库重建', detail: '切片数与向量数须为真实统计' } },
   { path: '/admin/broadcast', component: Broadcast },
   { path: '/admin/users', component: Users },

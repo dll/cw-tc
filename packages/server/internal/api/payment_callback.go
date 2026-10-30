@@ -21,5 +21,6 @@ func (s *Server) paymentCallback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10304, Msg: err.Error()})
 		return
 	}
+	s.notifyOrderPaid(c.Request.Context(), input.OrderNo)
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"status": "paid"}})
 }

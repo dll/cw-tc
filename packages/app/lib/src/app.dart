@@ -13,6 +13,8 @@ import 'pages/login_page.dart';
 import 'pages/me_page.dart';
 import 'pages/my_courses_page.dart';
 import 'pages/my_favorites_page.dart';
+import 'pages/notes_page.dart';
+import 'pages/suggestions_page.dart';
 import 'pages/my_orders_page.dart';
 import 'pages/my_scores_page.dart';
 import 'pages/notifications_page.dart';
@@ -87,6 +89,14 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/me/favorites',
       builder: (_, __) => const MyFavoritesPage(),
+    ),
+    GoRoute(
+      path: '/me/notes',
+      builder: (_, __) => const NotesPage(),
+    ),
+    GoRoute(
+      path: '/me/suggestions',
+      builder: (_, __) => const SuggestionsPage(),
     ),
     GoRoute(
       path: '/me/orders',

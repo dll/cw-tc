@@ -510,3 +510,22 @@ export async function gradeDetail(resultId: number): Promise<{ result_id: number
 export async function submitGrade(resultId: number, questionId: number, input: { score: number; comment?: string; points?: string }): Promise<void> {
   await unwrap<unknown>(http.post(`/teacher/grade/${resultId}/questions/${questionId}`, input))
 }
+
+export interface AdminComment {
+  id: number
+  course_code: string
+  course_name: string
+  nickname: string
+  rating: number
+  body: string
+  status: string
+  created_at: string
+  pending_reports: number
+}
+export async function listAdminComments(status = 'visible'): Promise<AdminComment[]> {
+  const data = await unwrap<{ items: AdminComment[] }>(http.get('/admin/comments', { params: { status } }))
+  return data.items
+}
+export async function removeAdminComment(id: number, reasonKind: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/comments/${id}/remove`, { reason_kind: reasonKind, confirm: true }))
+}

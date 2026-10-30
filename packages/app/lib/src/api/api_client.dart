@@ -14,6 +14,7 @@ import '../models/lecture_resource.dart';
 import '../models/major.dart';
 import '../models/message.dart';
 import '../models/my_course.dart';
+import '../models/note.dart';
 import '../models/operation_slot.dart';
 import '../models/score.dart';
 import '../models/order.dart';
@@ -305,6 +306,64 @@ class ApiClient {
         (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{});
   }
 
+  Future<List<Note>> notes({String? courseCode}) async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/notes',
+        queryParameters: <String, dynamic>{
+          if (courseCode != null && courseCode.isNotEmpty)
+            'course_code': courseCode
+        });
+    _ensureSuccess(res.data);
+    final items = ((res.data?['data'] as Map<String, dynamic>?)?['items']
+            as List<dynamic>?) ?? const <dynamic>[];
+    return items.map((e) => Note.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> createNote({
+    required String courseCode,
+    int? lectureNo,
+    String title = '',
+    required String body,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>('/api/v1/notes',
+        data: <String, dynamic>{
+          'course_code': courseCode,
+          if (lectureNo != null) 'lecture_no': lectureNo,
+          'title': title,
+          'body': body,
+        });
+    _ensureSuccess(res.data);
+  }
+
+  Future<void> deleteNote(int id) async {
+    final res = await _dio.delete<Map<String, dynamic>>('/api/v1/notes/$id');
+    _ensureSuccess(res.data);
+  }
+
+  Future<List<Suggestion>> suggestions() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/suggestions');
+    _ensureSuccess(res.data);
+    final items = ((res.data?['data'] as Map<String, dynamic>?)?['items']
+            as List<dynamic>?) ?? const <dynamic>[];
+    return items
+        .map((e) => Suggestion.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> createSuggestion(String body, {String? courseCode}) async {
+    final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/suggestions',
+        data: <String, dynamic>{
+          'body': body,
+          if (courseCode != null && courseCode.isNotEmpty)
+            'course_code': courseCode,
+        });
+    _ensureSuccess(res.data);
+  }
+
+  Future<Map<String, dynamic>> exportMyData() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/export');
+    _ensureSuccess(res.data);
+    return (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+  }
   Future<List<FavoriteCourse>> myFavorites() async {
     final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/favorites');
     _ensureSuccess(res.data);
