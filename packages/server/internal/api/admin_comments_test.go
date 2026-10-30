@@ -31,6 +31,9 @@ func TestAdminCommentModerationAndReport(t *testing.T) {
 	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"course_code":"C1"`) {
 		t.Fatalf("评价审核列表异常: %d %s", listed.Code, listed.Body.String())
 	}
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/courses/C1/comments/1/report", `{}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("空举报原因应 400: %d", got.Code)
+	}
 	report := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/courses/C1/comments/"+strconv.FormatInt(commentID, 10)+"/report", `{"reason_kind":"广告"}`, token)
 	if report.Code != http.StatusOK {
 		t.Fatalf("举报失败: %d %s", report.Code, report.Body.String())
@@ -39,9 +42,16 @@ func TestAdminCommentModerationAndReport(t *testing.T) {
 	if reports.Code != http.StatusOK || !strings.Contains(reports.Body.String(), `"reason_kind":"广告"`) {
 		t.Fatalf("举报列表异常: %d %s", reports.Code, reports.Body.String())
 	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/comments/"+strconv.FormatInt(commentID, 10)+"/remove", `{"reason_kind":"广告"}`, adminToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("未确认下架应 400: %d", got.Code)
+	}
 	removed := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/comments/"+strconv.FormatInt(commentID, 10)+"/remove", `{"reason_kind":"广告","confirm":true}`, adminToken)
 	if removed.Code != http.StatusOK {
 		t.Fatalf("下架评价失败: %d %s", removed.Code, removed.Body.String())
+	}
+	removedList := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/comments?status=removed", "", adminToken)
+	if removedList.Code != http.StatusOK || !strings.Contains(removedList.Body.String(), `"status":"removed"`) {
+		t.Fatalf("已下架列表异常: %d %s", removedList.Code, removedList.Body.String())
 	}
 	public := performJSON(t, r, http.MethodGet, "/api/v1/courses/C1/comments", "")
 	if public.Code != http.StatusOK || strings.Contains(public.Body.String(), `"count":1`) {
