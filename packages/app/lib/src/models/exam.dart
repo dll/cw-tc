@@ -60,3 +60,37 @@ class ExamResult {
     );
   }
 }
+
+/// 未完成测评（断线 / 换设备恢复）。
+class OngoingExam {
+  const OngoingExam({
+    required this.sessionId,
+    required this.level,
+    required this.paper,
+    required this.answers,
+    required this.remainingSecs,
+    required this.expired,
+  });
+
+  final int sessionId;
+  final String level;
+  final List<ExamQuestion> paper;
+  final Map<String, String> answers;
+  final int remainingSecs;
+  final bool expired;
+
+  factory OngoingExam.fromJson(Map<String, dynamic> json) {
+    final rawPaper = (json['paper'] as List<dynamic>?) ?? const <dynamic>[];
+    final rawAnswers = (json['answers'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    return OngoingExam(
+      sessionId: (json['session_id'] as num?)?.toInt() ?? 0,
+      level: json['level'] as String? ?? '',
+      paper: rawPaper
+          .map((e) => ExamQuestion.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      answers: rawAnswers.map((k, v) => MapEntry(k, v.toString())),
+      remainingSecs: (json['remaining_secs'] as num?)?.toInt() ?? 0,
+      expired: json['expired'] as bool? ?? false,
+    );
+  }
+}

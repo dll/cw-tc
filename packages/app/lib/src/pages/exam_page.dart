@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
@@ -19,8 +21,9 @@ class ExamPage extends StatefulWidget {
 
 class _ExamPageState extends State<ExamPage> {
   late final ApiClient _api = widget.api ?? ApiClient();
-  Future<ExamSession>? _sessionFuture;
   ExamSession? _session;
+  Timer? _timer;
+  int _remaining = 0;
   final Map<String, String> _answers = <String, String>{};
   bool _submitting = false;
   ExamResult? _result;
@@ -29,18 +32,66 @@ class _ExamPageState extends State<ExamPage> {
   @override
   void initState() {
     super.initState();
-    _sessionFuture = _api.startExam(courseCode: widget.courseCode, level: widget.level);
-    _sessionFuture!.then((s) {
-      if (mounted) setState(() => _session = s);
-    }).catchError((_) {
-      if (mounted) setState(() => _error = '开考失败（可能无权益或冷却中）');
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final ongoing = await _api.ongoingExam(
+          courseCode: widget.courseCode, level: widget.level);
+      if (ongoing != null) {
+        if (ongoing.expired) {
+          if (mounted) setState(() => _error = '上次测评已超时，请联系客服处理');
+          return;
+        }
+        if (!mounted) return;
+        setState(() {
+          _session = ExamSession(
+              sessionId: ongoing.sessionId, paper: ongoing.paper);
+          _answers.addAll(ongoing.answers);
+          _remaining = ongoing.remainingSecs;
+        });
+        _startTimer();
+        return;
+      }
+      final session = await _api.startExam(
+          courseCode: widget.courseCode, level: widget.level);
+      if (!mounted) return;
+      setState(() {
+        _session = session;
+        _remaining = 60 * 60;
+      });
+      _startTimer();
+    } catch (_) {
+      if (mounted) setState(() => _error = '开考失败：请确认已解锁课程或等待冷却');
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_remaining <= 1) {
+        timer.cancel();
+        setState(() => _remaining = 0);
+        _submit();
+      } else {
+        setState(() => _remaining--);
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   Future<void> _submit() async {
     if (_session == null || _submitting) return;
     setState(() => _submitting = true);
     try {
+      _timer?.cancel();
       final result = await _api.submitExam(_session!.sessionId, _answers);
       if (mounted) setState(() => _result = result);
     } catch (_) {
@@ -54,7 +105,10 @@ class _ExamPageState extends State<ExamPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text('测评 · ${widget.level}')),
+      appBar: AppBar(
+        title: Text(
+            '测评 · ${widget.level} · 剩余 ${_mmss(_remaining)}'),
+      ),
       body: _buildBody(theme),
       bottomNavigationBar: (_session != null && _result == null)
           ? SafeArea(
@@ -68,6 +122,12 @@ class _ExamPageState extends State<ExamPage> {
             )
           : null,
     );
+  }
+
+  String _mmss(int seconds) {
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   Widget _buildBody(ThemeData theme) {
@@ -85,7 +145,12 @@ class _ExamPageState extends State<ExamPage> {
           index: i,
           question: q,
           selected: _answers[q.qno],
-          onChanged: (v) => setState(() => _answers[q.qno] = v),
+          onChanged: (v) {
+            setState(() => _answers[q.qno] = v);
+            unawaited(_api
+                .saveExamAnswer(_session!.sessionId, q.qno, v)
+                .catchError((Object _) {}));
+          },
         );
       },
     );

@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../models/ai_answer.dart';
 import '../models/cert.dart';
 import '../models/course.dart';
+import '../models/course_comment.dart';
 import '../models/exam.dart';
+import '../models/favorite.dart';
 import '../models/lecture.dart';
 import '../models/lecture_resource.dart';
 import '../models/major.dart';
@@ -282,6 +285,53 @@ class ApiClient {
         .toList();
   }
 
+  /// 我的收藏（`GET /me/favorites`）。
+  /// AI 助学（`POST /ai/ask`）：仅当前讲次资料，返回引用。
+  Future<AiAnswer> askAI({
+    required String courseCode,
+    required int lectureNo,
+    required String question,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/api/v1/ai/ask',
+      data: <String, dynamic>{
+        'course_code': courseCode,
+        'lecture_no': lectureNo,
+        'question': question,
+      },
+    );
+    _ensureSuccess(res.data);
+    return AiAnswer.fromJson(
+        (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{});
+  }
+
+  Future<List<FavoriteCourse>> myFavorites() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/favorites');
+    _ensureSuccess(res.data);
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return items
+        .map((e) => FavoriteCourse.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 当前学员是否已收藏课程。
+  Future<bool> favoriteStatus(String courseCode) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+        '/api/v1/courses/${Uri.encodeComponent(courseCode)}/favorite');
+    _ensureSuccess(res.data);
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    return data?['favorited'] as bool? ?? false;
+  }
+
+  /// 收藏 / 取消收藏（幂等）。
+  Future<void> setFavorite(String courseCode, bool favorited) async {
+    final path = '/api/v1/courses/${Uri.encodeComponent(courseCode)}/favorite';
+    final res = favorited
+        ? await _dio.post<Map<String, dynamic>>(path)
+        : await _dio.delete<Map<String, dynamic>>(path);
+    _ensureSuccess(res.data);
+  }
   /// 记录一次讲次访问或显式完成；打开页面不应被当作完成。
   Future<void> reportCourseProgress(
     String courseCode, {
@@ -446,6 +496,37 @@ class ApiClient {
       (await myEntitlementSources()).keys.toList();
 
   /// 课程详情（`GET /api/v1/courses/:courseCode`，公开只读）。
+  /// 课程评价（公开；均分达到展示阈值才返回）。
+  Future<CourseCommentPage> courseComments(String courseCode) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+        '/api/v1/courses/${Uri.encodeComponent(courseCode)}/comments');
+    _ensureSuccess(res.data);
+    return CourseCommentPage.fromJson(
+        (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{});
+  }
+
+  /// 提交课程评价（已解锁、一人一评）。
+  Future<void> submitCourseComment(
+    String courseCode, {
+    required int rating,
+    String? body,
+    int? ratingContent,
+    int? ratingLevel,
+    int? ratingClarity,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/api/v1/courses/${Uri.encodeComponent(courseCode)}/comments',
+      data: <String, dynamic>{
+        'rating': rating,
+        if (body != null && body.isNotEmpty) 'body': body,
+        if (ratingContent != null) 'rating_content': ratingContent,
+        if (ratingLevel != null) 'rating_level': ratingLevel,
+        if (ratingClarity != null) 'rating_clarity': ratingClarity,
+      },
+    );
+    _ensureSuccess(res.data);
+  }
+
   Future<Course> courseDetail(String courseCode) async {
     final res =
         await _dio.get<Map<String, dynamic>>('/api/v1/courses/$courseCode');
@@ -481,6 +562,32 @@ class ApiClient {
   }
 
   /// 交卷判分（`POST /exams/:sessionID/submit`）：通过自动发证。
+  /// 未完成测评（断线 / 换设备恢复）。
+  Future<OngoingExam?> ongoingExam(
+      {required String courseCode, required String level}) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/api/v1/me/exams/ongoing',
+      queryParameters: <String, dynamic>{
+        'course_code': courseCode,
+        'level': level,
+      },
+    );
+    _ensureSuccess(res.data);
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final raw = data?['session'] ?? data;
+    if (raw is! Map<String, dynamic> || raw['session_id'] == null) return null;
+    return OngoingExam.fromJson(raw);
+  }
+
+  /// 答题即时持久化（断线续考）。
+  Future<void> saveExamAnswer(int sessionId, String qno, String answer) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/api/v1/exams/$sessionId/answers',
+      data: <String, dynamic>{'qno': qno, 'answer': answer},
+    );
+    _ensureSuccess(res.data);
+  }
+
   Future<ExamResult> submitExam(
       int sessionId, Map<String, String> answers) async {
     final res = await _dio.post<Map<String, dynamic>>(

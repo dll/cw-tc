@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../api/api_client.dart';
+import '../models/my_course.dart';
 import '../models/operation_slot.dart';
 
 /// 首页（PRD v2 §8.1 `/`）：产品定位 + 运营位 Banner + 课程广场 / 证书验真入口。
@@ -17,11 +18,27 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late final ApiClient _api = widget.api ?? ApiClient();
   List<OperationSlot> _banners = const <OperationSlot>[];
+  MyCourse? _continueCourse;
 
   @override
   void initState() {
     super.initState();
     _loadBanners();
+    _loadContinueLearning();
+  }
+
+  Future<void> _loadContinueLearning() async {
+    try {
+      if (!await _api.hasSession()) return;
+      final items = await _api.myCourses();
+      final learning = items
+          .where((c) => c.status == 'learning' && c.lastLectureNo != null)
+          .toList();
+      if (!mounted) return;
+      setState(() => _continueCourse = learning.isEmpty ? null : learning.first);
+    } catch (_) {
+      // 未登录 / 网络异常不显示继续学习卡。
+    }
   }
 
   Future<void> _loadBanners() async {
@@ -53,6 +70,10 @@ class _HomePageState extends State<HomePage> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: <Widget>[
+            if (_continueCourse != null) ...<Widget>[
+              _continueCard(theme, _continueCourse!),
+              const SizedBox(height: 16),
+            ],
             if (_banners.isNotEmpty) ...<Widget>[
               for (final slot in _banners) _bannerCard(theme, slot),
               const SizedBox(height: 16),
@@ -76,6 +97,22 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _continueCard(ThemeData theme, MyCourse course) {
+    return Card(
+      color: theme.colorScheme.primaryContainer.withOpacity(0.35),
+      child: ListTile(
+        leading: const Icon(Icons.play_circle_outline),
+        title: Text('继续学习 · ${course.name}'),
+        subtitle: LinearProgressIndicator(
+          value: course.progressPercent.clamp(0, 100) / 100,
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push(
+            '/learn/${Uri.encodeComponent(course.courseCode)}/${course.lastLectureNo ?? 1}'),
       ),
     );
   }
