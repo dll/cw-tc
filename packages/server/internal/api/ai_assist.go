@@ -123,57 +123,6 @@ func (s *Server) askAI(c *gin.Context) {
 	}})
 }
 
-func (s *Server) lectureContext(ctx context.Context, courseID int64, lectureNo int) (string, []aiCitation) {
-	if s.cfg.ContentDir == "" {
-		return "", nil
-	}
-	rows, err := s.dbConn.QueryContext(ctx,
-		`SELECT l.no, l.title, a.title, a.storage_key, a.kind
-		 FROM asset a JOIN lecture l ON l.id=a.lecture_id
-		 WHERE l.course_id=$1 AND l.no=$2
-		   AND a.kind IN ('markdown','html','code','frozen_output')
-		 ORDER BY a.sort, a.id LIMIT 20`, courseID, lectureNo)
-	if err != nil {
-		return "", nil
-	}
-	defer rows.Close()
-	var builder strings.Builder
-	citations := make([]aiCitation, 0)
-	for rows.Next() {
-		var no int
-		var lectureTitle, title, key, kind string
-		if err := rows.Scan(&no, &lectureTitle, &title, &key, &kind); err != nil {
-			continue
-		}
-		path := filepath.Join(s.cfg.ContentDir, filepath.FromSlash(key))
-		cleanRoot := filepath.Clean(s.cfg.ContentDir) + string(os.PathSeparator)
-		if !strings.HasPrefix(filepath.Clean(path), cleanRoot) {
-			continue
-		}
-		data, err := os.ReadFile(path)
-		if err != nil || len(data) == 0 {
-			continue
-		}
-		text := string(data)
-		if kind == "html" {
-			text = htmlTagRE.ReplaceAllString(text, " ")
-		}
-		text = strings.TrimSpace(text)
-		if text == "" {
-			continue
-		}
-		if len([]rune(text)) > 4000 {
-			text = string([]rune(text)[:4000])
-		}
-		fmt.Fprintf(&builder, "[L%d] %s / %s\n%s\n\n", no, lectureTitle, title, text)
-		citations = append(citations, aiCitation{LectureNo: no, Title: title, StorageKey: key})
-		if builder.Len() > 12000 {
-			break
-		}
-	}
-	return builder.String(), citations
-}
-
 type contextChunk struct {
 	score    int
 	text     string
