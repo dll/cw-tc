@@ -41,7 +41,10 @@ func (s *Server) adminCourses(c *gin.Context) {
 	query := `SELECT c.course_code, c.source, c.name, c.intro, c.line, c.lecture_count, c.status,
 	                 c.price_cents, c.teacher_id, c.created_at, c.updated_at, c.major_id, m.name,
 	                 c.free_preview_lectures, c.sort_weight, c.reviewed_at, c.reject_reason,
-	                 c.ai_enabled, c.kb_status, c.content_version, c.published_version
+	                 c.ai_enabled, c.kb_status, c.content_version, c.published_version,
+	                 COALESCE((SELECT cr.published_at FROM course_revision cr
+	                           WHERE cr.course_code=c.course_code AND cr.content_version=c.published_version
+	                           ORDER BY cr.revision_no DESC LIMIT 1), c.updated_at) AS published_at
 	          FROM course c LEFT JOIN major m ON m.id = c.major_id
 	          WHERE ` + strings.Join(where, " AND ") + ` ORDER BY c.id DESC`
 	rows, err := s.dbConn.QueryContext(c.Request.Context(), query, args...)
@@ -52,7 +55,7 @@ func (s *Server) adminCourses(c *gin.Context) {
 	defer rows.Close()
 	items := make([]gin.H, 0)
 	for rows.Next() {
-		var code, source, name, line, status, createdAt, updatedAt, kbStatus string
+		var code, source, name, line, status, createdAt, updatedAt, kbStatus, publishedAt string
 		var intro, majorName, reviewedAt, rejectReason sql.NullString
 		var priceCents int64
 		var teacherID, majorID, publishedVersion *int64
@@ -61,7 +64,7 @@ func (s *Server) adminCourses(c *gin.Context) {
 		if err := rows.Scan(&code, &source, &name, &intro, &line, &lectureCount, &status,
 			&priceCents, &teacherID, &createdAt, &updatedAt, &majorID, &majorName,
 			&freePreviewLectures, &sortWeight, &reviewedAt, &rejectReason, &aiEnabled, &kbStatus,
-			&contentVersion, &publishedVersion); err != nil {
+			&contentVersion, &publishedVersion, &publishedAt); err != nil {
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 			return
 		}
@@ -75,7 +78,7 @@ func (s *Server) adminCourses(c *gin.Context) {
 			"reviewed_at": nullableString(reviewedAt), "reject_reason": nullableString(rejectReason),
 			"ai_enabled": aiEnabled, "kb_status": kbStatus,
 			"content_version": contentVersion, "published_version": publishedVersion,
-			"has_unpublished_changes": hasUnpublishedChanges,
+			"published_at": publishedAt, "has_unpublished_changes": hasUnpublishedChanges,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -228,10 +231,15 @@ func (s *Server) adminCourseQuality(c *gin.Context) {
 	var aiEnabled bool
 	var contentVersion int
 	var publishedVersion *int64
+	var contentUpdatedAt, publishedAt string
 	err := s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT CAST(quality_score AS REAL), ai_level, ai_enabled, kb_status, status, content_version, published_version
+		`SELECT CAST(quality_score AS REAL), ai_level, ai_enabled, kb_status, status, content_version, published_version,
+		        updated_at,
+		        COALESCE((SELECT cr.published_at FROM course_revision cr
+		                  WHERE cr.course_code=course.course_code AND cr.content_version=course.published_version
+		                  ORDER BY cr.revision_no DESC LIMIT 1), updated_at)
 		 FROM course WHERE course_code = $1 AND deleted_at IS NULL`, c.Param("code")).
-		Scan(&quality, &aiLevel, &aiEnabled, &kbStatus, &status, &contentVersion, &publishedVersion)
+		Scan(&quality, &aiLevel, &aiEnabled, &kbStatus, &status, &contentVersion, &publishedVersion, &contentUpdatedAt, &publishedAt)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "课程不存在"})
 		return
@@ -245,6 +253,7 @@ func (s *Server) adminCourseQuality(c *gin.Context) {
 		"quality_score": nil, "ai_level": nil,
 		"ai_enabled": aiEnabled, "kb_status": kbStatus.String,
 		"content_version": contentVersion, "published_version": publishedVersion,
+		"content_updated_at": contentUpdatedAt, "published_at": publishedAt,
 		"latest_review": nil,
 	}
 	if quality.Valid {

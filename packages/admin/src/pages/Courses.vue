@@ -99,6 +99,19 @@ async function submitQuality() {
   }
 }
 
+function formatVersion(value: number | null | undefined): string {
+  return value == null ? '未发布' : `v${value}.0.0`
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '—'
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 const statusLabel: Record<string, string> = {
   proposed: '立项', building: '建设中', submitted: '待审核', rejected: '已驳回',
   approved: '待上架', published: '已上架', unpublished: '已下架',
@@ -429,10 +442,16 @@ async function submitReview() {
       <el-table-column label="状态" width="100">
         <template #default="{ row }">{{ statusLabel[row.status] ?? row.status }}</template>
       </el-table-column>
-      <el-table-column label="版本" width="150">
+      <el-table-column label="版本" width="230">
         <template #default="{ row }">
-          <el-link type="primary" @click="openRevisions(row)">内容 v{{ row.content_version }}</el-link>
-          <div class="course-version">线上 {{ row.published_version ? `v${row.published_version}` : '未发布' }}</div>
+          <el-link type="primary" @click="openRevisions(row)">
+            内容 {{ formatVersion(row.content_version) }}
+          </el-link>
+          <div class="course-version">更新 {{ formatDateTime(row.updated_at) }}</div>
+          <div class="course-version">
+            线上 {{ formatVersion(row.published_version) }}
+            <template v-if="row.published_version"> · {{ formatDateTime(row.published_at) }}</template>
+          </div>
           <el-tag v-if="row.has_unpublished_changes" type="warning" size="small">待发布</el-tag>
         </template>
       </el-table-column>
@@ -445,8 +464,8 @@ async function submitReview() {
       <el-table-column label="免费讲次" width="90">
         <template #default="{ row }">{{ row.free_preview_lectures ?? 0 }}</template>
       </el-table-column>
-      <el-table-column label="更新时间" width="170">
-        <template #default="{ row }">{{ row.updated_at || row.created_at }}</template>
+      <el-table-column label="更新时间" width="180">
+        <template #default="{ row }">{{ formatDateTime(row.updated_at || row.created_at) }}</template>
       </el-table-column>
       <el-table-column label="操作" width="490">
         <template #default="{ row }">
@@ -521,11 +540,13 @@ async function submitReview() {
     <el-dialog v-model="revisionVisible" :title="`版本历史 · ${revisionTarget?.name ?? ''}`" width="680px">
       <el-table :data="revisions" size="small">
         <el-table-column prop="revision_no" label="改版" width="80" />
-        <el-table-column label="内容版本" width="100">
-          <template #default="{ row }">v{{ row.content_version }}</template>
+        <el-table-column label="内容版本" width="130">
+          <template #default="{ row }">{{ formatVersion(row.content_version) }}</template>
         </el-table-column>
         <el-table-column prop="changed_digest" label="变更摘要" />
-        <el-table-column prop="published_at" label="发布时间" width="200" />
+        <el-table-column label="发布时间" width="190">
+          <template #default="{ row }">{{ formatDateTime(row.published_at) }}</template>
+        </el-table-column>
       </el-table>
       <el-empty v-if="!revisions.length" description="尚无发布记录" />
     </el-dialog>
@@ -537,8 +558,14 @@ async function submitReview() {
           <el-descriptions-item label="AI 等级">{{ quality.ai_level ?? '—' }}</el-descriptions-item>
           <el-descriptions-item label="AI 开关">{{ quality.ai_enabled ? '开启' : '关闭' }}</el-descriptions-item>
           <el-descriptions-item label="知识库">{{ quality.kb_status }}</el-descriptions-item>
-          <el-descriptions-item label="内容版本">v{{ quality.content_version }}</el-descriptions-item>
-          <el-descriptions-item label="线上版本">{{ quality.published_version ? `v${quality.published_version}` : '未发布' }}</el-descriptions-item>
+          <el-descriptions-item label="内容版本">
+            {{ formatVersion(quality.content_version) }}
+            <div class="course-version">{{ formatDateTime(quality.content_updated_at) }}</div>
+          </el-descriptions-item>
+          <el-descriptions-item label="线上版本">
+            {{ formatVersion(quality.published_version) }}
+            <div v-if="quality.published_version" class="course-version">{{ formatDateTime(quality.published_at) }}</div>
+          </el-descriptions-item>
         </el-descriptions>
 
         <el-divider>最近一次审核</el-divider>
@@ -547,9 +574,9 @@ async function submitReview() {
             <el-descriptions-item label="轮次">{{ quality.latest_review.round }}</el-descriptions-item>
             <el-descriptions-item label="结论">{{ quality.latest_review.verdict === 'approved' ? '通过' : '驳回' }}</el-descriptions-item>
             <el-descriptions-item label="总分">{{ quality.latest_review.total_score }}</el-descriptions-item>
-            <el-descriptions-item label="审核版本">v{{ quality.latest_review.content_version }}</el-descriptions-item>
+            <el-descriptions-item label="审核版本">{{ formatVersion(quality.latest_review.content_version) }}</el-descriptions-item>
             <el-descriptions-item label="审核人">{{ quality.latest_review.reviewer_name ?? quality.latest_review.reviewer_role }}</el-descriptions-item>
-            <el-descriptions-item label="时间">{{ quality.latest_review.reviewed_at }}</el-descriptions-item>
+            <el-descriptions-item label="时间">{{ formatDateTime(quality.latest_review.reviewed_at) }}</el-descriptions-item>
           </el-descriptions>
           <div class="score-grid">
             <span>材料 {{ quality.latest_review.score_material }}/25</span>
