@@ -63,7 +63,9 @@ class _MePageState extends State<MePage> {
       (Icons.school_outlined, '我的课程', '学习中 / 已完成'),
       (Icons.favorite_border, '我的收藏', '想学 / 待购买'),
       (Icons.receipt_long_outlined, '我的订单', '订单与发票'),
+      (Icons.note_alt_outlined, '学习笔记', '记录 / 回顾'),
       (Icons.assignment_turned_in_outlined, '我的成绩', '测评记录与分数'),
+      (Icons.lightbulb_outline, '我的建议', '反馈与处理结果'),
       (Icons.verified_outlined, '我的证书', '查看 / 下载 / 验真'),
       (Icons.notifications_outlined, '消息', '系统通知 / 重置码'),
       (Icons.settings_outlined, '设置', '账号与安全'),
@@ -110,6 +112,8 @@ class _MePageState extends State<MePage> {
                     if (title == '我的课程') context.push('/me/courses');
                     if (title == '我的收藏') context.push('/me/favorites');
                     if (title == '我的订单') context.push('/me/orders');
+                    if (title == '学习笔记') context.push('/me/notes');
+                    if (title == '我的建议') context.push('/me/suggestions');
                     if (title == '我的成绩') context.push('/me/scores');
                     if (title == '我的证书') context.push('/certs');
                     if (title == '消息') context.push('/notifications');

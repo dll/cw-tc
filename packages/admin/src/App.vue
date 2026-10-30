@@ -27,6 +27,7 @@ const adminMenus = { group: '管理端', items: [
   { path: '/admin/majors', label: '专业分类' },
   { path: '/admin/orders', label: '订单与退款' },
   { path: '/admin/certs', label: '证书台账' },
+  { path: '/admin/comments', label: '评价审核' },
   { path: '/admin/kb', label: '知识库重建' },
   { path: '/admin/broadcast', label: '广播通知' },
   { path: '/admin/users', label: '用户管理' },

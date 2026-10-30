@@ -92,5 +92,6 @@ func (s *Server) adminRefundOrder(c *gin.Context) {
 		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: err.Error()})
 		return
 	}
+	s.notifyOrderRefunded(c.Request.Context(), c.Param("orderNo"))
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"refund_no": ref.RefundNo}})
 }

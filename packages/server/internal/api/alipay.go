@@ -74,5 +74,6 @@ func (s *Server) alipayNotify(c *gin.Context) {
 		c.String(http.StatusBadRequest, "failure")
 		return
 	}
+	s.notifyOrderPaid(c.Request.Context(), orderNo)
 	c.String(http.StatusOK, "success")
 }

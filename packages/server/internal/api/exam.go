@@ -106,6 +106,8 @@ func (s *Server) submitExam(c *gin.Context) {
 		}
 		certNo = cn
 	}
+	student := c.MustGet(studentContextKey).(identity.Student)
+	s.notifyExamResult(ctx, student.ID, res.IsPass, certNo)
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"session_id":  res.SessionID,
 		"auto_score":  res.AutoScore,
