@@ -11,6 +11,7 @@ import '../models/lecture_resource.dart';
 import '../models/major.dart';
 import '../models/my_course.dart';
 import '../models/operation_slot.dart';
+import '../models/order.dart';
 import '../models/verify_result.dart';
 
 /// 后端 API 客户端（M0 骨架）。
@@ -344,6 +345,62 @@ class ApiClient {
   Future<void> mockPayOrder(String orderNo) async {
     await _dio.post<Map<String, dynamic>>('/api/v1/orders/$orderNo/mock-pay',
         data: <String, dynamic>{});
+  }
+
+  /// 我的订单（`GET /me/orders`，含可操作标记与退款进度）。
+  Future<List<MyOrder>> myOrders() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/orders');
+    _ensureSuccess(res.data);
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return items
+        .map((e) => MyOrder.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 单个订单（`GET /me/orders/:orderNo`，前端轮询 / 详情）。
+  Future<MyOrder> myOrder(String orderNo) async {
+    final res = await _dio
+        .get<Map<String, dynamic>>('/api/v1/me/orders/$orderNo');
+    _ensureSuccess(res.data);
+    return MyOrder.fromJson(
+        (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{});
+  }
+
+  /// 同一订单继续支付（`POST /me/orders/:orderNo/pay`，不新建订单）。
+  Future<OrderPaymentIntent> continueOrderPayment(String orderNo) async {
+    final res = await _dio
+        .post<Map<String, dynamic>>('/api/v1/me/orders/$orderNo/pay');
+    _ensureSuccess(res.data);
+    return OrderPaymentIntent.fromJson(
+        (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{});
+  }
+
+  /// 取消待支付订单（`POST /me/orders/:orderNo/cancel`）。
+  Future<void> cancelMyOrder(String orderNo) async {
+    final res = await _dio
+        .post<Map<String, dynamic>>('/api/v1/me/orders/$orderNo/cancel');
+    _ensureSuccess(res.data);
+  }
+
+  /// 学员自助退款（`POST /me/orders/:orderNo/refund`，窗口以服务端为准）。
+  Future<OrderRefund> requestRefund(String orderNo, {String? reason}) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/api/v1/me/orders/$orderNo/refund',
+      data: <String, dynamic>{if (reason != null) 'reason': reason},
+    );
+    _ensureSuccess(res.data);
+    return OrderRefund.fromJson(
+        (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{});
+  }
+
+  /// 退款进度（`GET /me/orders/:orderNo/refund`，无记录返回 null）。
+  Future<OrderRefund?> refundStatus(String orderNo) async {
+    final res = await _dio
+        .get<Map<String, dynamic>>('/api/v1/me/orders/$orderNo/refund');
+    if ((res.data?['code'] as num?) != 0) return null;
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    return data == null ? null : OrderRefund.fromJson(data);
   }
 
   /// 我的学习权益来源（`course_code -> order|free|grant`）。
