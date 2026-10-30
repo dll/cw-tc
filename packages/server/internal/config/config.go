@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,11 @@ const (
 	EnvSMSSecretID   = "CWTC_SMS_SECRET_ID"
 	EnvSMSSecretKey  = "CWTC_SMS_SECRET_KEY"
 	EnvLLMProvider   = "CWTC_LLM_PROVIDER"
+	EnvDeepSeekKey   = "DEEPSEEK_API_KEY"
+	EnvLLMBaseURL    = "CWTC_LLM_BASE_URL"
+	EnvLLMModel      = "CWTC_LLM_MODEL"
+	EnvLLMFilingNo   = "CWTC_LLM_FILING_NO"
+	EnvAIDailyQuota  = "CWTC_AI_DAILY_QUOTA_PER_COURSE"
 	EnvLLMAPIKey     = "CWTC_LLM_API_KEY"
 	EnvWXPayMchID    = "CWTC_WXPAY_MCH_ID"
 	EnvWXPayAPIv3Key = "CWTC_WXPAY_API_V3_KEY"
@@ -111,6 +117,11 @@ type Config struct {
 	SMSSecretKey  string
 	LLMProvider   string
 	LLMAPIKey     string
+	DeepSeekKey   string
+	LLMBaseURL    string
+	LLMModel      string
+	LLMFilingNo   string
+	AIDailyQuota  int
 	WXPayMchID    string
 	WXPayAPIv3Key string
 	WXPayAppID    string
@@ -170,6 +181,11 @@ func LoadFrom(get Getenv) (*Config, error) {
 		SMSSecretKey:  strings.TrimSpace(get(EnvSMSSecretKey)),
 		LLMProvider:   strings.TrimSpace(get(EnvLLMProvider)),
 		LLMAPIKey:     strings.TrimSpace(get(EnvLLMAPIKey)),
+		DeepSeekKey:   strings.TrimSpace(get(EnvDeepSeekKey)),
+		LLMBaseURL:    strings.TrimSpace(get(EnvLLMBaseURL)),
+		LLMModel:      strings.TrimSpace(get(EnvLLMModel)),
+		LLMFilingNo:   strings.TrimSpace(get(EnvLLMFilingNo)),
+		AIDailyQuota:  intDefault(get(EnvAIDailyQuota), 20),
 		WXPayMchID:    strings.TrimSpace(get(EnvWXPayMchID)),
 		WXPayAPIv3Key: strings.TrimSpace(get(EnvWXPayAPIv3Key)),
 		WXPayAppID:    strings.TrimSpace(get(EnvWXPayAppID)),
@@ -279,7 +295,28 @@ func (c *Config) SMSEnabled() bool {
 }
 
 // LLMEnabled AI 网关是否可用（fail-closed）。
-func (c *Config) LLMEnabled() bool { return c.LLMProvider != "" && c.LLMAPIKey != "" }
+func (c *Config) LLMEnabled() bool { return c.LLMKey() != "" && c.LLMBase() != "" }
+
+func (c *Config) LLMKey() string {
+	if c.DeepSeekKey != "" {
+		return c.DeepSeekKey
+	}
+	return c.LLMAPIKey
+}
+
+func (c *Config) LLMBase() string {
+	if c.LLMBaseURL != "" {
+		return c.LLMBaseURL
+	}
+	return "https://api.deepseek.com"
+}
+
+func (c *Config) LLMModelName() string {
+	if c.LLMModel != "" {
+		return c.LLMModel
+	}
+	return "deepseek-chat"
+}
 
 // WXPayEnabled 微信支付是否可用（fail-closed：全套齐备才启用）。
 func (c *Config) WXPayEnabled() bool {
@@ -300,6 +337,13 @@ func (c *Config) PaymentEnabled() bool {
 
 // ErrNoSecret 供调用方 errors.Is 判定的哨兵错误。
 var ErrNoSecret = errors.New("强制密钥未配置")
+
+func intDefault(v string, def int) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
+		return n
+	}
+	return def
+}
 
 func boolDefault(v string, def bool) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {

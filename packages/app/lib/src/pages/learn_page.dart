@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../models/lecture_resource.dart';
+import 'ai_assistant_page.dart';
 import 'audio_player_page.dart';
 import 'lecture_discussion_page.dart';
 import 'lecture_practice_page.dart';
@@ -88,7 +89,20 @@ class _LearnPageState extends State<LearnPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('第 ${widget.no} 讲')),
+      appBar: AppBar(
+        title: Text('第 ${widget.no} 讲'),
+        actions: <Widget>[
+          IconButton(
+            tooltip: 'AI 助教',
+            icon: const Icon(Icons.auto_awesome),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => AiAssistantPage(
+                    courseCode: widget.courseCode,
+                    lectureNo: widget.no,
+                    api: _api))),
+          ),
+        ],
+      ),
       body: FutureBuilder<List<LectureResource>>(
         future: _future,
         builder: (BuildContext context,

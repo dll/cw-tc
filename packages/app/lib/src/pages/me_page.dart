@@ -61,6 +61,7 @@ class _MePageState extends State<MePage> {
   Widget build(BuildContext context) {
     final List<(IconData, String, String)> entries = <(IconData, String, String)>[
       (Icons.school_outlined, '我的课程', '学习中 / 已完成'),
+      (Icons.favorite_border, '我的收藏', '想学 / 待购买'),
       (Icons.receipt_long_outlined, '我的订单', '订单与发票'),
       (Icons.assignment_turned_in_outlined, '我的成绩', '测评记录与分数'),
       (Icons.verified_outlined, '我的证书', '查看 / 下载 / 验真'),
@@ -107,6 +108,7 @@ class _MePageState extends State<MePage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     if (title == '我的课程') context.push('/me/courses');
+                    if (title == '我的收藏') context.push('/me/favorites');
                     if (title == '我的订单') context.push('/me/orders');
                     if (title == '我的成绩') context.push('/me/scores');
                     if (title == '我的证书') context.push('/certs');

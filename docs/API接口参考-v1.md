@@ -423,6 +423,11 @@
 > `POST /me/messages/read` 全部已读；`PATCH /me/messages/prefs` 只允许退订广播，
 > **系统消息与事务通知不可退订**。
 
+> **学员增长与助学（v2.29 MVP）**：`GET/POST/DELETE /courses/{code}/favorite`、
+> `GET /me/favorites`；`GET/POST /courses/{code}/comments`（已解锁才能写，一人一评，
+> 均分满 10 条才展示）；`GET /me/exams/ongoing` 返回未完成测评；`POST /ai/ask`
+> 仅基于当前讲次资料回答并返回引用，**测评进行中关闭**，**模型备案号未配置时 fail-closed**。
+
 > **`/me/certs/{certNo}/file` 的硬约束**：**证书已撤销时返回 404**（不是 403 ——
 > 避免暴露"这个编号曾经存在"之外的更多信息）；**重新下载必须返回与首次逐字节一致的文件**。
 

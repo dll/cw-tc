@@ -4,6 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../api/api_client.dart';
 import '../models/course.dart';
+import '../models/course_comment.dart';
 import '../models/lecture.dart';
 import 'lecture_discussion_page.dart';
 
@@ -26,11 +27,35 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   bool _entitled = false;
   bool _freeGranted = false;
   bool _buying = false;
+  bool _favorited = false;
+  Future<CourseCommentPage>? _comments;
 
   @override
   void initState() {
     super.initState();
     _checkEntitlement();
+    _loadFavorite();
+    _comments = _api.courseComments(widget.courseCode);
+  }
+
+  Future<void> _loadFavorite() async {
+    try {
+      final value = await _api.favoriteStatus(widget.courseCode);
+      if (mounted) setState(() => _favorited = value);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFavorite() async {
+    final next = !_favorited;
+    setState(() => _favorited = next);
+    try {
+      await _api.setFavorite(widget.courseCode, next);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _favorited = !next);
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('收藏操作失败，请稍后重试')));
+    }
   }
 
   Future<void> _checkEntitlement() async {
@@ -92,11 +117,150 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     }
   }
 
+  Widget _commentsSection(ThemeData theme) {
+    return FutureBuilder<CourseCommentPage>(
+      future: _comments,
+      builder: (BuildContext context, AsyncSnapshot<CourseCommentPage> snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final page = snap.data ??
+            const CourseCommentPage(
+                items: <CourseComment>[], count: 0, average: null, threshold: 10);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Text('学员评价', style: theme.textTheme.titleMedium),
+                const SizedBox(width: 8),
+                if (page.average != null)
+                  Text('${page.average!.toStringAsFixed(1)} 分',
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(color: theme.colorScheme.primary)),
+                const Spacer(),
+                TextButton(
+                  onPressed: _entitled ? _writeComment : null,
+                  child: Text(_entitled ? '写评价' : '解锁后可评价'),
+                ),
+              ],
+            ),
+            if (page.average == null)
+              Text('评价人数不足 ${page.threshold} 条，暂不展示均分',
+                  style: theme.textTheme.bodySmall),
+            if (page.items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text('暂无评价', style: theme.textTheme.bodySmall),
+              ),
+            for (final item in page.items.take(5))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Text(item.nickname, style: theme.textTheme.bodyMedium),
+                        const SizedBox(width: 8),
+                        Text('${item.rating} 星',
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: Colors.orange.shade800)),
+                        const Spacer(),
+                        Text('已学 ${item.completedLectures}/${item.totalLectures} 讲',
+                            style: theme.textTheme.bodySmall),
+                      ],
+                    ),
+                    if (item.body != null && item.body!.isNotEmpty)
+                      Text(item.body!, style: theme.textTheme.bodyMedium),
+                  ],
+                ),
+              ),
+            if (page.count > 5)
+              Text('共 ${page.count} 条评价', style: theme.textTheme.bodySmall),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _writeComment() async {
+    var rating = 5;
+    final body = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('写课程评价'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Wrap(
+                children: <Widget>[
+                  for (var i = 1; i <= 5; i++)
+                    IconButton(
+                      onPressed: () => setDialogState(() => rating = i),
+                      icon: Icon(i <= rating ? Icons.star : Icons.star_border,
+                          color: Colors.orange),
+                    ),
+                ],
+              ),
+              TextField(
+                controller: body,
+                maxLines: 4,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: '评价内容（选填，20-500 字）',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('提交')),
+          ],
+        ),
+      ),
+    );
+    final text = body.text.trim();
+    body.dispose();
+    if (ok != true) return;
+    try {
+      await _api.submitCourseComment(widget.courseCode,
+          rating: rating, body: text.isEmpty ? null : text);
+      if (!mounted) return;
+      setState(() => _comments = _api.courseComments(widget.courseCode));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('评价已提交')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('评价失败：$e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(widget.courseCode)),
+      appBar: AppBar(
+        title: Text(widget.courseCode),
+        actions: <Widget>[
+          IconButton(
+            tooltip: _favorited ? '取消收藏' : '收藏',
+            onPressed: _toggleFavorite,
+            icon: Icon(_favorited ? Icons.favorite : Icons.favorite_border),
+          ),
+        ],
+      ),
       body: FutureBuilder<Course>(
         future: _api.courseDetail(widget.courseCode),
         builder: (BuildContext context, AsyncSnapshot<Course> snap) {
@@ -192,6 +356,8 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                   );
                 },
               ),
+              const Divider(height: 32),
+              _commentsSection(theme),
             ],
           );
         },
