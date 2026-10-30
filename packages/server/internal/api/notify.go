@@ -24,7 +24,11 @@ func (s *Server) listNotifications(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "通知服务不可用"})
 		return
 	}
-	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"items": items}})
+	unread, _ := notify.UnreadCount(c.Request.Context(), s.dbConn, student.ID)
+	prefs, _ := notify.GetPrefs(c.Request.Context(), s.dbConn, student.ID)
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+		"items": items, "unread": unread, "prefs": prefs,
+	}})
 }
 
 // markNotificationRead POST /me/notifications/:id/read —— 标记已读（只能标自己的）。
@@ -44,4 +48,48 @@ func (s *Server) markNotificationRead(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0})
+}
+
+// markAllNotificationsRead POST /me/messages/read（兼容 /me/notifications/read）。
+func (s *Server) markAllNotificationsRead(c *gin.Context) {
+	student := c.MustGet(studentContextKey).(identity.Student)
+	if s.dbConn == nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "通知服务不可用"})
+		return
+	}
+	n, err := notify.MarkAllRead(c.Request.Context(), s.dbConn, student.ID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "通知服务不可用"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"updated": n}})
+}
+
+// getNotificationPrefs GET /me/messages/prefs —— 消息偏好。
+func (s *Server) getNotificationPrefs(c *gin.Context) {
+	student := c.MustGet(studentContextKey).(identity.Student)
+	prefs, err := notify.GetPrefs(c.Request.Context(), s.dbConn, student.ID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "通知服务不可用"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: prefs})
+}
+
+// updateNotificationPrefs PATCH /me/messages/prefs —— 广播退订（系统 / 事务不可退订）。
+func (s *Server) updateNotificationPrefs(c *gin.Context) {
+	var input struct {
+		BroadcastOptOut *bool `json:"broadcast_opt_out"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil || input.BroadcastOptOut == nil {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	student := c.MustGet(studentContextKey).(identity.Student)
+	prefs := notify.NotificationPrefs{BroadcastOptOut: *input.BroadcastOptOut}
+	if err := notify.SetPrefs(c.Request.Context(), s.dbConn, student.ID, prefs); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "通知服务不可用"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: prefs})
 }

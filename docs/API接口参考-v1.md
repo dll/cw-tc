@@ -413,6 +413,16 @@
 > **继续支付复用原订单号**；**已发证或超过 7 日自助窗口 → `can_refund=false`**（按钮不出现），
 > 自助退款成功即撤销权益，若已发证则同事务连带撤销证书。
 
+> **`/me/scores`**：按课程返回**每一次**测评（`level` / `total_score` / `band` / `is_pass` /
+> `exam_at` / `cert_no`），**不覆盖失败记录**。
+
+> **`/me/certs`**：`display_status` 为 `valid` / `expiring`（90 天内）/ `expired` / `revoked`；
+> 已撤销返回 `revoked_reason`（`admin` / `order_refunded`），`can_download=false`。
+
+> **`/me/messages`**：返回 `items` / `unread` / `prefs.broadcast_opt_out`；
+> `POST /me/messages/read` 全部已读；`PATCH /me/messages/prefs` 只允许退订广播，
+> **系统消息与事务通知不可退订**。
+
 > **`/me/certs/{certNo}/file` 的硬约束**：**证书已撤销时返回 404**（不是 403 ——
 > 避免暴露"这个编号曾经存在"之外的更多信息）；**重新下载必须返回与首次逐字节一致的文件**。
 

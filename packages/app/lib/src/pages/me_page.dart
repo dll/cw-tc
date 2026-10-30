@@ -108,6 +108,7 @@ class _MePageState extends State<MePage> {
                   onTap: () {
                     if (title == '我的课程') context.push('/me/courses');
                     if (title == '我的订单') context.push('/me/orders');
+                    if (title == '我的成绩') context.push('/me/scores');
                     if (title == '我的证书') context.push('/certs');
                     if (title == '消息') context.push('/notifications');
                     if (title == '设置') context.push('/settings');

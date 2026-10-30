@@ -1,8 +1,10 @@
 package api
 
 import (
+	"database/sql"
 	"html/template"
 	"net/http"
+	"time"
 
 	"github.com/cw-tc/server/internal/exam"
 	"github.com/cw-tc/server/internal/identity"
@@ -54,6 +56,11 @@ func (s *Server) downloadMyCert(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "证书服务不可用"})
 		return
 	}
+	// 已撤销证书不得再下发文件（PRD §7.8 D-5 / §7.13 L-4）。
+	if cert.Status == "revoked" {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "证书不存在"})
+		return
+	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
 	_ = certHTML.Execute(c.Writer, map[string]string{
@@ -74,7 +81,8 @@ func (s *Server) listMyCerts(c *gin.Context) {
 	}
 	student := c.MustGet(studentContextKey).(identity.Student)
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
-		`SELECT c.cert_no, co.course_code, co.name, c.level, c.score, c.band, c.status, c.issued_at, c.expires_at
+		`SELECT c.cert_no, co.course_code, co.name, c.level, c.score, c.band, c.status,
+		        c.issued_at, c.expires_at, c.revoked_reason
 		 FROM certificate c JOIN course co ON c.course_id = co.id
 		 WHERE c.student_id = $1 ORDER BY c.issued_at DESC`, student.ID)
 	if err != nil {
@@ -82,18 +90,23 @@ func (s *Server) listMyCerts(c *gin.Context) {
 		return
 	}
 	defer rows.Close()
+	now := time.Now().UTC()
 	items := make([]gin.H, 0)
 	for rows.Next() {
 		var certNo, courseCode, courseName, level, band, status, issuedAt, expiresAt string
 		var score float64
-		if err := rows.Scan(&certNo, &courseCode, &courseName, &level, &score, &band, &status, &issuedAt, &expiresAt); err != nil {
+		var revokedReason sql.NullString
+		if err := rows.Scan(&certNo, &courseCode, &courseName, &level, &score, &band, &status, &issuedAt, &expiresAt, &revokedReason); err != nil {
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "证书服务不可用"})
 			return
 		}
+		displayStatus := certDisplayStatus(status, expiresAt, now)
 		items = append(items, gin.H{
 			"cert_no": certNo, "course_code": courseCode, "course_name": courseName,
 			"level": level, "score": score, "band": band, "status": status,
-			"issued_at": issuedAt, "expires_at": expiresAt,
+			"display_status": displayStatus, "can_download": status != "revoked",
+			"revoked_reason": nullableString(revokedReason),
+			"issued_at":      issuedAt, "expires_at": expiresAt,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -101,4 +114,22 @@ func (s *Server) listMyCerts(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"items": items}})
+}
+
+// certDisplayStatus 把库内 valid/revoked 细分为 UI 四态（§7.13 L-4）。
+func certDisplayStatus(status, expiresAt string, now time.Time) string {
+	if status == "revoked" {
+		return "revoked"
+	}
+	expires, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		return "valid"
+	}
+	if !expires.After(now) {
+		return "expired"
+	}
+	if expires.Sub(now) <= 90*24*time.Hour {
+		return "expiring"
+	}
+	return "valid"
 }
