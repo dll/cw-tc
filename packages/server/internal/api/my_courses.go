@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"time"
@@ -144,10 +145,12 @@ func (s *Server) reportCourseProgress(c *gin.Context) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无学习权限"})
 		return
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := nextStudyTime(c.Request.Context(), s.dbConn, student.ID, time.Now().UTC())
+	// 固定 9 位小数：RFC3339Nano 会裁掉末尾 0，TEXT 字典序会误判先后。
+	nowText := now.Format("2006-01-02T15:04:05.000000000Z07:00")
 	var completedAt any
 	if *req.Completed {
-		completedAt = now
+		completedAt = nowText
 	}
 	_, err = s.dbConn.ExecContext(c.Request.Context(),
 		`INSERT INTO lecture_progress(student_id, lecture_id, completed_at, last_studied_at)
@@ -155,7 +158,7 @@ func (s *Server) reportCourseProgress(c *gin.Context) {
 		 ON CONFLICT(student_id, lecture_id) DO UPDATE SET
 		   last_studied_at = excluded.last_studied_at,
 		   completed_at = COALESCE(lecture_progress.completed_at, excluded.completed_at)`,
-		student.ID, lectureID, completedAt, now)
+		student.ID, lectureID, completedAt, nowText)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "进度保存失败"})
 		return
@@ -177,6 +180,19 @@ func (s *Server) reportCourseProgress(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: item})
+}
+
+// nextStudyTime 保证同一学员的访问时间严格递增（SQLite / 低精度时钟下
+// 两次请求可能拿到同一时间，导致「最近学习讲次」无法判定）。
+func nextStudyTime(ctx context.Context, db *sql.DB, studentID int64, now time.Time) time.Time {
+	var last sql.NullString
+	if err := db.QueryRowContext(ctx,
+		`SELECT MAX(last_studied_at) FROM lecture_progress WHERE student_id=$1`, studentID).Scan(&last); err == nil && last.Valid {
+		if parsed, err := time.Parse(time.RFC3339Nano, last.String); err == nil && !now.After(parsed) {
+			return parsed.Add(time.Nanosecond)
+		}
+	}
+	return now
 }
 
 func progressPercent(learned, total int) int {

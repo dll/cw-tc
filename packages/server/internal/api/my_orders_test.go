@@ -24,6 +24,16 @@ func TestMyOrdersListContinuePayAndRefund(t *testing.T) {
 		`"can_continue_pay":true`, `"can_cancel":true`, `"can_refund":false`) {
 		t.Fatalf("订单列表异常: %d %s", listed.Code, listed.Body.String())
 	}
+	detail := performJSONWithCookie(t, r, http.MethodGet, "/api/v1/me/orders/"+orderNo, ``, token)
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"order_no":"`+orderNo+`"`) {
+		t.Fatalf("订单详情异常: %d %s", detail.Code, detail.Body.String())
+	}
+	if got := performJSONWithCookie(t, r, http.MethodGet, "/api/v1/me/orders/"+orderNo+"/refund", ``, token); got.Code != http.StatusNotFound {
+		t.Fatalf("退款前查询应 404: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithCookie(t, r, http.MethodGet, "/api/v1/me/orders/NOPE", ``, token); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在订单应 404: %d", got.Code)
+	}
 
 	pay := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/me/orders/"+orderNo+"/pay", `{}`, token)
 	if pay.Code != http.StatusOK || !containsAll(pay.Body.String(), `"order_no":"`+orderNo+`"`, `"channel":"mock"`) {
@@ -49,6 +59,10 @@ func TestMyOrdersListContinuePayAndRefund(t *testing.T) {
 		`"status":"refunded"`, `"can_enter_course":false`, `"can_refund":false`,
 		`"refund":{"refund_no":"`, `"status":"success"`) {
 		t.Fatalf("退款后订单状态异常: %d %s", after.Code, after.Body.String())
+	}
+	refundStatus := performJSONWithCookie(t, r, http.MethodGet, "/api/v1/me/orders/"+orderNo+"/refund", ``, token)
+	if refundStatus.Code != http.StatusOK || !strings.Contains(refundStatus.Body.String(), `"status":"success"`) {
+		t.Fatalf("退款进度异常: %d %s", refundStatus.Code, refundStatus.Body.String())
 	}
 	ents := performJSONWithCookie(t, r, http.MethodGet, "/api/v1/me/entitlements", ``, token)
 	if strings.Contains(ents.Body.String(), `"course_code":"C1"`) {
@@ -92,6 +106,9 @@ func TestMyOrdersCancelAndOwnership(t *testing.T) {
 	}
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/orders/"+orderNo+"/cancel", `{}`, token); got.Code != http.StatusBadRequest {
 		t.Fatalf("重复取消应 400: %d", got.Code)
+	}
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/me/orders/"+orderNo+"/pay", `{}`, token); got.Code != http.StatusConflict {
+		t.Fatalf("已关闭订单继续支付应 409: %d %s", got.Code, got.Body.String())
 	}
 }
 
