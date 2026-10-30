@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -37,4 +38,28 @@ func TestCourseCommentsRequireEntitlementAndArePublic(t *testing.T) {
 	if list.Code != http.StatusOK || !containsAll(list.Body.String(), `"count":1`, `"nickname":"学员***"`, `"rating":5`) {
 		t.Fatalf("评价列表异常: %d %s", list.Code, list.Body.String())
 	}
+}
+
+func TestCourseCommentsAverageAppearsAtThreshold(t *testing.T) {
+	s, token, cleanup := orderLifecycleServer(t)
+	defer cleanup()
+	r := s.Router()
+	var courseID int64
+	_ = s.dbConn.QueryRow(`SELECT id FROM course WHERE course_code='C1'`).Scan(&courseID)
+	for i := 0; i < 10; i++ {
+		id := 100 + i
+		phone := fmt.Sprintf("1380000%04d", i)
+		hash := fmt.Sprintf("h%d", id)
+		if _, err := s.dbConn.Exec(`INSERT INTO student(id,student_no,name,phone,id_card_hash,agreement_versions) VALUES(?,?,?,?,?, '[]')`, id, fmt.Sprintf("S%05d", id), "样例学员", phone, hash); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.dbConn.Exec(`INSERT INTO course_comment(course_code,student_id,rating,completed_lectures,total_lectures,nickname_shown,status) VALUES('C1',?,4,1,2,'学员***','visible')`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := performJSON(t, r, http.MethodGet, "/api/v1/courses/C1/comments", "")
+	if got.Code != http.StatusOK || !containsAll(got.Body.String(), `"count":10`, `"average":4`, `"display_threshold":10`) {
+		t.Fatalf("评价均分阈值异常: %d %s", got.Code, got.Body.String())
+	}
+	_ = token
 }

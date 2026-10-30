@@ -98,3 +98,23 @@ func TestAskAIRequiresContextQuotaAndClosesDuringExam(t *testing.T) {
 	}
 	_ = context.Background()
 }
+
+func TestAskAIFallbackWithoutAssets(t *testing.T) {
+	s, token, cleanup := orderLifecycleServer(t)
+	defer cleanup()
+	s.cfg.ContentDir = t.TempDir()
+	s.cfg.DeepSeekKey = "k"
+	s.cfg.LLMModel = "deepseek-chat"
+	s.cfg.LLMFilingNo = "TEST-FILING"
+	var studentID, courseID int64
+	_ = s.dbConn.QueryRow(`SELECT id FROM student LIMIT 1`).Scan(&studentID)
+	_ = s.dbConn.QueryRow(`SELECT id FROM course WHERE course_code='C1'`).Scan(&courseID)
+	if _, err := s.dbConn.Exec(`INSERT INTO entitlement(student_id,course_id,source,granted_at) VALUES($1,$2,'free','2026-01-01T00:00:00Z')`, studentID, courseID); err != nil {
+		t.Fatal(err)
+	}
+	got := performJSONWithCookie(t, s.Router(), http.MethodPost, "/api/v1/ai/ask",
+		`{"course_code":"C1","lecture_no":1,"question":"这一讲讲什么？"}`, token)
+	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"outcome":"fallback"`) {
+		t.Fatalf("无资料应明确降级: %d %s", got.Code, got.Body.String())
+	}
+}
