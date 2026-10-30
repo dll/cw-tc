@@ -61,6 +61,22 @@ func (s *Server) listPublicCourses(c *gin.Context) {
 		where = append(where, "c.line = $"+strconv.Itoa(len(args)))
 	}
 
+	orderBy := "c.sort_weight DESC, c.id ASC"
+	if sort := strings.TrimSpace(c.Query("sort")); sort != "" {
+		switch sort {
+		case "newest":
+			orderBy = "c.id DESC"
+		case "price_asc":
+			orderBy = "c.price_cents ASC, c.id ASC"
+		case "price_desc":
+			orderBy = "c.price_cents DESC, c.id ASC"
+		case "popular":
+			orderBy = "(SELECT COUNT(*) FROM favorite f WHERE f.course_code=c.course_code) DESC, c.id ASC"
+		default:
+			c.JSON(http.StatusBadRequest, envelope{Code: 10002, Msg: "sort 仅支持 newest / price_asc / price_desc / popular"})
+			return
+		}
+	}
 	if q := strings.TrimSpace(c.Query("q")); q != "" {
 		// 转义 LIKE 通配符，避免用户输入被当作模式（契约 §1.3：不提供通用查询 DSL）。
 		args = append(args, "%"+escapeLikePattern(q)+"%")
@@ -82,7 +98,7 @@ func (s *Server) listPublicCourses(c *gin.Context) {
 	offsetIdx := strconv.Itoa(len(listArgs))
 	query := `SELECT c.course_code, c.name, c.intro, c.price_cents, c.original_price_cents, c.major_id, m.name, c.line, c.lecture_count, c.free_preview_lectures` +
 		` FROM course c LEFT JOIN major m ON m.id = c.major_id` + clause +
-		` ORDER BY c.sort_weight DESC, c.id ASC LIMIT $` + limitIdx + ` OFFSET $` + offsetIdx
+		` ORDER BY ` + orderBy + ` LIMIT $` + limitIdx + ` OFFSET $` + offsetIdx
 
 	rows, err := s.dbConn.QueryContext(ctx, query, listArgs...)
 	if err != nil {

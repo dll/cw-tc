@@ -28,6 +28,8 @@ class _CourseSquarePageState extends State<CourseSquarePage> {
   Map<String, String> _entitlementSources = const <String, String>{};
   int? _selectedMajorId;
   String _query = '';
+  String _line = '';
+  String _sort = '';
   int _page = 1;
   int _total = 0;
   bool _loading = false;
@@ -92,6 +94,8 @@ class _CourseSquarePageState extends State<CourseSquarePage> {
       final result = await _api.courses(
         majorId: _selectedMajorId,
         q: _query,
+        line: _line,
+        sort: _sort,
         page: nextPage,
         pageSize: _pageSize,
       );
@@ -168,6 +172,28 @@ class _CourseSquarePageState extends State<CourseSquarePage> {
                 border: const OutlineInputBorder(),
               ),
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Row(children: <Widget>[
+              ChoiceChip(label: const Text('全部'), selected: _line.isEmpty, onSelected: (_) { setState(() => _line = ''); _load(reset: true); }),
+              const SizedBox(width: 8),
+              ChoiceChip(label: const Text('主线'), selected: _line == 'main', onSelected: (_) { setState(() => _line = 'main'); _load(reset: true); }),
+              const SizedBox(width: 8),
+              ChoiceChip(label: const Text('辅线'), selected: _line == 'aux', onSelected: (_) { setState(() => _line = 'aux'); _load(reset: true); }),
+              const Spacer(),
+              DropdownButton<String>(
+                value: _sort.isEmpty ? null : _sort,
+                hint: const Text('排序'),
+                items: const <DropdownMenuItem<String>>[
+                  DropdownMenuItem(value: 'newest', child: Text('最新')),
+                  DropdownMenuItem(value: 'price_asc', child: Text('价格低')),
+                  DropdownMenuItem(value: 'price_desc', child: Text('价格高')),
+                  DropdownMenuItem(value: 'popular', child: Text('热门')),
+                ],
+                onChanged: (v) { setState(() => _sort = v ?? ''); _load(reset: true); },
+              ),
+            ]),
           ),
           if (_majors.isNotEmpty)
             _MajorFilterBar(
@@ -434,3 +460,4 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+

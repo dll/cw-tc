@@ -426,6 +426,7 @@ class ApiClient {
   Future<CoursePage> courses({
     int? majorId,
     String? line,
+    String? sort,
     String? q,
     int page = 1,
     int pageSize = 20,
@@ -433,6 +434,7 @@ class ApiClient {
     final query = <String, dynamic>{'page': page, 'page_size': pageSize};
     if (majorId != null) query['major_id'] = majorId;
     if (line != null && line.isNotEmpty) query['line'] = line;
+    if (sort != null && sort.isNotEmpty) query['sort'] = sort;
     if (q != null && q.trim().isNotEmpty) query['q'] = q.trim();
     final res = await _dio.get<Map<String, dynamic>>(
       '/api/v1/courses',
@@ -824,3 +826,4 @@ class ApiClient {
   static final RegExp _sensitiveInQuery =
       RegExp(r'(\b\d{17}[\dXx]\b)|(\b1[3-9]\d{9}\b)');
 }
+

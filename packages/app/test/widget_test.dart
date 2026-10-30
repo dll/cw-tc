@@ -17,6 +17,7 @@ class _FakeApiClient extends ApiClient {
   Future<CoursePage> courses({
     int? majorId,
     String? line,
+    String? sort,
     String? q,
     int page = 1,
     int pageSize = 20,
@@ -66,3 +67,4 @@ void main() {
     expect(find.text('暂无已上架课程'), findsOneWidget);
   });
 }
+
