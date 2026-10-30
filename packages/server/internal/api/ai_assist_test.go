@@ -14,8 +14,13 @@ import (
 
 func TestAskAIRequiresContextQuotaAndClosesDuringExam(t *testing.T) {
 	var calls int
+	var fail bool
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
+		if fail {
+			http.Error(w, "down", http.StatusInternalServerError)
+			return
+		}
 		if r.URL.Path != "/chat/completions" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			t.Fatalf("AI 请求异常: %s %s", r.URL.Path, r.Header.Get("Authorization"))
 		}
