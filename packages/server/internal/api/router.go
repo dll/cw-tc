@@ -221,6 +221,8 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.POST("/requests/:id/approve", s.adminApproveContentRequest)
 	adminOnly.POST("/requests/:id/reject", s.adminRejectContentRequest)
 	adminOnly.GET("/comments", s.adminListComments)
+	adminOnly.GET("/suggestions", s.adminListSuggestions)
+	adminOnly.POST("/suggestions/:id/reply", s.adminReplySuggestion)
 	adminOnly.POST("/comments/:id/remove", s.adminRemoveComment)
 	adminOnly.GET("/comment-reports", s.adminListCommentReports)
 	adminOnly.GET("/operations", s.adminListOperations)
