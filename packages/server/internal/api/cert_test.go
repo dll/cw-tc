@@ -38,12 +38,20 @@ func TestListMyCertsRoute(t *testing.T) {
 	if _, err = database.Exec(`INSERT INTO certificate(id, cert_no, student_id, course_id, level, score, band, issued_at, expires_at, status, revoked_reason, revoked_at) VALUES(2,'CW-CN-A202600002',1,1,'L2',70,'pass','2026-01-01T00:00:00Z','2029-01-01T00:00:00Z','revoked','order_refunded','2026-10-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = database.Exec(`INSERT INTO certificate(id, cert_no, student_id, course_id, level, score, band, issued_at, expires_at, status) VALUES(3,'CW-CN-A202600003',1,1,'L2',75,'pass','2026-01-01T00:00:00Z',?, 'valid')`, time.Now().UTC().Add(30*24*time.Hour).Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(`INSERT INTO certificate(id, cert_no, student_id, course_id, level, score, band, issued_at, expires_at, status) VALUES(4,'CW-CN-A202600004',1,1,'L3',60,'pass','2026-01-01T00:00:00Z',?, 'valid')`, time.Now().UTC().Add(-24*time.Hour).Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
 	r := NewWithIdentityAndDatabase(testConfig(t, true), service, database).Router()
 
 	got := performJSONWithCookie(t, r, http.MethodGet, "/api/v1/me/certs", "", session.Token)
 	if got.Code != http.StatusOK || !containsAll(got.Body.String(), `"cert_no":"CW-CN-A202600001"`, `"course_name":"课程"`,
 		`"display_status":"valid"`, `"can_download":true`,
-		`"cert_no":"CW-CN-A202600002"`, `"display_status":"revoked"`, `"can_download":false`, `"revoked_reason":"order_refunded"`) {
+		`"cert_no":"CW-CN-A202600002"`, `"display_status":"revoked"`, `"can_download":false`, `"revoked_reason":"order_refunded"`,
+		`"cert_no":"CW-CN-A202600003"`, `"display_status":"expiring"`,
+		`"cert_no":"CW-CN-A202600004"`, `"display_status":"expired"`) {
 		t.Fatalf("我的证书 = %d %s", got.Code, got.Body.String())
 	}
 }

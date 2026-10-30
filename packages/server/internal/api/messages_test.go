@@ -35,4 +35,10 @@ func TestMessagesUnreadMarkAllAndPrefs(t *testing.T) {
 	if after.Code != http.StatusOK || !containsAll(after.Body.String(), `"unread":0`, `"broadcast_opt_out":true`) {
 		t.Fatalf("已读/偏好未持久化: %d %s", after.Code, after.Body.String())
 	}
+	if got := performJSONWithCookie(t, r, http.MethodPatch, "/api/v1/me/messages/prefs", `{}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("缺少偏好字段应 400: %d", got.Code)
+	}
+	if got := performJSON(t, r, http.MethodGet, "/api/v1/me/messages", ""); got.Code != http.StatusUnauthorized {
+		t.Fatalf("未登录应 401: %d", got.Code)
+	}
 }

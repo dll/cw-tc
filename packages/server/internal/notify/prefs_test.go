@@ -56,3 +56,24 @@ func TestBroadcastSkipsOptedOutStudent(t *testing.T) {
 		t.Fatalf("其他学员应收到广播: %d", n)
 	}
 }
+
+func TestNotificationHelpersRejectInvalidInput(t *testing.T) {
+	database := notifyDB(t)
+	defer database.Close()
+	ctx := context.Background()
+	if _, err := UnreadCount(ctx, nil, 1); err == nil {
+		t.Fatal("nil db 应报错")
+	}
+	if _, err := UnreadCount(ctx, database, 0); err == nil {
+		t.Fatal("非法学员应报错")
+	}
+	if _, err := MarkAllRead(ctx, database, 0); err == nil {
+		t.Fatal("非法学员应报错")
+	}
+	if _, err := GetPrefs(ctx, database, 0); err == nil {
+		t.Fatal("非法学员应报错")
+	}
+	if err := SetPrefs(ctx, database, 0, NotificationPrefs{}); err == nil {
+		t.Fatal("非法学员应报错")
+	}
+}
