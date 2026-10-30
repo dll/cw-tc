@@ -80,3 +80,17 @@ func TestOrderNotificationEvents(t *testing.T) {
 		t.Fatalf("订单通知数量异常: %d", n)
 	}
 }
+
+func TestExamNotificationEvents(t *testing.T) {
+	s, _, cleanup := orderLifecycleServer(t)
+	defer cleanup()
+	var sid int64
+	_ = s.dbConn.QueryRow(`SELECT id FROM student LIMIT 1`).Scan(&sid)
+	s.notifyExamResult(context.Background(), sid, true, "CERT-X")
+	s.notifyExamResult(context.Background(), sid, false, "")
+	var n int
+	_ = s.dbConn.QueryRow(`SELECT COUNT(*) FROM notification WHERE student_id=$1 AND type IN ('exam','cert')`, sid).Scan(&n)
+	if n != 3 {
+		t.Fatalf("测评通知数量异常: %d", n)
+	}
+}
