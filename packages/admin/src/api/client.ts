@@ -238,6 +238,7 @@ export interface AdminCourse {
   kb_status: string
   content_version: number
   published_version: number | null
+  published_at: string
   has_unpublished_changes: boolean
 }
 export interface CourseRevision {
@@ -389,6 +390,8 @@ export interface CourseQuality {
   kb_status: string
   content_version: number
   published_version: number | null
+  content_updated_at: string
+  published_at: string
   latest_review: CourseReviewDetail | null
 }
 export async function getCourseQuality(code: string): Promise<CourseQuality> {
@@ -507,4 +510,3 @@ export async function gradeDetail(resultId: number): Promise<{ result_id: number
 export async function submitGrade(resultId: number, questionId: number, input: { score: number; comment?: string; points?: string }): Promise<void> {
   await unwrap<unknown>(http.post(`/teacher/grade/${resultId}/questions/${questionId}`, input))
 }
-
