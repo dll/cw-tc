@@ -1,10 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../api/api_client.dart';
 import '../models/my_course.dart';
 
-/// 我的课程（PRD §7.13 L-1）：学习中 / 已完成，按最近学习时间排序。
+/// 我的课程（PRD §7.13 L-1）：全部 / 学习中 / 已完成 / 未解锁，按最近学习排序。
 class MyCoursesPage extends StatefulWidget {
   const MyCoursesPage({super.key, this.api});
 
@@ -16,125 +17,187 @@ class MyCoursesPage extends StatefulWidget {
 
 class _MyCoursesPageState extends State<MyCoursesPage> {
   late final ApiClient _api = widget.api ?? ApiClient();
-  late Future<List<MyCourse>> _future = _api.myCourses();
+  List<MyCourse> _items = <MyCourse>[];
+  bool _loading = true;
+  bool _login = false;
+  bool _failed = false;
+  String _status = 'all';
+  int? _major;
 
-  void _reload() {
-    setState(() => _future = _api.myCourses());
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _failed = false;
+      _login = false;
+    });
+    try {
+      final items = await _api.myCourses();
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _login = e is DioException && e.response?.statusCode == 401;
+        _failed = true;
+      });
+    }
+  }
+
+  Future<void> _open(MyCourse course) async {
+    final code = Uri.encodeComponent(course.courseCode);
+    if (course.unlocked && course.lectureCount > 0) {
+      await context.push('/learn/$code/${course.lastLectureNo ?? 1}');
+    } else {
+      await context.push('/courses/$code');
+    }
+    if (mounted) await _load();
   }
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('我的课程'),
-          bottom: const TabBar(tabs: <Tab>[Tab(text: '学习中'), Tab(text: '已完成')]),
-        ),
-        body: FutureBuilder<List<MyCourse>>(
-          future: _future,
-          builder: (BuildContext context, AsyncSnapshot<List<MyCourse>> snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snap.hasError) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+    final majors = <int, String>{};
+    for (final c in _items) {
+      if (c.majorId != null) majors[c.majorId!] = c.majorName ?? '未命名专业';
+    }
+    final filtered = _items
+        .where((c) =>
+            (_major == null || c.majorId == _major) &&
+            (_status == 'all' || c.status == _status))
+        .toList();
+    return Scaffold(
+      appBar: AppBar(title: const Text('我的课程')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _failed
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(_login ? '请先登录后查看我的课程' : '课程加载失败，请重试'),
+                      TextButton(
+                        onPressed: () async {
+                          if (_login) {
+                            await context.push('/login');
+                            if (!mounted) return;
+                          }
+                          await _load();
+                        },
+                        child: Text(_login ? '去登录' : '重试'),
+                      ),
+                    ],
+                  ),
+                )
+              : Column(
                   children: <Widget>[
-                    const Text('我的课程加载失败，请先登录'),
-                    const SizedBox(height: 8),
-                    FilledButton(onPressed: _reload, child: const Text('重试')),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: <Widget>[
+                          for (final entry in <String, String>{
+                            'all': '全部',
+                            'learning': '学习中',
+                            'completed': '已完成',
+                            'locked': '未解锁',
+                          }.entries)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(entry.value),
+                                selected: _status == entry.key,
+                                onSelected: (_) =>
+                                    setState(() => _status = entry.key),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (majors.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: DropdownButton<int>(
+                          isExpanded: true,
+                          value: _major,
+                          hint: const Text('全部专业'),
+                          items: <DropdownMenuItem<int>>[
+                            const DropdownMenuItem<int>(
+                                value: null, child: Text('全部专业')),
+                            for (final m in majors.entries)
+                              DropdownMenuItem<int>(
+                                  value: m.key, child: Text(m.value)),
+                          ],
+                          onChanged: (value) =>
+                              setState(() => _major = value),
+                        ),
+                      ),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _load,
+                        child: ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.all(12),
+                          children: filtered.isEmpty
+                              ? <Widget>[
+                                  const Padding(
+                                    padding: EdgeInsets.all(40),
+                                    child:
+                                        Center(child: Text('暂无符合条件的课程')),
+                                  ),
+                                ]
+                              : <Widget>[
+                                  for (final unlocked in <bool>[true, false]) ...[
+                                    if (filtered
+                                        .any((c) => c.unlocked == unlocked))
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.symmetric(
+                                                vertical: 8),
+                                        child: Text(unlocked ? '已解锁课程' : '未解锁课程'),
+                                      ),
+                                    for (final c in filtered.where(
+                                        (c) => c.unlocked == unlocked))
+                                      Card(
+                                        child: ListTile(
+                                          title: Text(c.name),
+                                          subtitle: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              Text(
+                                                  '${c.learnedLectures} / ${c.lectureCount} 讲 · ${c.progressPercent}%'),
+                                              LinearProgressIndicator(
+                                                  value: c.progressPercent
+                                                          .clamp(0, 100) /
+                                                      100),
+                                              Text(!c.unlocked
+                                                  ? '查看课程并解锁'
+                                                  : c.completed
+                                                      ? '已完成 · 再次学习'
+                                                      : '继续学习'),
+                                            ],
+                                          ),
+                                          trailing:
+                                              const Icon(Icons.chevron_right),
+                                          onTap: () => _open(c),
+                                        ),
+                                      ),
+                                  ],
+                                ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              );
-            }
-            final items = snap.data ?? const <MyCourse>[];
-            final learning = items.where((c) => !c.completed).toList();
-            final completed = items.where((c) => c.completed).toList();
-            return TabBarView(
-              children: <Widget>[
-                _courseList(learning, '暂无学习中的课程'),
-                _courseList(completed, '暂无已完成的课程'),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _courseList(List<MyCourse> items, String emptyText) {
-    if (items.isEmpty) {
-      return Center(child: Text(emptyText));
-    }
-    return RefreshIndicator(
-      onRefresh: () async {
-        _reload();
-        await _future;
-      },
-      child: ListView.separated(
-        padding: const EdgeInsets.all(12),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (BuildContext context, int index) =>
-            _courseCard(context, items[index]),
-      ),
-    );
-  }
-
-  Widget _courseCard(BuildContext context, MyCourse course) {
-    final theme = Theme.of(context);
-    return Card(
-      child: InkWell(
-        onTap: () =>
-            context.push('/learn/${course.courseCode}/${course.lastLectureNo}'),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Text(course.name,
-                        style: theme.textTheme.titleMedium),
-                  ),
-                  Text('${course.percent}%',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(color: theme.colorScheme.primary)),
-                ],
-              ),
-              if (course.majorName != null) ...<Widget>[
-                const SizedBox(height: 2),
-                Text(course.majorName!,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.primary)),
-              ],
-              const SizedBox(height: 8),
-              LinearProgressIndicator(
-                value: (course.percent.clamp(0, 100)) / 100,
-                minHeight: 6,
-                borderRadius: BorderRadius.circular(3),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: <Widget>[
-                  Text(
-                    '已学 ${course.completedLectures}/${course.lectureCount} 讲',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  const Spacer(),
-                  Text(course.completed ? '复习' : '继续学习',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.primary)),
-                  const Icon(Icons.chevron_right, size: 18),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
