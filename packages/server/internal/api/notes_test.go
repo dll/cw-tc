@@ -20,6 +20,13 @@ func TestNotesSuggestionsAndExport(t *testing.T) {
 	if list.Code != http.StatusOK || !containsAll(list.Body.String(), `"title":"要点"`, `"body":"分层设计是核心。"`) {
 		t.Fatalf("笔记列表异常: %d %s", list.Code, list.Body.String())
 	}
+	noteID := "1"
+	if got := performJSONWithCookie(t, r, http.MethodPatch, "/api/v1/notes/"+noteID, `{"title":"更新","body":"更新后的笔记内容。"}`, token); got.Code != http.StatusOK {
+		t.Fatalf("更新笔记失败: %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/me/suggestions", `{"body":"短"}`, token); got.Code != http.StatusBadRequest {
+		t.Fatalf("过短建议应 400: %d", got.Code)
+	}
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/me/suggestions", `{"body":"建议增加更多练习题和案例讲解。"}`, token); got.Code != http.StatusOK {
 		t.Fatalf("提交建议失败: %d %s", got.Code, got.Body.String())
 	}
@@ -30,6 +37,9 @@ func TestNotesSuggestionsAndExport(t *testing.T) {
 	exported := performJSONWithCookie(t, r, http.MethodGet, "/api/v1/me/export", ``, token)
 	if exported.Code != http.StatusOK || !containsAll(exported.Body.String(), `"phone":"138****5678"`, `"notes"`, `"scores"`, `"certificates"`) {
 		t.Fatalf("数据导出异常: %d %s", exported.Code, exported.Body.String())
+	}
+	if got := performJSONWithCookie(t, r, http.MethodDelete, "/api/v1/notes/"+noteID, ``, token); got.Code != http.StatusOK {
+		t.Fatalf("删除笔记失败: %d", got.Code)
 	}
 	if strings.Contains(exported.Body.String(), `"id_card"`) {
 		t.Fatalf("导出不应包含身份证字段: %s", exported.Body.String())

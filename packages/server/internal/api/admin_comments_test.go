@@ -35,6 +35,10 @@ func TestAdminCommentModerationAndReport(t *testing.T) {
 	if report.Code != http.StatusOK {
 		t.Fatalf("举报失败: %d %s", report.Code, report.Body.String())
 	}
+	reports := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/comment-reports", "", adminToken)
+	if reports.Code != http.StatusOK || !strings.Contains(reports.Body.String(), `"reason_kind":"广告"`) {
+		t.Fatalf("举报列表异常: %d %s", reports.Code, reports.Body.String())
+	}
 	removed := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/comments/"+strconv.FormatInt(commentID, 10)+"/remove", `{"reason_kind":"广告","confirm":true}`, adminToken)
 	if removed.Code != http.StatusOK {
 		t.Fatalf("下架评价失败: %d %s", removed.Code, removed.Body.String())
