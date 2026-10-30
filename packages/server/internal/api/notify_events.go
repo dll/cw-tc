@@ -33,7 +33,7 @@ func (s *Server) notifyOrderRefunded(ctx context.Context, orderNo string) {
 		`SELECT student_id, course_name_snapshot FROM orders WHERE order_no=$1`, orderNo).Scan(&studentID, &courseName); err != nil {
 		return
 	}
-	s.pushNotice(ctx, studentID, "refund", "退款成功", "课程《"+courseName+"》退款已处理，权益与证书状态已同步。", "/me/orders")
+	s.pushNotice(ctx, studentID, "order", "退款成功", "课程《"+courseName+"》退款已处理，权益与证书状态已同步。", "/me/orders")
 }
 
 func (s *Server) notifyExamResult(ctx context.Context, studentID int64, pass bool, certNo string) {

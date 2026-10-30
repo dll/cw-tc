@@ -62,3 +62,21 @@ func TestPushNoticeDedup(t *testing.T) {
 		t.Fatalf("重复通知应去重: %d", n)
 	}
 }
+
+func TestOrderNotificationEvents(t *testing.T) {
+	s, _, cleanup := orderLifecycleServer(t)
+	defer cleanup()
+	var sid, cid int64
+	_ = s.dbConn.QueryRow(`SELECT id FROM student LIMIT 1`).Scan(&sid)
+	_ = s.dbConn.QueryRow(`SELECT id FROM course WHERE course_code='C1'`).Scan(&cid)
+	if _, err := s.dbConn.Exec(`INSERT INTO orders(order_no,student_id,course_id,course_name_snapshot,price_snapshot_cents,amount_cents,status,expired_at) VALUES('O-NOTIFY',?,?, '课程',1000,1000,'paid','2099-01-01T00:00:00Z')`, sid, cid); err != nil {
+		t.Fatal(err)
+	}
+	s.notifyOrderPaid(context.Background(), "O-NOTIFY")
+	s.notifyOrderRefunded(context.Background(), "O-NOTIFY")
+	var n int
+	_ = s.dbConn.QueryRow(`SELECT COUNT(*) FROM notification WHERE student_id=$1 AND type = 'order'`, sid).Scan(&n)
+	if n != 2 {
+		t.Fatalf("订单通知数量异常: %d", n)
+	}
+}
