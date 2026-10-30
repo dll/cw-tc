@@ -80,6 +80,13 @@ func TestAskAIRequiresContextQuotaAndClosesDuringExam(t *testing.T) {
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, token); got.Code != http.StatusConflict {
 		t.Fatalf("测评中应关闭 AI: %d %s", got.Code, got.Body.String())
 	}
+	s.cfg.LLMFilingNo = "TEST-FILING"
+	if _, err := s.dbConn.Exec(`UPDATE entitlement SET revoked_at=$1 WHERE student_id=$2 AND course_id=$3`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
+		t.Fatal(err)
+	}
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, token); got.Code != http.StatusForbidden {
+		t.Fatalf("无权益应 403: %d %s", got.Code, got.Body.String())
+	}
 	s.cfg.LLMFilingNo = ""
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, token); got.Code != http.StatusServiceUnavailable {
 		t.Fatalf("缺备案号应 fail-closed: %d %s", got.Code, got.Body.String())
