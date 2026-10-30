@@ -80,13 +80,15 @@ func maskName(name string) string {
 
 // OwnCert 学员本人证书完整信息（含完整姓名，仅本人可查）。
 type OwnCert struct {
-	CertNo      string
-	CourseName  string
-	Level       string
-	LevelName   string // 由 course.cert_names 映射的档位名（如「初级」）
-	StudentName string // 完整姓名（本人查看自己的证书，不脱敏）
-	IssuedAt    time.Time
-	ExpiresAt   time.Time
+	CertNo        string
+	CourseName    string
+	Level         string
+	LevelName     string // 由 course.cert_names 映射的档位名（如「初级」）
+	StudentName   string // 完整姓名（本人查看自己的证书，不脱敏）
+	IssuedAt      time.Time
+	ExpiresAt     time.Time
+	Status        string
+	RevokedReason string
 }
 
 // GetOwnCert 取学员本人的一张证书（校验归属，非本人返回 ErrCertNotFound）。
@@ -94,13 +96,14 @@ func GetOwnCert(ctx context.Context, db *sql.DB, studentID int64, certNo string)
 	var r OwnCert
 	var certNames sql.NullString
 	var issuedRaw, expiresRaw string
+	var revokedReason sql.NullString
 	err := db.QueryRowContext(ctx,
-		`SELECT c.cert_no, c.level, co.name, co.cert_names, st.name, c.issued_at, c.expires_at
+		`SELECT c.cert_no, c.level, co.name, co.cert_names, st.name, c.issued_at, c.expires_at, c.status, c.revoked_reason
 		 FROM certificate c
 		 JOIN course co ON co.id = c.course_id
 		 JOIN student st ON st.id = c.student_id
 		 WHERE c.cert_no = $1 AND c.student_id = $2`, certNo, studentID).
-		Scan(&r.CertNo, &r.Level, &r.CourseName, &certNames, &r.StudentName, &issuedRaw, &expiresRaw)
+		Scan(&r.CertNo, &r.Level, &r.CourseName, &certNames, &r.StudentName, &issuedRaw, &expiresRaw, &r.Status, &revokedReason)
 	if err == sql.ErrNoRows {
 		return OwnCert{}, ErrCertNotFound
 	}
@@ -110,6 +113,9 @@ func GetOwnCert(ctx context.Context, db *sql.DB, studentID int64, certNo string)
 	r.LevelName = certNameForLevel(certNames.String, r.Level)
 	r.IssuedAt, _ = time.Parse(time.RFC3339, issuedRaw)
 	r.ExpiresAt, _ = time.Parse(time.RFC3339, expiresRaw)
+	if revokedReason.Valid {
+		r.RevokedReason = revokedReason.String
+	}
 	return r, nil
 }
 

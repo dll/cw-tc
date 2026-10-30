@@ -1,29 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// 学生端底部导航外壳（首页 / 课程 / 我的）。
+import 'api/api_client.dart';
+
+/// 学员端底部导航（首页 / 课程 / 我的）。
 ///
-/// 用 go_router 的 StatefulShellRoute 承载三个一级分支，切换时各自保留栈。
-/// 学习页 / 测评页 / 验真页为整页路由（不进底部导航）。
-class AppShell extends StatelessWidget {
-  const AppShell({super.key, required this.navigationShell});
+/// 「我的」带未读消息角标；切换分支时刷新，避免角标长期停在旧值。
+class AppShell extends StatefulWidget {
+  const AppShell({super.key, required this.navigationShell, this.api});
 
   final StatefulNavigationShell navigationShell;
+  final ApiClient? api;
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  late final ApiClient _api = widget.api ?? ApiClient();
+  int _unread = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshUnread();
+  }
+
+  Future<void> _refreshUnread() async {
+    try {
+      if (!await _api.hasSession()) return;
+      final page = await _api.messages();
+      if (!mounted) return;
+      setState(() => _unread = page.unread);
+    } catch (_) {
+      // 未登录 / 网络异常时不显示角标。
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: navigationShell,
+      body: widget.navigationShell,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (int i) => navigationShell.goBranch(
-          i,
-          initialLocation: i == navigationShell.currentIndex,
-        ),
-        destinations: const <NavigationDestination>[
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: '首页'),
-          NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book), label: '课程'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
+        selectedIndex: widget.navigationShell.currentIndex,
+        onDestinationSelected: (int i) {
+          widget.navigationShell.goBranch(
+            i,
+            initialLocation: i == widget.navigationShell.currentIndex,
+          );
+          if (i == 2) _refreshUnread();
+        },
+        destinations: <NavigationDestination>[
+          const NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: '首页'),
+          const NavigationDestination(
+              icon: Icon(Icons.menu_book_outlined),
+              selectedIcon: Icon(Icons.menu_book),
+              label: '课程'),
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: _unread > 0,
+              label: Text('$_unread'),
+              child: const Icon(Icons.person_outline),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible: _unread > 0,
+              label: Text('$_unread'),
+              child: const Icon(Icons.person),
+            ),
+            label: '我的',
+          ),
         ],
       ),
     );

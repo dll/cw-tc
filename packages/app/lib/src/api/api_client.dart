@@ -9,8 +9,10 @@ import '../models/exam.dart';
 import '../models/lecture.dart';
 import '../models/lecture_resource.dart';
 import '../models/major.dart';
+import '../models/message.dart';
 import '../models/my_course.dart';
 import '../models/operation_slot.dart';
+import '../models/score.dart';
 import '../models/order.dart';
 import '../models/verify_result.dart';
 
@@ -182,21 +184,42 @@ class ApiClient {
     _ensureSuccess(res.data);
   }
 
-  /// 站内消息列表（管理员授权重置等系统通知）。
-  Future<List<Map<String, dynamic>>> notifications() async {
-    final res =
-        await _dio.get<Map<String, dynamic>>('/api/v1/me/notifications');
+  /// 消息中心（`GET /me/messages`，含未读数与广播退订偏好）。
+  Future<MessagePage> messages() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/messages');
     _ensureSuccess(res.data);
-    return ((res.data?['data'] as Map<String, dynamic>?)?['items']
-                as List<dynamic>? ??
-            const <dynamic>[])
-        .cast<Map<String, dynamic>>();
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return MessagePage(
+      items: items
+          .map((e) => AppMessage.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      unread: (data?['unread'] as num?)?.toInt() ?? 0,
+      prefs: MessagePrefs.fromJson(
+          (data?['prefs'] as Map<String, dynamic>?) ?? <String, dynamic>{}),
+    );
   }
 
-  /// 标记站内消息已读。
+  /// 标记单条消息已读。
   Future<void> markNotificationRead(int id) async {
+    final res = await _dio
+        .post<Map<String, dynamic>>('/api/v1/me/notifications/$id/read');
+    _ensureSuccess(res.data);
+  }
+
+  /// 全部标为已读（`POST /me/messages/read`）。
+  Future<void> markAllMessagesRead() async {
     final res =
-        await _dio.post<Map<String, dynamic>>('/api/v1/me/notifications/$id/read');
+        await _dio.post<Map<String, dynamic>>('/api/v1/me/messages/read');
+    _ensureSuccess(res.data);
+  }
+
+  /// 广播退订（`PATCH /me/messages/prefs`）；系统 / 事务通知不可退订。
+  Future<void> setBroadcastOptOut(bool optOut) async {
+    final res = await _dio.patch<Map<String, dynamic>>(
+      '/api/v1/me/messages/prefs',
+      data: <String, dynamic>{'broadcast_opt_out': optOut},
+    );
     _ensureSuccess(res.data);
   }
 
@@ -468,12 +491,30 @@ class ApiClient {
     return ExamResult.fromJson(data ?? const <String, dynamic>{});
   }
 
+  /// 我的成绩（`GET /me/scores`，历次不覆盖）。
+  Future<List<Score>> myScores() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/scores');
+    _ensureSuccess(res.data);
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return items.map((e) => Score.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   /// 我的证书列表（`GET /me/certs`）。
   Future<List<Cert>> myCerts() async {
     final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/certs');
     final data = res.data?['data'] as Map<String, dynamic>?;
     final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
     return items.map((e) => Cert.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 证书文件（`GET /me/certs/:certNo/file`，本人且未撤销才返回 HTML）。
+  Future<String> certHtml(String certNo) async {
+    final res = await _dio.get<String>(
+      '/api/v1/me/certs/${Uri.encodeComponent(certNo)}/file',
+      options: Options(responseType: ResponseType.plain),
+    );
+    return res.data ?? '';
   }
 
   /// 证书验真（`GET /verify/:certNo`，公开）。

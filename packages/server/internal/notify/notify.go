@@ -109,13 +109,13 @@ func recipients(ctx context.Context, db *sql.DB, target, targetValue string) ([]
 	var err error
 	switch target {
 	case "all", "role":
-		rows, err = db.QueryContext(ctx, `SELECT id FROM student`)
+		rows, err = db.QueryContext(ctx, `SELECT s.id FROM student s WHERE NOT EXISTS (SELECT 1 FROM notification_pref p WHERE p.student_id=s.id AND p.broadcast_opt_out=1)`)
 	case "course":
 		rows, err = db.QueryContext(ctx,
-			`SELECT DISTINCT e.student_id FROM entitlement e JOIN course c ON e.course_id = c.id WHERE c.course_code = $1 AND e.revoked_at IS NULL`, targetValue)
+			`SELECT DISTINCT e.student_id FROM entitlement e JOIN course c ON e.course_id = c.id WHERE c.course_code = $1 AND e.revoked_at IS NULL AND NOT EXISTS (SELECT 1 FROM notification_pref p WHERE p.student_id=e.student_id AND p.broadcast_opt_out=1)`, targetValue)
 	case "major":
 		rows, err = db.QueryContext(ctx,
-			`SELECT DISTINCT e.student_id FROM entitlement e JOIN course c ON e.course_id = c.id WHERE c.major_id = $1 AND e.revoked_at IS NULL`, targetValue)
+			`SELECT DISTINCT e.student_id FROM entitlement e JOIN course c ON e.course_id = c.id WHERE c.major_id = $1 AND e.revoked_at IS NULL AND NOT EXISTS (SELECT 1 FROM notification_pref p WHERE p.student_id=e.student_id AND p.broadcast_opt_out=1)`, targetValue)
 	default:
 		return nil, ErrTargetInvalid
 	}
@@ -188,13 +188,67 @@ func MarkRead(ctx context.Context, db *sql.DB, notificationID, studentID int64) 
 	return nil
 }
 
+// UnreadCount 返回未读数（底部角标 / 消息中心使用）。
+func UnreadCount(ctx context.Context, db *sql.DB, studentID int64) (int, error) {
+	if db == nil || studentID <= 0 {
+		return 0, ErrNotificationNotFound
+	}
+	var n int
+	err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM notification WHERE student_id=$1 AND read_at IS NULL`, studentID).Scan(&n)
+	return n, err
+}
+
+// MarkAllRead 批量标记该学员全部未读通知为已读。
+func MarkAllRead(ctx context.Context, db *sql.DB, studentID int64) (int64, error) {
+	if db == nil || studentID <= 0 {
+		return 0, ErrNotificationNotFound
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE notification SET read_at=$1 WHERE student_id=$2 AND read_at IS NULL`,
+		time.Now().UTC().Format(time.RFC3339), studentID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// NotificationPrefs 消息偏好：广播可退订，系统 / 事务通知不可退订（§7.13 L-5）。
+type NotificationPrefs struct {
+	BroadcastOptOut bool `json:"broadcast_opt_out"`
+}
+
+func GetPrefs(ctx context.Context, db *sql.DB, studentID int64) (NotificationPrefs, error) {
+	if db == nil || studentID <= 0 {
+		return NotificationPrefs{}, ErrNotificationNotFound
+	}
+	var optOut bool
+	err := db.QueryRowContext(ctx,
+		`SELECT broadcast_opt_out FROM notification_pref WHERE student_id=$1`, studentID).Scan(&optOut)
+	if err == sql.ErrNoRows {
+		return NotificationPrefs{}, nil
+	}
+	return NotificationPrefs{BroadcastOptOut: optOut}, err
+}
+
+func SetPrefs(ctx context.Context, db *sql.DB, studentID int64, prefs NotificationPrefs) error {
+	if db == nil || studentID <= 0 {
+		return ErrNotificationNotFound
+	}
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO notification_pref(student_id, broadcast_opt_out, updated_at) VALUES($1,$2,$3)
+		 ON CONFLICT(student_id) DO UPDATE SET broadcast_opt_out=excluded.broadcast_opt_out, updated_at=excluded.updated_at`,
+		studentID, prefs.BroadcastOptOut, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
 // Notification 通知视图。
 type Notification struct {
-	ID        int64
-	Type      string
-	Title     string
-	Body      string
-	Link      string
-	Read      bool
-	CreatedAt string
+	ID        int64  `json:"id"`
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	Link      string `json:"link"`
+	Read      bool   `json:"read"`
+	CreatedAt string `json:"created_at"`
 }
