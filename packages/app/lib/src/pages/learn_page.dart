@@ -46,11 +46,43 @@ class _LearnPageState extends State<LearnPage> {
   @override
   void initState() {
     super.initState();
-    _future = _api.lectureResources(widget.courseCode, widget.no);
-    // 打开讲次即记为本讲已学（失败不影响阅读，如预览/未解锁）。
+    _future = _loadResources();
+  }
+
+  Future<List<LectureResource>> _loadResources() async {
+    final resources = await _api.lectureResources(widget.courseCode, widget.no);
+    // 打开讲次只记「访问」，是否完成由学员显式标记（失败不影响阅读）。
     unawaited(_api
-        .reportLectureProgress(widget.courseCode, widget.no)
-        .catchError((_) {}));
+        .reportCourseProgress(widget.courseCode,
+            lectureNo: widget.no, completed: false)
+        .catchError((Object _) {}));
+    return resources;
+  }
+
+  bool _completed = false;
+  bool _completing = false;
+  String? _completeError;
+
+  Future<void> _markComplete() async {
+    setState(() {
+      _completing = true;
+      _completeError = null;
+    });
+    try {
+      await _api.reportCourseProgress(widget.courseCode,
+          lectureNo: widget.no, completed: true);
+      if (!mounted) return;
+      setState(() {
+        _completed = true;
+        _completing = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _completing = false;
+        _completeError = '标记完成失败，请重试';
+      });
+    }
   }
 
   @override
@@ -76,8 +108,7 @@ class _LearnPageState extends State<LearnPage> {
                   const Text('资源加载失败'),
                   TextButton(
                     onPressed: () => setState(() {
-                      _future =
-                          _api.lectureResources(widget.courseCode, widget.no);
+                      _future = _loadResources();
                     }),
                     child: const Text('重试'),
                   ),
@@ -99,6 +130,24 @@ class _LearnPageState extends State<LearnPage> {
                   subtitle: const Text('学习不受影响；新测评与发证暂停，待管理员处理完成。'),
                 ),
               ),
+            Card(
+                child: ListTile(
+              leading: Icon(_completed
+                  ? Icons.check_circle
+                  : Icons.check_circle_outline),
+              title: Text(_completed ? '本讲已完成' : '完成本讲'),
+              subtitle:
+                  _completeError == null ? null : Text(_completeError!),
+              trailing: _completing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : _completed
+                      ? null
+                      : const Icon(Icons.chevron_right),
+              onTap: _completing || _completed ? null : _markComplete,
+            )),
             Card(
                 child: ListTile(
               leading: const Icon(Icons.quiz_outlined),

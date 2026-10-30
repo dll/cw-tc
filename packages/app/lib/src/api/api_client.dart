@@ -246,10 +246,9 @@ class ApiClient {
     await logout();
   }
 
-  /// 我的课程（已解锁）+ 学习进度。
+  /// 我的课程（已发布 + 已解锁）+ 讲级学习进度。
   Future<List<MyCourse>> myCourses() async {
-    final res =
-        await _dio.get<Map<String, dynamic>>('/api/v1/me/courses');
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/courses');
     _ensureSuccess(res.data);
     final items = (res.data?['data'] as Map<String, dynamic>?)?['items']
             as List<dynamic>? ??
@@ -259,18 +258,16 @@ class ApiClient {
         .toList();
   }
 
-  /// 上报本讲学习进度（打开讲次即标记为已学）。
-  Future<void> reportLectureProgress(
-    String code,
-    int no, {
-    int positionSeconds = 0,
-    bool completed = true,
+  /// 记录一次讲次访问或显式完成；打开页面不应被当作完成。
+  Future<void> reportCourseProgress(
+    String courseCode, {
+    required int lectureNo,
+    required bool completed,
   }) async {
     final res = await _dio.put<Map<String, dynamic>>(
-      '/api/v1/me/courses/$code/progress',
+      '/api/v1/me/courses/${Uri.encodeComponent(courseCode)}/progress',
       data: <String, dynamic>{
-        'lecture_no': no,
-        'position_seconds': positionSeconds,
+        'lecture_no': lectureNo,
         'completed': completed,
       },
     );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cw_tc_app/src/api/api_client.dart';
 import 'package:cw_tc_app/src/models/lecture_resource.dart';
 import 'package:cw_tc_app/src/pages/audio_player_page.dart';
@@ -9,6 +11,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// 假客户端：覆盖资源取数与文本拉取，不发真实网络请求（避免 pending timer）。
 class _FakeApiClient extends ApiClient {
+  final progress = <({int lectureNo, bool completed})>[];
+  bool failCompletion = false;
+
   @override
   Future<List<LectureResource>> lectureResources(String courseCode, int no) async {
     return const <LectureResource>[
@@ -45,8 +50,31 @@ class _FakeApiClient extends ApiClient {
   Future<String> fetchResourceText(LectureResource r) async => '# 讲义内容';
 
   @override
-  Future<void> reportLectureProgress(String code, int no,
-      {int positionSeconds = 0, bool completed = true}) async {}
+  Future<void> reportCourseProgress(String courseCode,
+      {required int lectureNo, required bool completed}) async {
+    if (completed && failCompletion) {
+      failCompletion = false;
+      throw Exception('temporary failure');
+    }
+    progress.add((lectureNo: lectureNo, completed: completed));
+  }
+}
+
+class _PendingVisitApi extends _FakeApiClient {
+  final visit = Completer<void>();
+
+  @override
+  Future<void> reportCourseProgress(String courseCode,
+          {required int lectureNo, required bool completed}) =>
+      visit.future;
+}
+
+class _ProgressFailureApi extends _FakeApiClient {
+  @override
+  Future<void> reportCourseProgress(String courseCode,
+      {required int lectureNo, required bool completed}) async {
+    throw Exception('progress offline');
+  }
 }
 
 /// 未购课（403）假客户端。
@@ -60,8 +88,8 @@ class _ForbiddenApiClient extends ApiClient {
   }
 
   @override
-  Future<void> reportLectureProgress(String code, int no,
-      {int positionSeconds = 0, bool completed = true}) async {}
+  Future<void> reportCourseProgress(String courseCode,
+      {required int lectureNo, required bool completed}) async {}
 }
 
 void main() {
@@ -118,6 +146,49 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(AudioPlayerPage), findsOneWidget);
+  });
+
+  testWidgets('pending visit does not delay resources', (tester) async {
+    final api = _PendingVisitApi();
+    await tester.pumpWidget(MaterialApp(
+        home: LearnPage(courseCode: 'C1', no: 1, api: api)));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('README.md'), findsOneWidget);
+    api.visit.complete();
+  });
+
+  testWidgets('progress reporting failure does not hide loaded content',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: LearnPage(
+            courseCode: 'C1', no: 1, api: _ProgressFailureApi())));
+    await tester.pumpAndSettle();
+    expect(find.text('README.md'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('loads as visit, then explicitly marks complete and retries',
+      (WidgetTester tester) async {
+    final api = _FakeApiClient()..failCompletion = true;
+    await tester.pumpWidget(MaterialApp(
+        home: LearnPage(courseCode: 'C1', no: 1, api: api)));
+    await tester.pumpAndSettle();
+
+    expect(api.progress, [(lectureNo: 1, completed: false)]);
+    expect(find.text('完成本讲'), findsOneWidget);
+    await tester.tap(find.text('完成本讲'));
+    await tester.pumpAndSettle();
+    expect(find.text('标记完成失败，请重试'), findsOneWidget);
+    expect(api.progress.where((p) => p.completed), isEmpty);
+
+    await tester.tap(find.text('完成本讲'));
+    await tester.pumpAndSettle();
+    expect(find.text('本讲已完成'), findsOneWidget);
+    expect(api.progress, [
+      (lectureNo: 1, completed: false),
+      (lectureNo: 1, completed: true),
+    ]);
   });
 
   testWidgets('未购课（403）显示购买提示', (WidgetTester tester) async {
