@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"github.com/cw-tc/server/internal/identity"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -85,6 +86,22 @@ func TestAskAIRequiresContextQuotaAndClosesDuringExam(t *testing.T) {
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, token); got.Code != http.StatusConflict {
 		t.Fatalf("测评中应关闭 AI: %d %s", got.Code, got.Body.String())
 	}
+	other, err := s.identity.Register(context.Background(), identity.RegisterInput{Name: "样例他人", Phone: "13812345679", IDCard: "110101199003076755", Password: "password-2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSession, err := s.identity.CreateSession(context.Background(), other.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.dbConn.Exec(`INSERT INTO entitlement(student_id,course_id,source,granted_at) VALUES($1,$2,'free','2026-01-01T00:00:00Z')`, other.ID, courseID); err != nil {
+		t.Fatal(err)
+	}
+	fail = true
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, otherSession.Token); got.Code != http.StatusBadGateway {
+		t.Fatalf("模型失败应 502: %d %s", got.Code, got.Body.String())
+	}
+	fail = false
 	s.cfg.LLMFilingNo = "TEST-FILING"
 	if _, err := s.dbConn.Exec(`UPDATE entitlement SET revoked_at=$1 WHERE student_id=$2 AND course_id=$3`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
 		t.Fatal(err)
