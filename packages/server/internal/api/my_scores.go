@@ -31,8 +31,8 @@ func (s *Server) listMyScores(c *gin.Context) {
 	student := c.MustGet(studentContextKey).(identity.Student)
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
 		`SELECT r.id, co.course_code, co.name, r.level, r.auto_score, r.manual_score, r.total_score,
-		        COALESCE(r.band,''), r.is_pass, COALESCE(r.graded_at,''),
-		        COALESCE(s.submitted_at, s.started_at, r.created_at),
+		        COALESCE(r.band,''), r.is_pass, COALESCE(CAST(r.graded_at AS TEXT),''),
+		        COALESCE(CAST(s.submitted_at AS TEXT), CAST(s.started_at AS TEXT), CAST(r.created_at AS TEXT)),
 		        COALESCE((SELECT c.cert_no FROM certificate c
 		                  WHERE c.student_id=r.student_id AND c.course_id=r.course_id AND c.level=r.level
 		                  ORDER BY c.issued_at DESC, c.id DESC LIMIT 1),'')
