@@ -529,3 +529,20 @@ export async function listAdminComments(status = 'visible'): Promise<AdminCommen
 export async function removeAdminComment(id: number, reasonKind: string): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/comments/${id}/remove`, { reason_kind: reasonKind, confirm: true }))
 }
+
+export interface AdminSuggestion {
+  id: number
+  student_id: number
+  course_code: string | null
+  body: string
+  status: string
+  reply: string | null
+  created_at: string
+}
+export async function listAdminSuggestions(status = ''): Promise<AdminSuggestion[]> {
+  const data = await unwrap<{ items: AdminSuggestion[] }>(http.get('/admin/suggestions', { params: { status } }))
+  return data.items
+}
+export async function replyAdminSuggestion(id: number, status: string, reply: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/suggestions/${id}/reply`, { status, reply }))
+}

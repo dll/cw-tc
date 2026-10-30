@@ -28,6 +28,7 @@ const adminMenus = { group: '管理端', items: [
   { path: '/admin/orders', label: '订单与退款' },
   { path: '/admin/certs', label: '证书台账' },
   { path: '/admin/comments', label: '评价审核' },
+  { path: '/admin/suggestions', label: '学员建议' },
   { path: '/admin/kb', label: '知识库重建' },
   { path: '/admin/broadcast', label: '广播通知' },
   { path: '/admin/users', label: '用户管理' },
@@ -78,3 +79,4 @@ const menus = computed(() => {
 .brand { padding: 16px 16px 0; font-size: 16px; font-weight: 600; }
 .brand-sub { padding: 4px 16px 16px; font-size: 12px; color: var(--el-text-color-secondary); }
 </style>
+

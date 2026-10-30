@@ -27,6 +27,16 @@ func TestAdminCommentModerationAndReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	commentID, _ := res.LastInsertId()
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/me/suggestions", `{"body":"建议增加课程案例与练习讲解内容。"}`, token); got.Code != http.StatusOK {
+		t.Fatalf("提交建议失败: %d", got.Code)
+	}
+	sugs := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/suggestions", "", adminToken)
+	if sugs.Code != http.StatusOK || !strings.Contains(sugs.Body.String(), `"body"`) {
+		t.Fatalf("建议列表异常: %d %s", sugs.Code, sugs.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/suggestions/1/reply", `{"status":"accepted","reply":"已在 v2.30 改进"}`, adminToken); got.Code != http.StatusOK {
+		t.Fatalf("回复建议失败: %d %s", got.Code, got.Body.String())
+	}
 	listed := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/comments?status=visible", "", adminToken)
 	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"course_code":"C1"`) {
 		t.Fatalf("评价审核列表异常: %d %s", listed.Code, listed.Body.String())

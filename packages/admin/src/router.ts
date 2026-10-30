@@ -10,6 +10,7 @@ import Broadcast from '@/pages/Broadcast.vue'
 import Staff from '@/pages/Staff.vue'
 import Courses from '@/pages/Courses.vue'
 import Comments from '@/pages/Comments.vue'
+import Suggestions from '@/pages/Suggestions.vue'
 import ContentRequests from '@/pages/ContentRequests.vue'
 import Operations from '@/pages/Operations.vue'
 import Majors from '@/pages/Majors.vue'
@@ -35,6 +36,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/refunds', component: Refunds },
   { path: '/admin/certs', component: Certs },
   { path: '/admin/comments', component: Comments },
+  { path: '/admin/suggestions', component: Suggestions },
   { path: '/admin/kb', component: Placeholder, props: { title: '知识库重建', detail: '切片数与向量数须为真实统计' } },
   { path: '/admin/broadcast', component: Broadcast },
   { path: '/admin/users', component: Users },
@@ -57,3 +59,4 @@ router.beforeEach((to) => {
   if (to.path === '/login' && hasToken()) return '/admin/courses'
   return true
 })
+
