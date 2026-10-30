@@ -99,3 +99,19 @@ func TestDownloadMyCertRoute(t *testing.T) {
 		t.Fatalf("他人访问证书应 404: %d", got.Code)
 	}
 }
+
+func TestCertDisplayStatusBranches(t *testing.T) {
+	now := time.Now().UTC()
+	if certDisplayStatus("revoked", "", now) != "revoked" {
+		t.Fatal("revoked 状态错误")
+	}
+	if certDisplayStatus("valid", "bad", now) != "valid" {
+		t.Fatal("非法日期应回退 valid")
+	}
+	if certDisplayStatus("valid", now.Add(100*24*time.Hour).Format(time.RFC3339), now) != "valid" {
+		t.Fatal("远期证书应为 valid")
+	}
+	if certDisplayStatus("valid", now.Add(-time.Hour).Format(time.RFC3339), now) != "expired" {
+		t.Fatal("过期证书状态错误")
+	}
+}

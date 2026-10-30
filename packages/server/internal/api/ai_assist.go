@@ -11,8 +11,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cw-tc/server/internal/audit"
 	"github.com/cw-tc/server/internal/identity"
@@ -73,7 +75,7 @@ func (s *Server) askAI(c *gin.Context) {
 		return
 	}
 
-	chunks, citations := s.lectureContext(c.Request.Context(), courseID, input.LectureNo)
+	chunks, citations := s.courseContext(c.Request.Context(), courseID, input.LectureNo, input.Question)
 	if len(chunks) == 0 {
 		c.JSON(http.StatusOK, envelope{Code: 0, Data: aiAnswer{
 			Answer:  "这门课的资料里没有这条依据，暂时无法回答。请先阅读本讲讲义或换一个与本讲相关的问题。",
@@ -121,22 +123,28 @@ func (s *Server) askAI(c *gin.Context) {
 	}})
 }
 
-func (s *Server) lectureContext(ctx context.Context, courseID int64, lectureNo int) (string, []aiCitation) {
+type contextChunk struct {
+	score    int
+	text     string
+	citation aiCitation
+}
+
+// courseContext 从全课程文本资产做轻量检索：当前讲次优先，其余按问题词命中排序。
+func (s *Server) courseContext(ctx context.Context, courseID int64, lectureNo int, question string) (string, []aiCitation) {
 	if s.cfg.ContentDir == "" {
 		return "", nil
 	}
 	rows, err := s.dbConn.QueryContext(ctx,
 		`SELECT l.no, l.title, a.title, a.storage_key, a.kind
 		 FROM asset a JOIN lecture l ON l.id=a.lecture_id
-		 WHERE l.course_id=$1 AND l.no=$2
-		   AND a.kind IN ('markdown','html','code','frozen_output')
-		 ORDER BY a.sort, a.id LIMIT 20`, courseID, lectureNo)
+		 WHERE l.course_id=$1 AND a.kind IN ('markdown','html','code','frozen_output')
+		 ORDER BY l.no, a.sort, a.id`, courseID)
 	if err != nil {
 		return "", nil
 	}
 	defer rows.Close()
-	var builder strings.Builder
-	citations := make([]aiCitation, 0)
+	tokens := questionTokens(question)
+	chunks := make([]contextChunk, 0)
 	for rows.Next() {
 		var no int
 		var lectureTitle, title, key, kind string
@@ -156,20 +164,80 @@ func (s *Server) lectureContext(ctx context.Context, courseID int64, lectureNo i
 		if kind == "html" {
 			text = htmlTagRE.ReplaceAllString(text, " ")
 		}
-		text = strings.TrimSpace(text)
-		if text == "" {
+		for _, part := range splitContext(strings.TrimSpace(text), 900) {
+			if part == "" {
+				continue
+			}
+			score := 0
+			if no == lectureNo {
+				score += 5
+			}
+			lower := strings.ToLower(part)
+			for _, token := range tokens {
+				if strings.Contains(lower, token) {
+					score += 2
+				}
+			}
+			chunks = append(chunks, contextChunk{
+				score: score, text: part,
+				citation: aiCitation{LectureNo: no, Title: title, StorageKey: key},
+			})
+		}
+	}
+	sort.SliceStable(chunks, func(i, j int) bool { return chunks[i].score > chunks[j].score })
+	var builder strings.Builder
+	citations := make([]aiCitation, 0)
+	seen := map[string]bool{}
+	for _, chunk := range chunks {
+		if chunk.score <= 0 && len(citations) > 0 {
 			continue
 		}
-		if len([]rune(text)) > 4000 {
-			text = string([]rune(text)[:4000])
-		}
-		fmt.Fprintf(&builder, "[L%d] %s / %s\n%s\n\n", no, lectureTitle, title, text)
-		citations = append(citations, aiCitation{LectureNo: no, Title: title, StorageKey: key})
-		if builder.Len() > 12000 {
+		if len([]rune(builder.String()))+len([]rune(chunk.text)) > 12000 || len(citations) >= 8 {
 			break
+		}
+		fmt.Fprintf(&builder, "[L%d] %s / %s\n%s\n\n", chunk.citation.LectureNo,
+			chunk.citation.Title, chunk.citation.StorageKey, chunk.text)
+		key := fmt.Sprintf("%d|%s", chunk.citation.LectureNo, chunk.citation.Title)
+		if !seen[key] {
+			seen[key] = true
+			citations = append(citations, chunk.citation)
 		}
 	}
 	return builder.String(), citations
+}
+
+func splitContext(text string, maxRunes int) []string {
+	var out []string
+	for _, paragraph := range strings.Split(text, "\n\n") {
+		paragraph = strings.TrimSpace(paragraph)
+		if paragraph == "" {
+			continue
+		}
+		runes := []rune(paragraph)
+		for len(runes) > maxRunes {
+			out = append(out, strings.TrimSpace(string(runes[:maxRunes])))
+			runes = runes[maxRunes:]
+		}
+		if len(runes) > 0 {
+			out = append(out, strings.TrimSpace(string(runes)))
+		}
+	}
+	return out
+}
+
+func questionTokens(question string) []string {
+	lower := strings.ToLower(question)
+	words := regexp.MustCompile(`[a-z0-9_]{2,}`).FindAllString(lower, -1)
+	han := make([]rune, 0)
+	for _, r := range []rune(lower) {
+		if unicode.Is(unicode.Han, r) {
+			han = append(han, r)
+		}
+	}
+	for i := 0; i+1 < len(han); i++ {
+		words = append(words, string(han[i:i+2]))
+	}
+	return words
 }
 
 func consumeAIQuota(ctx context.Context, db *sql.DB, studentID, courseID int64, limit int) (int, error) {

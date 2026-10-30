@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"github.com/cw-tc/server/internal/identity"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,8 +15,13 @@ import (
 
 func TestAskAIRequiresContextQuotaAndClosesDuringExam(t *testing.T) {
 	var calls int
+	var fail bool
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
+		if fail {
+			http.Error(w, "down", http.StatusInternalServerError)
+			return
+		}
 		if r.URL.Path != "/chat/completions" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			t.Fatalf("AI 请求异常: %s %s", r.URL.Path, r.Header.Get("Authorization"))
 		}
@@ -68,9 +74,6 @@ func TestAskAIRequiresContextQuotaAndClosesDuringExam(t *testing.T) {
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, token); got.Code != http.StatusTooManyRequests {
 		t.Fatalf("额度用尽应 429: %d %s", got.Code, got.Body.String())
 	}
-	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", `{"course_code":"C1","lecture_no":2,"question":"没有资料的讲次？"}`, token); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"outcome":"fallback"`) {
-		t.Fatalf("无资料应明确降级: %d %s", got.Code, got.Body.String())
-	}
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", `{}`, token); got.Code != http.StatusBadRequest {
 		t.Fatalf("非法参数应 400: %d", got.Code)
 	}
@@ -83,9 +86,52 @@ func TestAskAIRequiresContextQuotaAndClosesDuringExam(t *testing.T) {
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, token); got.Code != http.StatusConflict {
 		t.Fatalf("测评中应关闭 AI: %d %s", got.Code, got.Body.String())
 	}
+	other, err := s.identity.Register(context.Background(), identity.RegisterInput{Name: "样例他人", Phone: "13812345679", IDCard: "110101199003076755", Password: "password-2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSession, err := s.identity.CreateSession(context.Background(), other.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.dbConn.Exec(`INSERT INTO entitlement(student_id,course_id,source,granted_at) VALUES($1,$2,'free','2026-01-01T00:00:00Z')`, other.ID, courseID); err != nil {
+		t.Fatal(err)
+	}
+	fail = true
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, otherSession.Token); got.Code != http.StatusBadGateway {
+		t.Fatalf("模型失败应 502: %d %s", got.Code, got.Body.String())
+	}
+	fail = false
+	s.cfg.LLMFilingNo = "TEST-FILING"
+	if _, err := s.dbConn.Exec(`UPDATE entitlement SET revoked_at=$1 WHERE student_id=$2 AND course_id=$3`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
+		t.Fatal(err)
+	}
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, token); got.Code != http.StatusForbidden {
+		t.Fatalf("无权益应 403: %d %s", got.Code, got.Body.String())
+	}
 	s.cfg.LLMFilingNo = ""
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, token); got.Code != http.StatusServiceUnavailable {
 		t.Fatalf("缺备案号应 fail-closed: %d %s", got.Code, got.Body.String())
 	}
 	_ = context.Background()
+}
+
+func TestAskAIFallbackWithoutAssets(t *testing.T) {
+	s, token, cleanup := orderLifecycleServer(t)
+	defer cleanup()
+	s.cfg.ContentDir = t.TempDir()
+	s.cfg.DeepSeekKey = "k"
+	s.cfg.LLMModel = "deepseek-chat"
+	s.cfg.LLMFilingNo = "TEST-FILING"
+	var studentID, courseID int64
+	_ = s.dbConn.QueryRow(`SELECT id FROM student LIMIT 1`).Scan(&studentID)
+	_ = s.dbConn.QueryRow(`SELECT id FROM course WHERE course_code='C1'`).Scan(&courseID)
+	if _, err := s.dbConn.Exec(`INSERT INTO entitlement(student_id,course_id,source,granted_at) VALUES($1,$2,'free','2026-01-01T00:00:00Z')`, studentID, courseID); err != nil {
+		t.Fatal(err)
+	}
+	got := performJSONWithCookie(t, s.Router(), http.MethodPost, "/api/v1/ai/ask",
+		`{"course_code":"C1","lecture_no":1,"question":"这一讲讲什么？"}`, token)
+	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"outcome":"fallback"`) {
+		t.Fatalf("无资料应明确降级: %d %s", got.Code, got.Body.String())
+	}
 }

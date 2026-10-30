@@ -33,3 +33,18 @@ func TestOngoingExamReturnsPaperAndAnswers(t *testing.T) {
 		t.Fatalf("无会话应返回 null: %d %s", none.Code, none.Body.String())
 	}
 }
+
+func TestOngoingExamExpired(t *testing.T) {
+	s, token, cleanup := orderLifecycleServer(t)
+	defer cleanup()
+	var studentID, courseID int64
+	_ = s.dbConn.QueryRow(`SELECT id FROM student LIMIT 1`).Scan(&studentID)
+	_ = s.dbConn.QueryRow(`SELECT id FROM course WHERE course_code='C1'`).Scan(&courseID)
+	if _, err := s.dbConn.Exec(`INSERT INTO exam_session(student_id,course_id,level,paper,status,started_at,server_deadline_at) VALUES($1,$2,'L1','[]','ongoing',?,?)`, studentID, courseID, time.Now().UTC().Add(-2*time.Hour).Format(time.RFC3339), time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	got := performJSONWithCookie(t, s.Router(), http.MethodGet, "/api/v1/me/exams/ongoing?course_code=C1&level=L1", ``, token)
+	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"expired":true`) {
+		t.Fatalf("过期会话状态异常: %d %s", got.Code, got.Body.String())
+	}
+}
