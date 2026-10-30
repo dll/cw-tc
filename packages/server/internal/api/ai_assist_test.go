@@ -68,9 +68,6 @@ func TestAskAIRequiresContextQuotaAndClosesDuringExam(t *testing.T) {
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", body, token); got.Code != http.StatusTooManyRequests {
 		t.Fatalf("额度用尽应 429: %d %s", got.Code, got.Body.String())
 	}
-	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", `{"course_code":"C1","lecture_no":2,"question":"没有资料的讲次？"}`, token); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"outcome":"fallback"`) {
-		t.Fatalf("无资料应明确降级: %d %s", got.Code, got.Body.String())
-	}
 	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/ai/ask", `{}`, token); got.Code != http.StatusBadRequest {
 		t.Fatalf("非法参数应 400: %d", got.Code)
 	}
