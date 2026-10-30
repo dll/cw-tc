@@ -27,6 +27,8 @@ type RefundInput struct {
 	Reason      string
 	Initiator   string
 	OperatorID  int64
+	// RequireNoCertificate 供学员自助退款使用：已发证必须走管理员特批（PRD §7.3 G-4）。
+	RequireNoCertificate bool
 }
 
 type Refund struct {
@@ -73,6 +75,15 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (Refund, error) {
 	}
 	if in.Kind == "normal" && in.AmountCents != amountCents {
 		return Refund{}, ErrOrderNotRefundable
+	}
+	if in.RequireNoCertificate {
+		var validCerts int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM certificate WHERE student_id=$1 AND course_id=$2 AND status='valid' AND revoked_at IS NULL`, studentID, courseID).Scan(&validCerts); err != nil {
+			return Refund{}, err
+		}
+		if validCerts > 0 {
+			return Refund{}, ErrRefundCertificateIssued
+		}
 	}
 
 	// 退款滥用风控（§9.13）：学员自助普通退款达上限 → 转人工审核，不自动退款。

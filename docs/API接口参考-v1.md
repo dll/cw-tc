@@ -407,6 +407,12 @@
 > **打开讲次只记访问**（`PUT` body `completed=false`），**显式标记完成才计入 `learned_lectures`**
 > （`PUT` body `completed=true`）；**完成状态粘性**，重复访问不会回退。
 
+> **`/me/orders` 的操作标记**：返回 `status`（`pending`｜`paid`｜`closed`｜`refunded`）、
+> `can_continue_pay` / `can_cancel` / `can_refund` / `can_enter_course`、
+> `exam_taken` / `cert_issued` / `cert_revoked`、`refundable_until` 与最近一次 `refund`；
+> **继续支付复用原订单号**；**已发证或超过 7 日自助窗口 → `can_refund=false`**（按钮不出现），
+> 自助退款成功即撤销权益，若已发证则同事务连带撤销证书。
+
 > **`/me/certs/{certNo}/file` 的硬约束**：**证书已撤销时返回 404**（不是 403 ——
 > 避免暴露"这个编号曾经存在"之外的更多信息）；**重新下载必须返回与首次逐字节一致的文件**。
 

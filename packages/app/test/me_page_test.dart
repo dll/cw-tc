@@ -37,6 +37,24 @@ void main() {
     router.dispose();
   });
 
+  testWidgets('my orders entry navigates to /me/orders', (tester) async {
+    final router = GoRouter(initialLocation: '/me', routes: <RouteBase>[
+      GoRoute(
+          path: '/me',
+          builder: (_, __) => MePage(api: _FakeApiClient(true, null))),
+      GoRoute(
+          path: '/me/orders',
+          builder: (_, __) =>
+              const Scaffold(body: Text('my-orders-destination'))),
+    ]);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我的订单'));
+    await tester.pumpAndSettle();
+    expect(find.text('my-orders-destination'), findsOneWidget);
+    router.dispose();
+  });
+
   testWidgets('未登录显示未登录', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(home: MePage(api: _FakeApiClient(false, null))),
