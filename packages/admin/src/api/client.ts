@@ -677,3 +677,6 @@ export interface UserStatusInput {
 export async function updateUserStatus(id: number, input: UserStatusInput): Promise<void> {
   await unwrap<unknown>(http.patch(`/admin/users/${id}/status`, input))
 }
+export async function revokeCertificate(certNo: string, reason: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/certs/${encodeURIComponent(certNo)}/revoke`, { reason, confirm: true }))
+}
