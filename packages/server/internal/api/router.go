@@ -196,7 +196,7 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.POST("/bulk-courses/unpublish", s.adminBulkUnpublishCourses)
 	adminOnly.GET("/orders", s.adminOrders)
 	adminOnly.GET("/refunds", s.adminRefunds)
-	adminOnly.GET("/certs", s.adminCerts)
+	adminOnly.GET("/certs", s.adminCertLedger)
 	adminOnly.POST("/certs/:certNo/revoke", s.adminRevokeCert)
 	adminOnly.POST("/entitlements", s.adminGrantEntitlement)
 	adminOnly.POST("/users/:id/reset-password", s.adminResetStudentPassword)

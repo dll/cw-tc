@@ -103,13 +103,18 @@ export interface RefundItem {
 export interface CertItem {
   cert_no: string
   phone: string
+  student_no: string
+  student_name: string
   course: string
+  course_name: string
   level: string
   score: number
   band: string
   status: string
   issued_at: string
   expires_at: string
+  revoked_reason: string | null
+  revoked_at: string | null
 }
 export async function listOrders(): Promise<OrderItem[]> {
   const r = await unwrap<{ items: OrderItem[] }>(http.get('/admin/orders'))
@@ -119,9 +124,14 @@ export async function listRefunds(): Promise<RefundItem[]> {
   const r = await unwrap<{ items: RefundItem[] }>(http.get('/admin/refunds'))
   return r.items
 }
-export async function listCerts(): Promise<CertItem[]> {
-  const r = await unwrap<{ items: CertItem[] }>(http.get('/admin/certs'))
-  return r.items
+export async function listCerts(params: {
+  status?: string
+  course_code?: string
+  q?: string
+  limit?: number
+  offset?: number
+} = {}): Promise<{ items: CertItem[]; total: number }> {
+  return unwrap<{ items: CertItem[]; total: number }>(http.get('/admin/certs', { params }))
 }
 
 // —— 用户管理 ——

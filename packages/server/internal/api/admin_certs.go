@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cw-tc/server/internal/audit"
+	"github.com/cw-tc/server/internal/redact"
 	"github.com/cw-tc/server/internal/staff"
 	"github.com/gin-gonic/gin"
 )
@@ -83,4 +84,74 @@ func (s *Server) adminRevokeCert(c *gin.Context) {
 		"cert_no": certNo, "status": "revoked", "revoked_reason": "admin", "revoked_at": now,
 		"student_id": studentID, "course_id": courseID,
 	}})
+}
+
+// adminCertLedger GET /admin/certs —— 证书台账：状态 / 课程 / 编号前缀筛选，手机号脱敏。
+func (s *Server) adminCertLedger(c *gin.Context) {
+	limit, limitErr := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	offset, offsetErr := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limitErr != nil || offsetErr != nil || limit < 1 || limit > 100 || offset < 0 {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "分页参数不合法"})
+		return
+	}
+	status := strings.TrimSpace(c.Query("status"))
+	switch status {
+	case "", "valid", "revoked":
+	default:
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "状态只接受 valid / revoked"})
+		return
+	}
+	courseCode := strings.TrimSpace(c.Query("course_code"))
+	qPattern := ""
+	if q := strings.TrimSpace(c.Query("q")); q != "" {
+		qPattern = escapeLikePattern(q) + "%"
+	}
+	where := ` WHERE ($1 = '' OR c.status = $1)
+	           AND ($2 = '' OR co.course_code = $2)
+	           AND ($3 = '' OR c.cert_no LIKE $3 ESCAPE '\')`
+	var total int64
+	if err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT COUNT(*) FROM certificate c JOIN course co ON co.id = c.course_id`+where,
+		status, courseCode, qPattern).Scan(&total); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "证书台账读取失败"})
+		return
+	}
+	rows, err := s.dbConn.QueryContext(c.Request.Context(),
+		`SELECT c.cert_no, s.phone, s.student_no, s.name, co.course_code, co.name,
+		        c.level, c.score, c.band, c.status, c.issued_at, c.expires_at, c.revoked_reason, c.revoked_at
+		 FROM certificate c
+		 JOIN student s ON s.id = c.student_id
+		 JOIN course co ON co.id = c.course_id`+where+
+			` ORDER BY c.id DESC LIMIT $4 OFFSET $5`, status, courseCode, qPattern, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "证书台账读取失败"})
+		return
+	}
+	defer rows.Close()
+	items := make([]gin.H, 0)
+	for rows.Next() {
+		var certNo, phone, studentNo, studentName, course, courseName, level, band, itemStatus, issuedAt, expiresAt string
+		var score float64
+		var revokedReason, revokedAt sql.NullString
+		if err := rows.Scan(&certNo, &phone, &studentNo, &studentName, &course, &courseName,
+			&level, &score, &band, &itemStatus, &issuedAt, &expiresAt, &revokedReason, &revokedAt); err != nil {
+			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "证书台账读取失败"})
+			return
+		}
+		masked := ""
+		if phone != "" {
+			masked = redact.Phone(phone)
+		}
+		items = append(items, gin.H{
+			"cert_no": certNo, "phone": masked, "student_no": studentNo, "student_name": studentName,
+			"course": course, "course_name": courseName, "level": level, "score": score,
+			"band": band, "status": itemStatus, "issued_at": issuedAt, "expires_at": expiresAt,
+			"revoked_reason": nullableString(revokedReason), "revoked_at": nullableString(revokedAt),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "证书台账读取失败"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"items": items, "total": total}})
 }
