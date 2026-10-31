@@ -27,6 +27,7 @@ const adminMenus = { group: '管理端', items: [
   { path: '/admin/insights', label: '运营统计' },
   { path: '/admin/entitlements', label: '权益台账' },
   { path: '/admin/appeals', label: '账号申诉' },
+  { path: '/admin/reconcile', label: '对账与渠道' },
   { path: '/admin/settings', label: '系统配置' },
   { path: '/admin/majors', label: '专业分类' },
   { path: '/admin/orders', label: '订单与退款' },

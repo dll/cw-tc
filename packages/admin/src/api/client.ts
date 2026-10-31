@@ -739,3 +739,35 @@ export async function adminExportStudent(studentId: number, scope: string, reaso
     student_id: studentId, scope, reason, format: 'json', confirm: true,
   }))
 }
+// ── 对账与支付渠道 ──
+export interface ReconcileItem {
+  biz_date: string
+  channel: string
+  channel_count: number
+  channel_amount_cents: number
+  local_count: number
+  local_amount_cents: number
+  diff_count: number
+  diff_amount_cents: number
+  balanced: boolean
+  created_at: string
+}
+export async function listReconcile(channel = ''): Promise<{ items: ReconcileItem[]; diff_abs_total_cents: number; all_balanced: boolean }> {
+  return unwrap(http.get('/admin/reconcile', { params: { channel } }))
+}
+export async function reconcileDay(date: string): Promise<{ biz_date: string; items: ReconcileItem[]; all_balanced: boolean }> {
+  return unwrap(http.get(`/admin/reconcile/${date}`))
+}
+export async function downloadReconcileDiff(date: string): Promise<Blob> {
+  const res = await http.get(`/admin/reconcile/${date}/diff`, { responseType: 'blob' })
+  return res.data as Blob
+}
+export interface PaymentChannelStatus {
+  channel: string
+  configured: boolean
+  merchant_last4: string | null
+}
+export async function paymentChannels(): Promise<PaymentChannelStatus[]> {
+  const data = await unwrap<{ items: PaymentChannelStatus[] }>(http.get('/admin/payments/channels'))
+  return data.items
+}
