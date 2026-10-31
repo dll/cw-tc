@@ -51,3 +51,36 @@ func TestVerifyCertFourStates(t *testing.T) {
 		t.Fatalf("不存在应报 ErrCertNotFound，实际 %v", err)
 	}
 }
+
+func TestGetOwnCertLevelNameAndOwnership(t *testing.T) {
+	database := examDB(t)
+	defer database.Close()
+	ctx := context.Background()
+	if _, err := database.Exec(`UPDATE course SET cert_names='{"L1":"初级认证","L2":"中级认证"}' WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO certificate(cert_no, student_id, course_id, level, score, band, issued_at, expires_at, status, revoked_reason) VALUES('CW-CN-A202600001',1,1,'L1',88,'good','2026-01-01T00:00:00Z','2029-01-01T00:00:00Z','revoked','admin')`); err != nil {
+		t.Fatal(err)
+	}
+	got, err := GetOwnCert(ctx, database, 1, "CW-CN-A202600001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LevelName != "初级认证" || got.StudentName != "样例学员" || got.Status != "revoked" || got.RevokedReason != "admin" {
+		t.Fatalf("本人证书信息异常: %+v", got)
+	}
+	if _, err := GetOwnCert(ctx, database, 2, "CW-CN-A202600001"); !errors.Is(err, ErrCertNotFound) {
+		t.Fatalf("他人证书不可查: %v", err)
+	}
+	// cert_names 非 JSON / 缺该等级时回退等级码。
+	if _, err := database.Exec(`UPDATE course SET cert_names='not-json' WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	fallback, err := GetOwnCert(ctx, database, 1, "CW-CN-A202600001")
+	if err != nil || fallback.LevelName != "L1" {
+		t.Fatalf("坏 cert_names 应回退等级码: %+v %v", fallback, err)
+	}
+	if certNameForLevel(`{"L1":"初级"}`, "L2") != "L2" || certNameForLevel(`{"L1":""}`, "L1") != "L1" {
+		t.Fatal("缺失等级应回退等级码")
+	}
+}

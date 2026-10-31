@@ -80,3 +80,43 @@ func TestRefundRejectsInvalidInput(t *testing.T) {
 		t.Fatalf("超额退款应拒绝: %v", err)
 	}
 }
+
+func TestRefundNormalRevokesDownloadGrant(t *testing.T) {
+	database := commerceDB(t)
+	defer database.Close()
+	service := NewService(database)
+	order := paidOrder(t, service)
+	if _, err := database.Exec(`INSERT INTO download_grant(student_id, course_id, lecture_no, granted_at, expires_at) VALUES(1,1,1,'2026-01-01T00:00:00Z','2026-12-31T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Refund(context.Background(), RefundInput{OrderNo: order.OrderNo, Kind: "normal", AmountCents: order.AmountCents, Reason: "样例退款", Initiator: "student"}); err != nil {
+		t.Fatal(err)
+	}
+	var status, reason string
+	if err := database.QueryRow(`SELECT status, revoked_reason FROM download_grant WHERE student_id=1 AND course_id=1`).Scan(&status, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if status != "revoked" || reason != "order_refunded" {
+		t.Fatalf("normal 退款必须撤销离线授权: %s / %s", status, reason)
+	}
+}
+
+func TestRefundRewardKeepsDownloadGrant(t *testing.T) {
+	database := commerceDB(t)
+	defer database.Close()
+	service := NewService(database)
+	order := paidOrder(t, service)
+	if _, err := database.Exec(`INSERT INTO download_grant(student_id, course_id, lecture_no, granted_at, expires_at) VALUES(1,1,1,'2026-01-01T00:00:00Z','2026-12-31T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Refund(context.Background(), RefundInput{OrderNo: order.OrderNo, Kind: "reward", Basis: "campaign", BasisRef: "活动-1", AmountCents: order.AmountCents, Reason: "奖励性退款", Initiator: "admin", OperatorID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := database.QueryRow(`SELECT status FROM download_grant WHERE student_id=1 AND course_id=1`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "valid" {
+		t.Fatalf("reward 退款应保留离线授权，实际 %s", status)
+	}
+}

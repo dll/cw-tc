@@ -546,3 +546,49 @@ export async function listAdminSuggestions(status = ''): Promise<AdminSuggestion
 export async function replyAdminSuggestion(id: number, status: string, reply: string): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/suggestions/${id}/reply`, { status, reply }))
 }
+
+// ── 系统配置（仅 super）与运营统计（模块 M） ──
+export interface SystemConfigItem {
+  key: string
+  value: number | boolean | string | unknown
+  value_type: string
+  min_value: number | null
+  max_value: number | null
+  description: string
+  updated_by: number | null
+  updated_at: string
+}
+export async function listSettings(): Promise<SystemConfigItem[]> {
+  const data = await unwrap<{ items: SystemConfigItem[] }>(http.get('/admin/settings'))
+  return data.items
+}
+export async function updateSetting(key: string, value: number): Promise<SystemConfigItem> {
+  return unwrap<SystemConfigItem>(http.patch('/admin/settings', { key, value }))
+}
+
+export interface CourseStats {
+  course_code: string
+  name?: string
+  line?: string
+  status?: string
+  source?: string
+  data_as_of: string | null
+  views_uv: number
+  favorites: number
+  learning: number
+  completed: number
+  examined: number
+  certified: number
+  orders: number
+  paid: number
+  unlock: number
+  avg_rating: number | null
+  rating_count: number
+}
+export async function adminInsights(source = ''): Promise<CourseStats[]> {
+  const data = await unwrap<{ items: CourseStats[] }>(http.get('/admin/insights', { params: { source } }))
+  return data.items
+}
+export async function adminCourseStats(code: string): Promise<CourseStats & { funnel: { items: Array<{ key: string; label: string; value: number; rate_from_previous: number | null }> } }> {
+  return unwrap(http.get(`/admin/stats/${code}`))
+}

@@ -7,11 +7,12 @@ import (
 	"strings"
 
 	"github.com/cw-tc/server/internal/identity"
+	"github.com/cw-tc/server/internal/sysconfig"
 	"github.com/gin-gonic/gin"
 )
 
-// commentDisplayThreshold 与 PRD §7.14 M-3 一致；上线前迁入 system_config。
-const commentDisplayThreshold = 10
+// commentDisplayThreshold 是默认值；实际取值走 system_config（改后无需发版）。
+const commentDisplayThreshold = sysconfig.DefaultCommentDisplayThreshold
 
 var (
 	commentContactRE = regexp.MustCompile(`(\b\d{17}[\dXx]\b)|(\b1[3-9]\d{9}\b)|(https?://)|(www\.)`)
@@ -77,8 +78,10 @@ func (s *Server) listCourseComments(c *gin.Context) {
 			"edited_at": nullableString(editedAt), "created_at": createdAt,
 		})
 	}
-	data := gin.H{"items": items, "count": total, "display_threshold": commentDisplayThreshold}
-	if total >= commentDisplayThreshold && avg.Valid {
+	threshold := sysconfig.New(s.dbConn).Int(c.Request.Context(),
+		sysconfig.KeyCommentDisplayThreshold, sysconfig.DefaultCommentDisplayThreshold)
+	data := gin.H{"items": items, "count": total, "display_threshold": threshold}
+	if total >= threshold && avg.Valid {
 		data["average"] = avg.Float64
 	} else {
 		data["average"] = nil

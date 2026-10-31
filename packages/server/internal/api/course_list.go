@@ -137,6 +137,11 @@ func (s *Server) listPublicCourses(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
 	}
+	// 行集关闭后再查统计（SQLite 开发库最大连接数为 1，嵌套查询会互相等待）。
+	rows.Close()
+	for _, item := range items {
+		item["stats"] = s.publicStatsFor(c, item["course_code"].(string))
+	}
 
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"items":     items,

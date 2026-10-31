@@ -13,6 +13,8 @@ import Comments from '@/pages/Comments.vue'
 import Suggestions from '@/pages/Suggestions.vue'
 import ContentRequests from '@/pages/ContentRequests.vue'
 import Operations from '@/pages/Operations.vue'
+import Statistics from '@/pages/Insights.vue'
+import Settings from '@/pages/Settings.vue'
 import Majors from '@/pages/Majors.vue'
 import TeacherCourses from '@/pages/TeacherCourses.vue'
 import TeacherGrade from '@/pages/TeacherGrade.vue'
@@ -31,6 +33,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/courses', component: Courses },
   { path: '/admin/content-requests', component: ContentRequests },
   { path: '/admin/operations', component: Operations },
+  { path: '/admin/insights', component: Statistics },
+  { path: '/admin/settings', component: Settings },
   { path: '/admin/majors', component: Majors },
   { path: '/admin/orders', component: Orders },
   { path: '/admin/refunds', component: Refunds },

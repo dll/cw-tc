@@ -103,3 +103,24 @@ func TestStudentOrderHelpers(t *testing.T) {
 		t.Fatalf("有效值异常: %v", got)
 	}
 }
+
+func TestGetStudentOrderOwnership(t *testing.T) {
+	database := commerceDB(t)
+	defer database.Close()
+	service := NewService(database)
+	ctx := context.Background()
+	order, err := service.CreateOrderFromCourse(ctx, 1, 1, "get-order", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := service.GetStudentOrder(ctx, 1, order.OrderNo)
+	if err != nil || got.OrderNo != order.OrderNo {
+		t.Fatalf("本人订单应可查: %+v %v", got, err)
+	}
+	if _, err := service.GetStudentOrder(ctx, 2, order.OrderNo); err != ErrOrderNotFound {
+		t.Fatalf("他人订单应 404: %v", err)
+	}
+	if _, err := service.GetStudentOrder(ctx, 1, "NOPE"); err != ErrOrderNotFound {
+		t.Fatalf("不存在订单应 404: %v", err)
+	}
+}
