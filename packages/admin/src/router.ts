@@ -15,6 +15,7 @@ import ContentRequests from '@/pages/ContentRequests.vue'
 import Operations from '@/pages/Operations.vue'
 import Statistics from '@/pages/Insights.vue'
 import Entitlements from '@/pages/Entitlements.vue'
+import Appeals from '@/pages/Appeals.vue'
 import Settings from '@/pages/Settings.vue'
 import Majors from '@/pages/Majors.vue'
 import TeacherCourses from '@/pages/TeacherCourses.vue'
@@ -36,6 +37,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/operations', component: Operations },
   { path: '/admin/insights', component: Statistics },
   { path: '/admin/entitlements', component: Entitlements },
+  { path: '/admin/appeals', component: Appeals },
   { path: '/admin/settings', component: Settings },
   { path: '/admin/majors', component: Majors },
   { path: '/admin/orders', component: Orders },

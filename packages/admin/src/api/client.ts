@@ -704,3 +704,23 @@ export async function updateUserStatus(id: number, input: UserStatusInput): Prom
 export async function revokeCertificate(certNo: string, reason: string): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/certs/${encodeURIComponent(certNo)}/revoke`, { reason, confirm: true }))
 }
+// ── 账号申诉 ──
+export interface AppealItem {
+  id: number
+  phone_masked: string
+  kind: string
+  content_text: string
+  status: string
+  result_note: string | null
+  student_no: string | null
+  name: string | null
+  created_at: string
+  handled_at: string | null
+}
+export async function listAppeals(status = 'pending'): Promise<AppealItem[]> {
+  const data = await unwrap<{ items: AppealItem[] }>(http.get('/admin/appeals', { params: { status } }))
+  return data.items
+}
+export async function handleAppeal(id: number, status: 'accepted' | 'rejected', note: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/appeals/${id}/handle`, { status, result_note: note, confirm: true }))
+}
