@@ -227,6 +227,8 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.GET("/audit", s.adminAudit)
 	adminOnly.GET("/settings", s.requireSuper, s.adminSettings)
 	adminOnly.PATCH("/settings", s.requireSuper, s.adminUpdateSetting)
+	adminOnly.POST("/exports", s.requireSuper, s.adminExportStudentData)
+	adminOnly.GET("/exports", s.requireSuper, s.adminListExports)
 	adminOnly.GET("/insights", s.adminInsights)
 	adminOnly.GET("/stats/:courseCode", s.adminCourseStats)
 	adminOnly.GET("/majors", s.adminListMajors)

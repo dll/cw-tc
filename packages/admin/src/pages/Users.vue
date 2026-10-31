@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { listUsers, pendingRegistrationCount, revealUser, approveRegistration, grantEntitlement, batchDiscount, batchGrant, resetUserPassword, getUserDetail, updateUserStatus, type UserItem, type UserType, type ResetPasswordResult, type AdminUserDetail } from '@/api/client'
+import { listUsers, pendingRegistrationCount, revealUser, approveRegistration, grantEntitlement, batchDiscount, batchGrant, resetUserPassword, getUserDetail, updateUserStatus, adminExportStudent, type UserItem, type UserType, type ResetPasswordResult, type AdminUserDetail } from '@/api/client'
 
 const rows = ref<UserItem[]>([])
 const loading = ref(false)
@@ -151,6 +151,30 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<AdminUserDetail | null>(null)
 
+
+async function exportStudent() {
+  const target = detail.value
+  if (!target) return
+  try {
+    const { value } = await ElMessageBox.prompt('代学员导出仅 super 可执行；须填写事由（写审计与导出留痕），内容自动脱敏。', '代学员导出数据', {
+      confirmButtonText: '生成导出',
+      cancelButtonText: '取消',
+      inputType: 'textarea',
+      inputValidator: (v: string) => (v && v.trim() ? true : '事由必填'),
+    })
+    const result = await adminExportStudent(target.id, 'all', value.trim())
+    const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `student-${target.student_no ?? target.id}-export.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessageBox.alert(`导出已生成并留痕（导出编号 ${result.export_id}）。`, '导出完成')
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessageBox.alert(e.message, '导出失败')
+  }
+}
 async function openDetail(row: UserItem) {
   detailVisible.value = true
   detailLoading.value = true
@@ -371,6 +395,10 @@ async function submitGrant() {
             <el-descriptions-item v-if="detail.registration_status" label="注册审核">{{ detail.registration_status }}</el-descriptions-item>
             <el-descriptions-item v-if="detail.last_login_at" label="最近登录">{{ detail.last_login_at }}</el-descriptions-item>
           </el-descriptions>
+
+          <div style="margin-top: 12px">
+            <el-button v-if="detail.user_type === 'student'" type="warning" plain @click="exportStudent">代学员导出数据（仅 super）</el-button>
+          </div>
 
           <el-alert
             v-if="detail.note"

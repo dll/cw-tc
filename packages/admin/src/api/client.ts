@@ -724,3 +724,8 @@ export async function listAppeals(status = 'pending'): Promise<AppealItem[]> {
 export async function handleAppeal(id: number, status: 'accepted' | 'rejected', note: string): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/appeals/${id}/handle`, { status, result_note: note, confirm: true }))
 }
+export async function adminExportStudent(studentId: number, scope: string, reason: string): Promise<{ export_id: number; data: unknown }> {
+  return unwrap<{ export_id: number; data: unknown }>(http.post('/admin/exports', {
+    student_id: studentId, scope, reason, format: 'json', confirm: true,
+  }))
+}
