@@ -183,8 +183,32 @@ export async function batchDiscount(input: {student_ids: number[]; course_code: 
 export async function batchGrant(input: {student_ids: number[]; course_code: string; reason: string; confirm: boolean}): Promise<{granted: number}> {
   return unwrap<{granted: number}>(http.post('/admin/student-grants', input))
 }
-export async function revokeEntitlement(studentId: number, courseId: number): Promise<void> {
-  await unwrap<unknown>(http.delete(`/admin/entitlements/${studentId}/${courseId}`))
+export interface EntitlementItem {
+  id: number
+  student_no: string
+  student_name: string
+  course_code: string
+  course_name: string
+  source: string
+  order_no: string | null
+  grant_reason: string | null
+  granted_at: string
+  status: string
+  revoked_at: string | null
+  revoke_reason: string | null
+}
+export async function listEntitlements(params: {
+  student_id?: number
+  course_code?: string
+  source?: string
+  status?: string
+  limit?: number
+  offset?: number
+} = {}): Promise<{ items: EntitlementItem[]; total: number }> {
+  return unwrap<{ items: EntitlementItem[]; total: number }>(http.get('/admin/entitlements', { params }))
+}
+export async function revokeEntitlement(id: number, reason: string): Promise<void> {
+  await unwrap<unknown>(http.delete(`/admin/entitlements/${id}`, { data: { reason, confirm: true } }))
 }
 
 // —— 广播 ——

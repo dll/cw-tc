@@ -96,8 +96,8 @@ func TestAdminGrantAndBroadcast(t *testing.T) {
 	}
 
 	// 错误路径：撤销无权益 → 409；审核/上架不存在的课程 → 409；广播非法 target → 400
-	if got := performJSONWithBearer(t, r, http.MethodDelete, "/api/v1/admin/entitlements/999/999", "", token); got.Code != http.StatusConflict {
-		t.Fatalf("撤销无权益应 409，实际 %d", got.Code)
+	if got := performJSONWithBearer(t, r, http.MethodDelete, "/api/v1/admin/entitlements/999", `{"reason":"不存在","confirm":true}`, token); got.Code != http.StatusNotFound {
+		t.Fatalf("撤销不存在权益应 404，实际 %d", got.Code)
 	}
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/NOPE/review", `{"verdict":"rejected","issue_list":"[]"}`, token); got.Code != http.StatusConflict {
 		t.Fatalf("审核不存在课程应 409，实际 %d", got.Code)

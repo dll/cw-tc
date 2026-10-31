@@ -25,6 +25,7 @@ const adminMenus = { group: '管理端', items: [
   { path: '/admin/content-requests', label: '下架申请' },
   { path: '/admin/operations', label: '运营位' },
   { path: '/admin/insights', label: '运营统计' },
+  { path: '/admin/entitlements', label: '权益台账' },
   { path: '/admin/settings', label: '系统配置' },
   { path: '/admin/majors', label: '专业分类' },
   { path: '/admin/orders', label: '订单与退款' },
