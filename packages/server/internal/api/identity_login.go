@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -28,6 +29,15 @@ func (s *Server) login(c *gin.Context) {
 	if err != nil {
 		if err == identity.ErrRegistrationPending {
 			c.JSON(http.StatusForbidden, envelope{Code: 10108, Msg: err.Error()})
+			return
+		}
+		var disabled *identity.AccountDisabledError
+		if errors.As(err, &disabled) {
+			data := gin.H{"status": disabled.Status, "reason_kind": disabled.ReasonKind, "appeal_url": "/auth/appeal"}
+			if disabled.Until != nil {
+				data["until"] = disabled.Until.UTC().Format(time.RFC3339)
+			}
+			c.JSON(http.StatusForbidden, envelope{Code: 10109, Msg: err.Error(), Data: data})
 			return
 		}
 		c.JSON(http.StatusUnauthorized, envelope{Code: 10101, Msg: "手机号或密码错误"})

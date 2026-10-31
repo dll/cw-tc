@@ -144,9 +144,15 @@ export async function pendingRegistrationCount(): Promise<number> {
   const result = await unwrap<{ count: number }>(http.get('/admin/registration-pending'))
   return result.count
 }
-export async function listUsers(userType: UserType | '' = '', limit = 20, offset = 0): Promise<{ items: UserItem[]; total: number }> {
+export async function listUsers(
+  userType: UserType | '' = '',
+  limit = 20,
+  offset = 0,
+  q = '',
+  status = '',
+): Promise<{ items: UserItem[]; total: number }> {
   return unwrap<{ items: UserItem[]; total: number }>(http.get('/admin/users', {
-    params: { type: userType, limit, offset },
+    params: { type: userType, limit, offset, q, status },
   }))
 }
 export async function revealUser(id: number, reason: string): Promise<{ phone: string }> {
@@ -591,4 +597,83 @@ export async function adminInsights(source = ''): Promise<CourseStats[]> {
 }
 export async function adminCourseStats(code: string): Promise<CourseStats & { funnel: { items: Array<{ key: string; label: string; value: number; rate_from_previous: number | null }> } }> {
   return unwrap(http.get(`/admin/stats/${code}`))
+}
+// ── 管理员：用户详情（默认脱敏；学习 / 测评 / 证书 / 订单 / AI 用量） ──
+export interface AdminUserLearning {
+  course_code: string
+  name: string
+  course_status: string
+  lecture_count: number
+  learned_lectures: number
+  progress_percent: number
+  last_lecture_no: number | null
+  last_learned_at: string | null
+  unlocked: boolean
+}
+export interface AdminUserExam {
+  course_code: string
+  course_name: string
+  level: string
+  total_score: number
+  band: string | null
+  is_pass: boolean
+  exam_at: string
+  cert_no: string | null
+}
+export interface AdminUserCertificate {
+  cert_no: string
+  course_code: string
+  course_name: string
+  level: string
+  score: number
+  band: string
+  issued_at: string
+  expires_at: string
+  status: string
+  revoked_reason: string | null
+}
+export interface AdminUserOrder {
+  order_no: string
+  course_name: string
+  amount_cents: number
+  status: string
+  channel: string
+  created_at: string
+  paid_at: string | null
+  refunded_at: string | null
+}
+export interface AdminUserDetail {
+  user_type: string
+  id: number
+  name: string
+  student_no?: string
+  account?: string
+  phone_masked?: string
+  id_card_masked?: string
+  status: string
+  created_at: string
+  registration_status?: string | null
+  phone_verified_at?: string | null
+  last_login_at?: string | null
+  learning?: AdminUserLearning[]
+  learning_summary?: { courses: number; completed_courses: number }
+  exams?: AdminUserExam[]
+  certificates?: AdminUserCertificate[]
+  orders?: AdminUserOrder[]
+  ai_usage?: { used_total: number; courses: number; last_date: string | null }
+  courses?: Array<{ course_code: string; name: string; status: string }>
+  note?: string
+}
+export async function getUserDetail(id: number, type: UserType): Promise<AdminUserDetail> {
+  return unwrap<AdminUserDetail>(http.get(`/admin/users/${id}`, { params: { type } }))
+}
+export interface UserStatusInput {
+  status: 'active' | 'suspended' | 'banned'
+  reason_kind?: string
+  note?: string
+  until?: string
+  confirm: true
+}
+export async function updateUserStatus(id: number, input: UserStatusInput): Promise<void> {
+  await unwrap<unknown>(http.patch(`/admin/users/${id}/status`, input))
 }

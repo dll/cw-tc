@@ -18,8 +18,8 @@ func TestOpenDevelopmentDatabaseUsesSQLiteAndAppliesMigrations(t *testing.T) {
 	if err := database.QueryRow(`SELECT COUNT(1) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatalf("迁移记录查询失败: %v", err)
 	}
-	if n != 25 {
-		t.Fatalf("SQLite 迁移数 = %d，期望 25", n)
+	if n != 26 {
+		t.Fatalf("SQLite 迁移数 = %d，期望 26", n)
 	}
 }
 

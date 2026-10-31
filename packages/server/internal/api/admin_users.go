@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/cw-tc/server/internal/audit"
 	"github.com/cw-tc/server/internal/redact"
@@ -27,23 +28,40 @@ func (s *Server) adminListUsers(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "用户类型错误"})
 		return
 	}
+	status := strings.TrimSpace(c.Query("status"))
+	switch status {
+	case "", "active", "limited", "suspended", "banned", "deleting", "anonymized", "disabled":
+	default:
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "用户状态错误"})
+		return
+	}
+	// 只按手机号 / 姓名 / 学号 / 账号前缀匹配；**id_card 参数永远不读**（PRD §7.10.10（六））。
+	qPattern := ""
+	if q := strings.TrimSpace(c.Query("q")); q != "" {
+		qPattern = escapeLikePattern(q) + "%"
+	}
 	const usersSQL = `
 		SELECT id, 'student' AS user_type, student_no, CAST(NULL AS TEXT) AS account,
-		       name, phone, status, created_at, registration_reviewed_at, registration_review_status FROM student WHERE $1 = '' OR $1 = 'student'
+		       name, phone, status, created_at, registration_reviewed_at, registration_review_status FROM student
+		       WHERE ($1 = '' OR $1 = 'student')
+		         AND ($2 = '' OR name LIKE $2 ESCAPE '\' OR phone LIKE $2 ESCAPE '\' OR student_no LIKE $2 ESCAPE '\')
+		         AND ($3 = '' OR status = $3)
 		UNION ALL
 		SELECT id, role AS user_type, CAST(NULL AS TEXT) AS student_no, account,
 		       name, CAST(NULL AS TEXT) AS phone, status, created_at, NULL AS registration_reviewed_at, CAST(NULL AS TEXT) AS registration_review_status FROM staff
-		       WHERE $1 = '' OR role = $1`
+		       WHERE ($1 = '' OR role = $1)
+		         AND ($2 = '' OR name LIKE $2 ESCAPE '\' OR account LIKE $2 ESCAPE '\')
+		         AND ($3 = '' OR status = $3)`
 	var total int64
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),
-		`SELECT COUNT(*) FROM (`+usersSQL+`) AS users`, userType).Scan(&total); err != nil {
+		`SELECT COUNT(*) FROM (`+usersSQL+`) AS users`, userType, qPattern, status).Scan(&total); err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 		return
 	}
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
 		`SELECT id, user_type, student_no, account, name, phone, status, created_at, registration_reviewed_at, registration_review_status
-		 FROM (`+usersSQL+`) AS users ORDER BY CASE WHEN registration_review_status='pending' THEN 0 ELSE 1 END, created_at DESC, user_type, id DESC LIMIT $2 OFFSET $3`,
-		userType, limit, offset)
+		 FROM (`+usersSQL+`) AS users ORDER BY CASE WHEN registration_review_status='pending' THEN 0 ELSE 1 END, created_at DESC, user_type, id DESC LIMIT $4 OFFSET $5`,
+		userType, qPattern, status, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
 		return

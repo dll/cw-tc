@@ -237,3 +237,22 @@ func TestProtectIDCardKeyAndPayloadErrors(t *testing.T) {
 		t.Fatal("错误密钥应解密失败")
 	}
 }
+
+func TestMaskedIDCard(t *testing.T) {
+	service, database := accountTestService(t)
+	defer database.Close()
+	student := registerAccount(t, service, "13812345678", "password-1")
+	masked, err := service.MaskedIDCard(context.Background(), student.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if masked != "110101********1237" {
+		t.Fatalf("身份证脱敏格式异常: %s", masked)
+	}
+	if got, err := service.MaskedIDCard(context.Background(), 999); err != nil || got != "" {
+		t.Fatalf("不存在学员应返回空串: %q %v", got, err)
+	}
+	if _, err := service.MaskedIDCard(context.Background(), 0); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("非法学员号应拒绝: %v", err)
+	}
+}
