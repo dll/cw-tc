@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 
 	"github.com/cw-tc/server/internal/platform/clock"
 	"github.com/gin-gonic/gin"
@@ -60,6 +61,7 @@ func traceMiddleware(name string) gin.HandlerFunc {
 // installMiddleware 提供批次 0 的可观察请求链。尚未实现的能力明确为 no-op，
 // 后续接入真实实现时保持顺序不变。
 func installMiddleware(r *gin.Engine, accessLog ...gin.HandlerFunc) {
+	r.Use(securityHeaders())
 	r.Use(requestID())
 	r.Use(withClock)
 	if len(accessLog) > 0 {
@@ -72,5 +74,26 @@ func installMiddleware(r *gin.Engine, accessLog ...gin.HandlerFunc) {
 		"business", "serialization",
 	} {
 		r.Use(traceMiddleware(name))
+	}
+}
+
+// securityHeaders 统一安全响应头：禁止 MIME 嗅探 / 控制 Referer / 限制嵌入与设备权限。
+// 后台与个人信息接口额外 no-store，避免代理 / 浏览器缓存敏感响应。
+func securityHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		path := c.Request.URL.Path
+		// HTML 课件允许被 App / 学习页 iframe 嵌入；资源接口不加 X-Frame-Options，避免跨端预览被拦。
+		if !strings.HasPrefix(path, "/api/v1/assets/") {
+			c.Header("X-Frame-Options", "SAMEORIGIN")
+		}
+		if strings.HasPrefix(path, "/api/v1/admin") || strings.HasPrefix(path, "/api/v1/me") ||
+			strings.HasPrefix(path, "/api/v1/auth") || strings.HasPrefix(path, "/api/v1/notes") ||
+			strings.HasPrefix(path, "/api/v1/exams") {
+			c.Header("Cache-Control", "no-store")
+		}
+		c.Next()
 	}
 }

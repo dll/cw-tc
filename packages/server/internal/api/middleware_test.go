@@ -32,3 +32,28 @@ func TestRequestIDMiddlewarePreservesOrGeneratesID(t *testing.T) {
 		})
 	}
 }
+
+func TestSecurityHeadersAndNoStore(t *testing.T) {
+	r := newTestRouter(t, true)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
+	for _, header := range []string{"X-Content-Type-Options", "Referrer-Policy", "X-Frame-Options", "Permissions-Policy"} {
+		if w.Header().Get(header) == "" {
+			t.Fatalf("缺少安全响应头 %s", header)
+		}
+	}
+	if w.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("nosniff 值异常: %s", w.Header().Get("X-Content-Type-Options"))
+	}
+
+	admin := httptest.NewRecorder()
+	r.ServeHTTP(admin, httptest.NewRequest(http.MethodGet, "/api/v1/admin/courses", nil))
+	if admin.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("后台接口应 no-store，实际 %q", admin.Header().Get("Cache-Control"))
+	}
+	public := httptest.NewRecorder()
+	r.ServeHTTP(public, httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil))
+	if public.Header().Get("Cache-Control") == "no-store" {
+		t.Fatal("公开课程接口不应被强制 no-store（可缓存）")
+	}
+}
