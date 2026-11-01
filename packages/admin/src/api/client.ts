@@ -912,3 +912,37 @@ export async function revealUserField(id: number, field: 'phone' | 'id_card', re
   const data = await unwrap<Record<string, string>>(http.get(`/admin/users/${id}/reveal`, { params: { field, reason } }))
   return data[field] ?? ''
 }
+// ── 课程审核待办 / 详情 ──
+export interface AdminReviewQueueItem {
+  course_code: string
+  name: string
+  source: string
+  status: string
+  content_version: number
+  submitted_at: string | null
+  teacher_id: number
+  teacher_name: string
+  waiting_hours: number
+  over_sla: boolean
+  sla_hours: number
+}
+export async function listReviewQueue(): Promise<AdminReviewQueueItem[]> {
+  const data = await unwrap<{ items: AdminReviewQueueItem[] }>(http.get('/admin/reviews'))
+  return data.items
+}
+export interface AdminReviewDetail {
+  course_code: string
+  name: string
+  source: string
+  status: string
+  content_version: number
+  submitted_at: string | null
+  teacher_id: number
+  lectures: Array<{ no: number; title: string; is_preview: boolean; asset_count: number; question_count: number }>
+  questions_by_level: Array<{ level: string; count: number }>
+  reviews: Array<Record<string, unknown>>
+  checkup: { lecture_count: number; has_assets: boolean; question_levels: number }
+}
+export async function getAdminReviewDetail(code: string): Promise<AdminReviewDetail> {
+  return unwrap<AdminReviewDetail>(http.get(`/admin/courses/${code}/review`))
+}

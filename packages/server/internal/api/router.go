@@ -190,6 +190,8 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly := admin.Group("", s.requireAdmin)
 	adminOnly.GET("/courses", s.adminCourses)
 	adminOnly.POST("/courses/import", s.adminImportCourse)
+	adminOnly.GET("/reviews", s.adminReviewQueue)
+	adminOnly.GET("/courses/:code/review", s.adminReviewDetail)
 	adminOnly.GET("/courses/:code/revisions", s.adminCourseRevisions)
 	adminOnly.GET("/courses/:code/quality", s.adminCourseQuality)
 	adminOnly.POST("/courses/:code/quality", s.adminCourseQualityOverride)

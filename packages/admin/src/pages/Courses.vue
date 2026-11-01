@@ -16,6 +16,8 @@ import {
   bulkPublishCourses,
   bulkUnpublishCourses,
   importCourse,
+  getAdminReviewDetail,
+  type AdminReviewDetail,
   type BulkCourseResult,
   type AdminCourse,
   type CourseRevision,
@@ -35,6 +37,23 @@ const filter = ref({ status: '', source: '', q: '' })
 const revisionVisible = ref(false)
 const revisionTarget = ref<AdminCourse | null>(null)
 const revisions = ref<CourseRevision[]>([])
+
+const reviewDetailVisible = ref(false)
+const reviewDetailLoading = ref(false)
+const reviewDetail = ref<AdminReviewDetail | null>(null)
+
+async function openReviewDetail(row: AdminCourse) {
+  reviewDetailVisible.value = true
+  reviewDetailLoading.value = true
+  reviewDetail.value = null
+  try {
+    reviewDetail.value = await getAdminReviewDetail(row.course_code)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '审核详情读取失败')
+  } finally {
+    reviewDetailLoading.value = false
+  }
+}
 const importVisible = ref(false)
 const importing = ref(false)
 const importManifest = ref('')
@@ -526,7 +545,8 @@ async function submitReview() {
       </el-table-column>
       <el-table-column label="操作" width="490">
         <template #default="{ row }">
-          <el-button v-if="row.status === 'submitted'" size="small" type="primary" @click="openReview(row)">审核</el-button>
+            <el-button v-if="row.status === 'submitted'" size="small" type="primary" @click="openReview(row)">审核</el-button>
+            <el-button v-if="row.status === 'submitted'" size="small" @click="openReviewDetail(row)">审核详情</el-button>
           <el-button
             v-if="row.status === 'approved' || row.status === 'unpublished'"
             size="small"
@@ -673,6 +693,49 @@ async function submitReview() {
       </div>
     </el-drawer>
 
+    <el-drawer v-model="reviewDetailVisible" title="审核详情（内容快照）" size="68%">
+      <div v-loading="reviewDetailLoading">
+        <template v-if="reviewDetail">
+          <el-descriptions :column="3" border size="small">
+            <el-descriptions-item label="课程码">{{ reviewDetail.course_code }}</el-descriptions-item>
+            <el-descriptions-item label="课程">{{ reviewDetail.name }}</el-descriptions-item>
+            <el-descriptions-item label="来源">{{ reviewDetail.source }}</el-descriptions-item>
+            <el-descriptions-item label="状态">{{ reviewDetail.status }}</el-descriptions-item>
+            <el-descriptions-item label="内容版本">{{ reviewDetail.content_version }}</el-descriptions-item>
+            <el-descriptions-item label="送审时间">{{ reviewDetail.submitted_at ?? '-' }}</el-descriptions-item>
+          </el-descriptions>
+          <el-alert
+            type="info"
+            :closable="false"
+            :title="`讲次 ${reviewDetail.checkup.lecture_count} · 资源${reviewDetail.checkup.has_assets ? '已上传' : '缺失'} · 题库等级 ${reviewDetail.checkup.question_levels} 级`"
+            style="margin: 12px 0"
+          />
+          <h4>讲次与资源</h4>
+          <el-table :data="reviewDetail.lectures" size="small">
+            <el-table-column prop="no" label="讲次" width="80" />
+            <el-table-column prop="title" label="标题" min-width="180" />
+            <el-table-column label="试学" width="80"><template #default="{ row }">{{ row.is_preview ? '是' : '否' }}</template></el-table-column>
+            <el-table-column prop="asset_count" label="资源数" width="90" />
+            <el-table-column prop="question_count" label="随堂题" width="90" />
+          </el-table>
+          <h4 style="margin-top: 12px">题库分布</h4>
+          <el-table :data="reviewDetail.questions_by_level" size="small">
+            <el-table-column prop="level" label="等级" width="100" />
+            <el-table-column prop="count" label="题数" width="100" />
+          </el-table>
+          <h4 style="margin-top: 12px">历史审核</h4>
+          <el-table :data="reviewDetail.reviews" size="small">
+            <el-table-column prop="round" label="轮次" width="70" />
+            <el-table-column prop="content_version" label="版本" width="80" />
+            <el-table-column prop="reviewer_role" label="审核角色" width="120" />
+            <el-table-column prop="total_score" label="总分" width="80" />
+            <el-table-column prop="verdict" label="结论" width="100" />
+            <el-table-column prop="issue_list" label="问题清单" min-width="220" />
+            <el-table-column prop="reviewed_at" label="审核时间" width="180" />
+          </el-table>
+        </template>
+      </div>
+    </el-drawer>
     <el-dialog v-model="importVisible" title="导入新课程（资源包）" width="760px">
       <el-alert
         type="info"
