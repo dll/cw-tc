@@ -243,11 +243,20 @@ func (s *Server) adminInsights(c *gin.Context) {
 	rows.Close()
 
 	items := make([]gin.H, 0, len(courses))
+	codes := make([]string, 0, len(courses))
 	for _, course := range courses {
-		snapshot, err := stats.Latest(c.Request.Context(), s.dbConn, course.code)
-		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "统计服务不可用"})
-			return
+		codes = append(codes, course.code)
+	}
+	snapshots, err := stats.LatestForCourses(c.Request.Context(), s.dbConn, codes)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "统计服务不可用"})
+		return
+	}
+	for _, course := range courses {
+		var snapshot *stats.Snapshot
+		if value, ok := snapshots[course.code]; ok {
+			copied := value
+			snapshot = &copied
 		}
 		item := staffCourseStats(snapshot, course.code)
 		item["name"] = course.name

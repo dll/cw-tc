@@ -189,3 +189,27 @@ func TestRecomputeAllEmptyDatabase(t *testing.T) {
 		t.Fatal("RecomputeAll 空库应报错")
 	}
 }
+
+func TestLatestForCoursesBatch(t *testing.T) {
+	database := setup(t)
+	defer database.Close()
+	ctx := context.Background()
+	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(2,'C2','platform','第二门课','main',1,'published',1)`); err != nil {
+		t.Fatal(err)
+	}
+	day := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	if _, err := stats.Recompute(ctx, database, "C1", day, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stats.Recompute(ctx, database, "C2", day, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	items, err := stats.LatestForCourses(ctx, database, []string{"C1", "C2", "NOPE"})
+	if err != nil || len(items) != 2 || items["C1"].ViewsUV != 3 || items["C2"].CourseCode != "C2" {
+		t.Fatalf("批量最新快照异常: %+v %v", items, err)
+	}
+	empty, err := stats.LatestForCourses(ctx, database, nil)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("空列表应返回空 map: %+v %v", empty, err)
+	}
+}

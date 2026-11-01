@@ -9,6 +9,8 @@ import (
 	"database/sql"
 	"errors"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -302,4 +304,40 @@ func maxInt(values ...int) int {
 		}
 	}
 	return result
+}
+
+// LatestForCourses 批量取多门课各自最近一份快照（课程广场/看板避免 N+1 查询）。
+func LatestForCourses(ctx context.Context, db *sql.DB, codes []string) (map[string]Snapshot, error) {
+	out := make(map[string]Snapshot, len(codes))
+	if db == nil || len(codes) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, 0, len(codes))
+	args := make([]any, 0, len(codes))
+	for i, code := range codes {
+		args = append(args, code)
+		placeholders = append(placeholders, "$"+strconv.Itoa(i+1))
+	}
+	query := `SELECT s.course_code, CAST(s.stat_date AS TEXT), s.views_uv, s.favorites, s.learning,
+	        s.completed, s.examined, s.certified, s.orders, s.paid, s.unlock,
+	        s.avg_rating, s.rating_count, CAST(s.computed_at AS TEXT)
+	 FROM course_stat_daily s
+	 JOIN (
+	   SELECT course_code, MAX(stat_date) AS d FROM course_stat_daily
+	   WHERE course_code IN (` + strings.Join(placeholders, ",") + `)
+	   GROUP BY course_code
+	 ) m ON m.course_code = s.course_code AND m.d = s.stat_date`
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		item, err := scanSnapshot(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[item.CourseCode] = item
+	}
+	return out, rows.Err()
 }
