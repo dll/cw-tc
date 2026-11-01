@@ -17,6 +17,7 @@ import (
 	"github.com/cw-tc/server/internal/aigateway"
 	"github.com/cw-tc/server/internal/audit"
 	"github.com/cw-tc/server/internal/identity"
+	"github.com/cw-tc/server/internal/knowledge"
 	"github.com/gin-gonic/gin"
 )
 
@@ -134,6 +135,30 @@ type contextChunk struct {
 func (s *Server) courseContext(ctx context.Context, courseID int64, lectureNo int, question string) (string, []aiCitation) {
 	if s.cfg.ContentDir == "" {
 		return "", nil
+	}
+	// 优先用已构建的课程知识库切片（带出处）；未构建时回落到文件扫描，保持兼容。
+	var courseCode string
+	if err := s.dbConn.QueryRowContext(ctx, `SELECT course_code FROM course WHERE id = $1`, courseID).Scan(&courseCode); err == nil {
+		if matches, err := knowledge.Search(ctx, s.dbConn, courseCode, lectureNo, questionTokens(question), 8); err == nil && len(matches) > 0 {
+			var builder strings.Builder
+			citations := make([]aiCitation, 0)
+			seen := map[string]bool{}
+			for _, match := range matches {
+				text := match.Content
+				if len([]rune(builder.String()))+len([]rune(text)) > 12000 {
+					break
+				}
+				fmt.Fprintf(&builder, "[L%d] %s / %s\n%s\n\n", match.LectureNo, match.LectureTitle, match.StorageKey, text)
+				key := fmt.Sprintf("%d|%s", match.LectureNo, match.LectureTitle)
+				if !seen[key] {
+					seen[key] = true
+					citations = append(citations, aiCitation{LectureNo: match.LectureNo, Title: match.LectureTitle, StorageKey: match.StorageKey})
+				}
+			}
+			if builder.Len() > 0 {
+				return builder.String(), citations
+			}
+		}
 	}
 	rows, err := s.dbConn.QueryContext(ctx,
 		`SELECT l.no, l.title, a.title, a.storage_key, a.kind

@@ -19,6 +19,7 @@ import Entitlements from '@/pages/Entitlements.vue'
 import Appeals from '@/pages/Appeals.vue'
 import Deletions from '@/pages/Deletions.vue'
 import Reconcile from '@/pages/Reconcile.vue'
+import Knowledge from '@/pages/Knowledge.vue'
 import Risk from '@/pages/Risk.vue'
 import ExamAnomalies from '@/pages/ExamAnomalies.vue'
 import Settings from '@/pages/Settings.vue'
@@ -55,7 +56,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/certs', component: Certs },
   { path: '/admin/comments', component: Comments },
   { path: '/admin/suggestions', component: Suggestions },
-  { path: '/admin/kb', component: Placeholder, props: { title: '知识库重建', detail: '切片数与向量数须为真实统计' } },
+  { path: '/admin/kb', component: Knowledge },
   { path: '/admin/broadcast', component: Broadcast },
   { path: '/admin/users', component: Users },
   { path: '/admin/staff', component: Staff },

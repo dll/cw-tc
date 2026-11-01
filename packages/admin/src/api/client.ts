@@ -1020,3 +1020,18 @@ export async function handleDeletionRequest(id: number, approve: boolean, note: 
 export async function suggestGrade(resultId: number, questionId: number): Promise<{ suggestion: string; model: string; filing_no: string; note: string }> {
   return unwrap(http.post(`/teacher/grade/${resultId}/questions/${questionId}/ai-suggest`, {}))
 }
+// ── 课程知识库 ──
+export interface KnowledgeStatusItem {
+  course_code: string
+  course_name: string
+  kb_status: string
+  chunks: number
+  assets: number
+  last_built: string | null
+}
+export async function listKnowledgeStatus(courseCode = ''): Promise<{ items: KnowledgeStatusItem[]; total_chunks: number; total_assets: number }> {
+  return unwrap(http.get('/admin/kb/status', { params: { course_code: courseCode } }))
+}
+export async function rebuildKnowledge(courseCode: string): Promise<{ assets: number; chunks: number; chars: number; built_at: string }> {
+  return unwrap(http.post(`/admin/courses/${courseCode}/kb/rebuild`, {}))
+}

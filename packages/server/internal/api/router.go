@@ -193,6 +193,8 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.GET("/reviews", s.adminReviewQueue)
 	adminOnly.GET("/courses/:code/review", s.adminReviewDetail)
 	adminOnly.GET("/courses/:code/revisions", s.adminCourseRevisions)
+	adminOnly.POST("/courses/:code/kb/rebuild", s.adminRebuildKnowledge)
+	adminOnly.GET("/kb/status", s.adminKnowledgeStatus)
 	adminOnly.GET("/courses/:code/quality", s.adminCourseQuality)
 	adminOnly.POST("/courses/:code/quality", s.adminCourseQualityOverride)
 	adminOnly.POST("/bulk-courses/publish", s.adminBulkPublishCourses)
