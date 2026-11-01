@@ -228,6 +228,7 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.GET("/users/:id", s.adminUserDetail)
 	adminOnly.PATCH("/users/:id/status", s.adminUpdateUserStatus)
 	adminOnly.GET("/registration-pending", requireAdminOps(s), s.adminPendingRegistrations)
+	adminOnly.GET("/users/:id/reveal", s.adminRevealUser)
 	adminOnly.POST("/users/:id/reveal", s.adminRevealUser)
 	adminOnly.POST("/users/:id/approve-registration", requireAdminOps(s), s.adminApproveRegistration)
 	adminOnly.GET("/appeals", s.adminListAppeals)

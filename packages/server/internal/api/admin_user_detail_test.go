@@ -175,3 +175,43 @@ func TestAdminUserListSearchAndFilters(t *testing.T) {
 		t.Fatalf("非法状态应 400，实际 %d", got.Code)
 	}
 }
+
+func TestAdminRevealPhoneAndIDCardWithAudit(t *testing.T) {
+	server, database, superToken, _ := adminDetailServer(t)
+	defer database.Close()
+	r := server.Router()
+	opsLogin := performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"ops","password":"Temp@123"}`)
+	opsToken := extractJSONField(t, opsLogin.Body.String(), "token")
+
+	phone := performJSONWithBearer(t, r, http.MethodGet,
+		"/api/v1/admin/users/1/reveal?field=phone&reason=客服核验", "", opsToken)
+	if phone.Code != http.StatusOK || !containsAll(phone.Body.String(), `"phone":"13812345678"`, `"field":"phone"`) {
+		t.Fatalf("ops 查看手机号全号失败: %d %s", phone.Code, phone.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet,
+		"/api/v1/admin/users/1/reveal?field=id_card&reason=客服核验", "", opsToken); got.Code != http.StatusForbidden {
+		t.Fatalf("ops 查看身份证全号应 403，实际 %d", got.Code)
+	}
+	idCard := performJSONWithBearer(t, r, http.MethodGet,
+		"/api/v1/admin/users/1/reveal?field=id_card&reason=司法协查", "", superToken)
+	if idCard.Code != http.StatusOK || !containsAll(idCard.Body.String(), `"id_card":"110101199001011237"`) {
+		t.Fatalf("super 查看身份证全号失败: %d %s", idCard.Code, idCard.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/users/1/reveal?field=phone", "", superToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("缺少事由应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/users/1/reveal?field=bad&reason=x", "", superToken); got.Code != http.StatusBadRequest {
+		t.Fatalf("非法字段应 400，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/users/999/reveal?field=phone&reason=x", "", superToken); got.Code != http.StatusNotFound {
+		t.Fatalf("不存在用户应 404，实际 %d", got.Code)
+	}
+	// 旧 POST 客户端仍可用。
+	if legacy := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/users/1/reveal", `{"reason":"工单"}`, superToken); legacy.Code != http.StatusOK || !containsAll(legacy.Body.String(), `"phone":"13812345678"`) {
+		t.Fatalf("旧 POST reveal 兼容失败: %d %s", legacy.Code, legacy.Body.String())
+	}
+	var audits int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action IN ('user.reveal_phone','user.reveal_id_card')`).Scan(&audits); err != nil || audits != 3 {
+		t.Fatalf("每次查看全号必须写审计: %d %v", audits, err)
+	}
+}

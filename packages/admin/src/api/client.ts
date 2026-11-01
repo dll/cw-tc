@@ -908,3 +908,7 @@ export async function listTeacherDiscussions(params: { course_code?: string; onl
 export async function replyTeacherDiscussion(id: number, body: string): Promise<void> {
   await unwrap<unknown>(http.post(`/teacher/discussions/${id}/replies`, { body }))
 }
+export async function revealUserField(id: number, field: 'phone' | 'id_card', reason: string): Promise<string> {
+  const data = await unwrap<Record<string, string>>(http.get(`/admin/users/${id}/reveal`, { params: { field, reason } }))
+  return data[field] ?? ''
+}

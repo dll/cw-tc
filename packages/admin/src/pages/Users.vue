@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { listUsers, pendingRegistrationCount, revealUser, approveRegistration, grantEntitlement, batchDiscount, batchGrant, resetUserPassword, getUserDetail, updateUserStatus, adminExportStudent, type UserItem, type UserType, type ResetPasswordResult, type AdminUserDetail } from '@/api/client'
+import { listUsers, pendingRegistrationCount, revealUser, approveRegistration, grantEntitlement, batchDiscount, batchGrant, resetUserPassword, getUserDetail, updateUserStatus, adminExportStudent, revealUserField, getRole, type UserItem, type UserType, type ResetPasswordResult, type AdminUserDetail } from '@/api/client'
 
 const rows = ref<UserItem[]>([])
 const loading = ref(false)
@@ -152,6 +152,22 @@ const detailLoading = ref(false)
 const detail = ref<AdminUserDetail | null>(null)
 
 
+
+async function revealIDCard() {
+  const target = detail.value
+  if (!target) return
+  try {
+    const { value } = await ElMessageBox.prompt('查看身份证全号仅超级管理员可执行；事由必填，每次查看都写审计。', '查看身份证全号', {
+      confirmButtonText: '确认查看',
+      cancelButtonText: '取消',
+      inputValidator: (v: string) => (v && v.trim() ? true : '事由必填'),
+    })
+    const idCard = await revealUserField(target.id, 'id_card', value.trim())
+    ElMessageBox.alert(idCard || '该学员未实名', '身份证全号', { confirmButtonText: '关闭' })
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessageBox.alert(e.message, '查看失败')
+  }
+}
 async function exportStudent() {
   const target = detail.value
   if (!target) return
@@ -398,6 +414,7 @@ async function submitGrant() {
 
           <div style="margin-top: 12px">
             <el-button v-if="detail.user_type === 'student'" type="warning" plain @click="exportStudent">代学员导出数据（仅 super）</el-button>
+            <el-button v-if="detail.user_type === 'student' && getRole() === 'admin_super'" type="danger" plain @click="revealIDCard">查看身份证全号（仅 super）</el-button>
           </div>
 
           <el-alert

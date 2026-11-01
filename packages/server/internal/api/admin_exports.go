@@ -39,6 +39,10 @@ func (s *Server) adminExportStudentData(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "当前仅支持 json 格式导出"})
 		return
 	}
+	if input.Scope == "notes" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "管理员不能导出学员笔记（仅本人可见）"})
+		return
+	}
 	admin := c.MustGet(staffContextKey).(staff.Staff)
 
 	var student identity.Student
@@ -52,7 +56,7 @@ func (s *Server) adminExportStudentData(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "学员读取失败"})
 		return
 	}
-	data := filterExportScope(s.buildStudentExport(c.Request.Context(), student), input.Scope)
+	data := filterExportScope(s.buildStudentExport(c.Request.Context(), student, false), input.Scope)
 	var exportID int64
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),
 		`INSERT INTO data_export(subject_type, subject_id, initiator, operator_id, reason, scope, format, created_at)

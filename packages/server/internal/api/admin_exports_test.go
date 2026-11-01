@@ -20,6 +20,7 @@ func TestAdminExportStudentDataLedger(t *testing.T) {
 	for _, body := range []string{
 		`{"student_id":1,"scope":"all","reason":"","confirm":true}`,
 		`{"student_id":1,"scope":"bad","reason":"工单","confirm":true}`,
+		`{"student_id":1,"scope":"notes","reason":"工单","confirm":true}`,
 		`{"student_id":1,"scope":"all","format":"md","reason":"工单","confirm":true}`,
 		`{"student_id":0,"scope":"all","reason":"工单","confirm":true}`,
 		`{"student_id":1,"scope":"all","reason":"工单","confirm":false}`,
@@ -34,7 +35,7 @@ func TestAdminExportStudentDataLedger(t *testing.T) {
 	}
 	ok := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/exports",
 		`{"student_id":1,"scope":"learning","reason":"学员申请导出学习记录","confirm":true}`, superToken)
-	if ok.Code != http.StatusOK || !containsAll(ok.Body.String(), `"scope":"learning"`, `"learning"`, `"notes"`) {
+	if ok.Code != http.StatusOK || !containsAll(ok.Body.String(), `"scope":"learning"`, `"learning"`) {
 		t.Fatalf("代导出失败: %d %s", ok.Code, ok.Body.String())
 	}
 	if strings.Contains(ok.Body.String(), "13812345678") || strings.Contains(ok.Body.String(), "110101199001011237") {
@@ -42,6 +43,9 @@ func TestAdminExportStudentDataLedger(t *testing.T) {
 	}
 	if strings.Contains(ok.Body.String(), `"orders"`) {
 		t.Fatalf("learning 范围不应带订单: %s", ok.Body.String())
+	}
+	if strings.Contains(ok.Body.String(), "管理员不可读的笔记正文") || strings.Contains(ok.Body.String(), `"notes"`) {
+		t.Fatalf("管理员代导出不得包含学员笔记: %s", ok.Body.String())
 	}
 	var initiator, reason, scope, operatorID string
 	if err := database.QueryRow(`SELECT initiator, reason, scope, operator_id FROM data_export ORDER BY id DESC LIMIT 1`).

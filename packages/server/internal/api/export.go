@@ -18,7 +18,7 @@ func maskPhone(phone string) string {
 }
 
 // buildStudentExport 组装学员数据导出内容（脱敏、不含明文身份证号与密码）。
-func (s *Server) buildStudentExport(ctx context.Context, student identity.Student) gin.H {
+func (s *Server) buildStudentExport(ctx context.Context, student identity.Student, includeNotes bool) gin.H {
 	result := gin.H{
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 		"account": gin.H{
@@ -58,18 +58,20 @@ func (s *Server) buildStudentExport(ctx context.Context, student identity.Studen
 		rows.Close()
 		result["learning"] = items
 	}
-	if rows, err := s.dbConn.QueryContext(ctx,
-		`SELECT co.course_code, n.lecture_no, n.title, n.content_md, n.created_at FROM note n JOIN course co ON co.id=n.course_id WHERE n.student_id=$1 ORDER BY n.created_at`, student.ID); err == nil {
-		items := make([]gin.H, 0)
-		for rows.Next() {
-			var code, title, body, createdAt string
-			var lectureNo any
-			if err := rows.Scan(&code, &lectureNo, &title, &body, &createdAt); err == nil {
-				items = append(items, gin.H{"course_code": code, "lecture_no": lectureNo, "title": title, "body": body, "created_at": createdAt})
+	if includeNotes {
+		if rows, err := s.dbConn.QueryContext(ctx,
+			`SELECT co.course_code, n.lecture_no, n.title, n.content_md, n.created_at FROM note n JOIN course co ON co.id=n.course_id WHERE n.student_id=$1 ORDER BY n.created_at`, student.ID); err == nil {
+			items := make([]gin.H, 0)
+			for rows.Next() {
+				var code, title, body, createdAt string
+				var lectureNo any
+				if err := rows.Scan(&code, &lectureNo, &title, &body, &createdAt); err == nil {
+					items = append(items, gin.H{"course_code": code, "lecture_no": lectureNo, "title": title, "body": body, "created_at": createdAt})
+				}
 			}
+			rows.Close()
+			result["notes"] = items
 		}
-		rows.Close()
-		result["notes"] = items
 	}
 	if rows, err := s.dbConn.QueryContext(ctx,
 		`SELECT co.course_code, r.level, r.total_score, r.band, r.is_pass, r.graded_at
@@ -126,6 +128,9 @@ func (s *Server) buildStudentExport(ctx context.Context, student identity.Studen
 		rows.Close()
 		result["suggestions"] = items
 	}
+	if !includeNotes {
+		delete(result, "notes")
+	}
 	return result
 }
 
@@ -140,7 +145,6 @@ func filterExportScope(data gin.H, scope string) gin.H {
 		out["account"] = data["account"]
 	case "learning":
 		out["learning"] = data["learning"]
-		out["notes"] = data["notes"]
 	case "scores":
 		out["scores"] = data["scores"]
 	case "certs":
@@ -154,7 +158,7 @@ func filterExportScope(data gin.H, scope string) gin.H {
 // exportMyData GET /me/export —— 学员自助导出（脱敏，写审计与导出留痕）。
 func (s *Server) exportMyData(c *gin.Context) {
 	student := c.MustGet(studentContextKey).(identity.Student)
-	result := s.buildStudentExport(c.Request.Context(), student)
+	result := s.buildStudentExport(c.Request.Context(), student, true)
 	_, _ = s.dbConn.ExecContext(c.Request.Context(),
 		`INSERT INTO data_export(subject_type, subject_id, initiator, scope, format, created_at)
 		 VALUES('student',$1,'self','all','json',$2)`,
