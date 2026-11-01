@@ -969,3 +969,31 @@ export interface AdminReviewDetail {
 export async function getAdminReviewDetail(code: string): Promise<AdminReviewDetail> {
   return unwrap<AdminReviewDetail>(http.get(`/admin/courses/${code}/review`))
 }
+// ── 测评异常复核 ──
+export interface ExamAnomaly {
+  id: number
+  kind: string
+  detail: string
+  at: string
+  verdict: string
+  verdict_by: number
+  verdict_reason: string
+  verdict_at: string
+  reviewer_name: string
+}
+export async function getExamAnomalies(sessionId: number): Promise<{
+  exam_session_id: number
+  student_no: string
+  student_name: string
+  course_code: string
+  course_name: string
+  level: string
+  total_score: number | null
+  items: ExamAnomaly[]
+  note: string
+}> {
+  return unwrap(http.get(`/admin/exams/${sessionId}/anomalies`))
+}
+export async function reviewExamAnomaly(sessionId: number, verdict: 'kept' | 'invalid' | 'manual_check', reason: string, anomalyId?: number): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/exams/${sessionId}/verdict`, { verdict, reason, anomaly_id: anomalyId, confirm: true }))
+}

@@ -240,6 +240,8 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.GET("/risk", s.adminRiskOverview)
 	adminOnly.POST("/risk/blacklist", s.adminAddBlacklist)
 	adminOnly.PATCH("/risk/blacklist/:id", s.adminResolveBlacklistAppeal)
+	adminOnly.GET("/exams/:id/anomalies", s.adminExamAnomalies)
+	adminOnly.POST("/exams/:id/verdict", s.adminExamVerdict)
 	adminOnly.GET("/audit", s.adminAudit)
 	adminOnly.GET("/settings", s.requireSuper, s.adminSettings)
 	adminOnly.PATCH("/settings", s.requireSuper, s.adminUpdateSetting)

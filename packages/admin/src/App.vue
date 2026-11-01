@@ -77,6 +77,7 @@ const adminGroups: MenuGroup[] = [
     icon: Setting,
     items: [
       { path: '/admin/risk', label: '风控与黑名单' },
+      { path: '/admin/exam-anomalies', label: '测评异常复核' },
       { path: '/admin/settings', label: '系统配置' },
     ],
   },
