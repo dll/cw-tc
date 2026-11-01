@@ -771,3 +771,34 @@ export async function paymentChannels(): Promise<PaymentChannelStatus[]> {
   const data = await unwrap<{ items: PaymentChannelStatus[] }>(http.get('/admin/payments/channels'))
   return data.items
 }
+// ── 风控与黑名单 ──
+export interface RiskBlacklistItem {
+  id: number
+  target_type: string
+  target_value_masked: string
+  reason: string
+  status: string
+  expires_at: string
+  created_at: string
+  appeal_reason: string
+  appealed_at: string | null
+}
+export async function listRisk(params: { status?: string; target_type?: string; limit?: number; offset?: number } = {}): Promise<{
+  items: RiskBlacklistItem[]
+  total: number
+  rules: { refund_abuse_limit: number; refund_abuse_window_days: number; note: string }
+}> {
+  return unwrap(http.get('/admin/risk', { params }))
+}
+export async function addBlacklist(input: {
+  target_type: string
+  target_value: string
+  reason: string
+  expires_at: string
+  confirm: true
+}): Promise<void> {
+  await unwrap<unknown>(http.post('/admin/risk/blacklist', input))
+}
+export async function resolveBlacklistAppeal(id: number, accept: boolean, note: string): Promise<void> {
+  await unwrap<unknown>(http.patch(`/admin/risk/blacklist/${id}`, { accept, note, confirm: true }))
+}
