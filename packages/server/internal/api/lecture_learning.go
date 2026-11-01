@@ -247,7 +247,13 @@ func (s *Server) listLectureReplies(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT id,student_id,body,created_at FROM lecture_reply WHERE topic_id=$1 ORDER BY created_at,id LIMIT 200`, topicID)
+	rows, err := s.dbConn.QueryContext(c.Request.Context(),
+		`SELECT r.id, r.student_id, NULL AS staff_id, r.body, r.created_at, NULL AS staff_name
+		 FROM lecture_reply r WHERE r.topic_id = $1
+		 UNION ALL
+		 SELECT rs.id, NULL AS student_id, rs.staff_id, rs.body, rs.created_at, st.name
+		 FROM lecture_reply_staff rs JOIN staff st ON st.id = rs.staff_id WHERE rs.topic_id = $1
+		 ORDER BY created_at, id LIMIT 200`, topicID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "评论不可用"})
 		return
@@ -255,12 +261,28 @@ func (s *Server) listLectureReplies(c *gin.Context) {
 	defer rows.Close()
 	items := make([]gin.H, 0)
 	for rows.Next() {
-		var id, studentID int64
+		var id int64
+		var studentID, staffID sql.NullInt64
+		var staffName sql.NullString
 		var body, created string
-		if err = rows.Scan(&id, &studentID, &body, &created); err != nil {
+		if err = rows.Scan(&id, &studentID, &staffID, &body, &created, &staffName); err != nil {
 			break
 		}
-		items = append(items, gin.H{"id": id, "author": publicDiscussionName(studentID), "body": body, "created_at": created})
+		author := publicDiscussionName(studentID.Int64)
+		official := false
+		if staffID.Valid {
+			author = staffName.String
+			official = true
+		}
+		items = append(items, gin.H{
+			"id": id, "author": author, "body": body, "created_at": created,
+			"official": official, "role": func() string {
+				if official {
+					return "teacher"
+				}
+				return "student"
+			}(),
+		})
 	}
 	if err == nil {
 		err = rows.Err()

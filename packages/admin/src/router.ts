@@ -23,6 +23,7 @@ import Settings from '@/pages/Settings.vue'
 import Majors from '@/pages/Majors.vue'
 import TeacherCourses from '@/pages/TeacherCourses.vue'
 import TeacherGrade from '@/pages/TeacherGrade.vue'
+import TeacherDiscussions from '@/pages/TeacherDiscussions.vue'
 import Audit from '@/pages/Audit.vue'
 import Placeholder from '@/pages/Placeholder.vue'
 import { hasToken } from '@/api/client'
@@ -61,6 +62,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/teacher/courses', component: TeacherCourses },
   { path: '/teacher/courses/new', component: Placeholder, props: { title: '新建课程', detail: '提交后需管理员审核上架' } },
   { path: '/teacher/review', component: TeacherGrade },
+  { path: '/teacher/discussions', component: TeacherDiscussions },
 ]
 
 export const router = createRouter({

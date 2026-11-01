@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { EditPen, Money, Reading, School, Setting, TrendCharts, User } from '@element-plus/icons-vue'
+import { ChatDotRound, EditPen, Money, Reading, School, Setting, TrendCharts, User } from '@element-plus/icons-vue'
 import { getRole, pendingRegistrationCount } from '@/api/client'
 
 // 左侧菜单按业务域分组（级联菜单）；进入页面时自动展开当前分组、收起其它分组。
@@ -98,6 +98,14 @@ const teacherGroups: MenuGroup[] = [
     icon: EditPen,
     items: [
       { path: '/teacher/review', label: '阅卷台' },
+    ],
+  },
+  {
+    key: 'qa',
+    label: '答疑与讨论',
+    icon: ChatDotRound,
+    items: [
+      { path: '/teacher/discussions', label: '讨论与问答' },
     ],
   },
 ]

@@ -293,6 +293,12 @@
 | GET | `/teacher/courses/{code}/review` | 教师+归属 | **审核结果与历史轮次**（含**逐维问题清单**，§J-2.3） |
 | GET | `/teacher/courses/{code}/selfcheck` | 教师+归属 | **送审前自检**：九件套齐备度 + 缺项清单（**不消耗送审次数**） |
 | POST | `/teacher/courses/{code}/changes` | 教师+归属 | **提交变更**（已上架课程走变更草稿，§J-2.5） |
+| GET | `/teacher/courses/{code}/content` | 教师+归属 | **课程内容管理**：讲次 + 资源清单；返回 `editable`（仅 platform 且 proposed/building/rejected 可编辑） |
+| POST | `/teacher/courses/{code}/lectures` | 教师+归属 | **新增讲次**（平台课程草稿）；递增 `content_version` 并同步 `lecture_count` |
+| POST | `/teacher/courses/{code}/lectures/{no}/assets` | 教师+归属 | **上传单个资源**（multipart：`file` + `kind` + `title`）：HTML / Markdown / MP4 / 音频 / 课件 / 代码 / 冻结输出；MP4 与音频配置 COS 时上传 COS，否则落本地 |
+| DELETE | `/teacher/courses/{code}/lectures/{no}/assets/{assetID}` | 教师+归属 | **删除自己的资源**（仅可编辑状态；同步清理本地文件） |
+| GET | `/teacher/discussions` | 教师+归属 | **讨论与问答工作台**：只看自己课程；返回每帖回复数 / 是否未回复 / 最近活动，并附按课程汇总（`course_code` / `only_unanswered` / `limit`） |
+| POST | `/teacher/discussions/{id}/replies` | 教师+归属 | **教师官方回复**（不可匿名；不得含试题 / 答案；通知发帖学员；写入审计） |
 | GET | `/teacher/reviews` | 教师 | 待阅卷列表 |
 | POST | `/teacher/reviews/{id}/score` | 教师 | 采点给分（双人阅卷） |
 | GET | `/teacher/courses/{code}/stats` | 教师+归属 | 本课学情（**仅聚合，字段白名单见 §1.9**）+ **六项状态数 + 漏斗 + 转化率**（`range=7d\|30d\|90d`，v2.8） |

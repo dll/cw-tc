@@ -454,3 +454,38 @@ func cleanupLocal(paths []string) {
 		_ = os.RemoveAll(paths[i])
 	}
 }
+
+// DetectKind 按显式类型或扩展名判断单个文件的资源类型（供教师上传复用）。
+func DetectKind(filename, explicit string) (string, error) {
+	explicit = strings.TrimSpace(explicit)
+	if explicit != "" {
+		if !validKinds[explicit] {
+			return "", ErrUnsupported
+		}
+		return explicit, nil
+	}
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".html", ".htm":
+		return "html", nil
+	case ".md", ".markdown":
+		return "markdown", nil
+	case ".mp4", ".mov", ".m4v":
+		return "video", nil
+	case ".mp3", ".wav", ".m4a", ".flac", ".aac":
+		return "audio", nil
+	case ".pdf", ".ppt", ".pptx", ".key":
+		return "slide", nil
+	case ".py", ".js", ".ts", ".go", ".java", ".c", ".cpp", ".rs", ".sh", ".sql":
+		return "code", nil
+	case ".json":
+		return "frozen_output", nil
+	default:
+		return "", ErrUnsupported
+	}
+}
+
+// StorageKey 返回课程资源的标准对象键（与导入 /同步共用同一套目录规范）。
+func StorageKey(courseCode string, lectureNo int, kind, filename string) string {
+	return storageKeyFor(courseCode, lectureNo, kind, filename)
+}

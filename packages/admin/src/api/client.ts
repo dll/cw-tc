@@ -833,3 +833,78 @@ export async function createAdmin(input: { account: string; name: string; role: 
 export async function disableAdmin(id: number): Promise<void> {
   await unwrap<unknown>(http.delete(`/admin/admins/${id}`))
 }
+// ── 教师：课程内容（讲次 / 资源） ──
+export interface TeacherAsset {
+  id: number
+  kind: string
+  title: string
+  storage_key: string
+  size_bytes: number
+  sort: number
+  created_at: string
+}
+export interface TeacherLecture {
+  id: number
+  no: number
+  title: string
+  is_preview: boolean
+  assets: TeacherAsset[]
+}
+export interface TeacherCourseContent {
+  course_id: number
+  source: string
+  status: string
+  editable: boolean
+  lectures: TeacherLecture[]
+}
+export async function getTeacherCourseContent(code: string): Promise<TeacherCourseContent> {
+  return unwrap<TeacherCourseContent>(http.get(`/teacher/courses/${code}/content`))
+}
+export async function addTeacherLecture(code: string, input: { title: string; is_preview: boolean }): Promise<number> {
+  const data = await unwrap<{ id: number }>(http.post(`/teacher/courses/${code}/lectures`, input))
+  return data.id
+}
+export async function uploadTeacherAsset(code: string, lectureNo: number, kind: string, title: string, file: File): Promise<void> {
+  const form = new FormData()
+  form.append('kind', kind)
+  form.append('title', title)
+  form.append('file', file)
+  await unwrap<unknown>(http.post(`/teacher/courses/${code}/lectures/${lectureNo}/assets`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }))
+}
+export async function deleteTeacherAsset(code: string, lectureNo: number, assetId: number): Promise<void> {
+  await unwrap<unknown>(http.delete(`/teacher/courses/${code}/lectures/${lectureNo}/assets/${assetId}`))
+}
+
+// ── 教师：讨论与问答 ──
+export interface TeacherDiscussionItem {
+  id: number
+  course_code: string
+  course_name: string
+  lecture_no: number
+  lecture_title: string
+  body: string
+  student_no: string | null
+  student_name: string | null
+  likes: number
+  reply_count: number
+  unanswered: boolean
+  created_at: string
+  last_activity: string
+}
+export interface TeacherDiscussionSummary {
+  course_code: string
+  course_name: string
+  topics: number
+  unanswered: number
+}
+export async function listTeacherDiscussions(params: { course_code?: string; only_unanswered?: string; limit?: number } = {}): Promise<{
+  items: TeacherDiscussionItem[]
+  summary: TeacherDiscussionSummary[]
+}> {
+  return unwrap(http.get('/teacher/discussions', { params }))
+}
+export async function replyTeacherDiscussion(id: number, body: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/teacher/discussions/${id}/replies`, { body }))
+}

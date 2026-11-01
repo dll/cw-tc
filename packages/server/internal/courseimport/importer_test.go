@@ -232,3 +232,25 @@ func TestImportRequiresTeacherOwner(t *testing.T) {
 		t.Fatalf("非教师账号不得作为课程归属: %v", err)
 	}
 }
+
+func TestDetectKindAndStorageKey(t *testing.T) {
+	cases := map[string]string{".md": "markdown", ".mp4": "video", ".mp3": "audio", ".pdf": "slide", ".py": "code", ".json": "frozen_output", ".html": "html"}
+	for ext, want := range cases {
+		got, err := DetectKind("x"+ext, "")
+		if err != nil || got != want {
+			t.Fatalf("%s 应识别为 %s，实际 %s %v", ext, want, got, err)
+		}
+	}
+	if got, err := DetectKind("x.bin", "slide"); err != nil || got != "slide" {
+		t.Fatalf("显式类型应优先: %s %v", got, err)
+	}
+	if _, err := DetectKind("x.bin", "bad"); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("非法显式类型应拒绝: %v", err)
+	}
+	if _, err := DetectKind("x.bin", ""); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("未知扩展名应拒绝: %v", err)
+	}
+	if got := StorageKey("PY-1", 2, "video", "a.mp4"); got != "courses/PY-1/lectures/2/video/a.mp4" {
+		t.Fatalf("存储键异常: %s", got)
+	}
+}
