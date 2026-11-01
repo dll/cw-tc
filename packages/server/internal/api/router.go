@@ -189,6 +189,7 @@ func (s *Server) Router() *gin.Engine {
 	admin.POST("/change-password", s.adminChangePassword)
 	adminOnly := admin.Group("", s.requireAdmin)
 	adminOnly.GET("/courses", s.adminCourses)
+	adminOnly.POST("/courses/import", s.adminImportCourse)
 	adminOnly.GET("/courses/:code/revisions", s.adminCourseRevisions)
 	adminOnly.GET("/courses/:code/quality", s.adminCourseQuality)
 	adminOnly.POST("/courses/:code/quality", s.adminCourseQualityOverride)

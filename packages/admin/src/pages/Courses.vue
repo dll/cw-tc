@@ -15,6 +15,7 @@ import {
   setCourseQuality,
   bulkPublishCourses,
   bulkUnpublishCourses,
+  importCourse,
   type BulkCourseResult,
   type AdminCourse,
   type CourseRevision,
@@ -34,6 +35,61 @@ const filter = ref({ status: '', source: '', q: '' })
 const revisionVisible = ref(false)
 const revisionTarget = ref<AdminCourse | null>(null)
 const revisions = ref<CourseRevision[]>([])
+const importVisible = ref(false)
+const importing = ref(false)
+const importManifest = ref('')
+
+const importExample = `{
+  "course_code": "PY-101",
+  "name": "Python 入门",
+  "intro": "课程简介",
+  "line": "main",
+  "price_cents": 9900,
+  "teacher_id": 2,
+  "source_root": "PY-101",
+  "lectures": [
+    {
+      "no": 1,
+      "title": "第一讲",
+      "is_preview": true,
+      "assets": [
+        { "title": "讲义", "path": "01/notes.md" },
+        { "kind": "video", "title": "视频", "path": "01/video.mp4" },
+        { "kind": "html", "title": "课件", "path": "01/slides" }
+      ]
+    }
+  ]
+}`
+
+function openImport() {
+  importManifest.value = importExample
+  importVisible.value = true
+}
+
+async function submitImport() {
+  let manifest: Record<string, unknown>
+  try {
+    manifest = JSON.parse(importManifest.value)
+  } catch {
+    ElMessage.error('清单不是合法 JSON')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('将从服务器内容目录导入资源并创建平台课程草稿（不自动上架），确认继续？', '导入课程', { type: 'warning' })
+    importing.value = true
+    const result = await importCourse(manifest)
+    importVisible.value = false
+    ElMessageBox.alert(
+      `已导入 ${result.course_code}：${result.lectures} 讲 / ${result.assets} 个资源，状态为草稿。请核对后走审核上架。`,
+      '导入完成',
+    )
+    await load()
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessage.error(e.message)
+  } finally {
+    importing.value = false
+  }
+}
 
 async function openRevisions(row: AdminCourse) {
   revisionTarget.value = row
@@ -417,6 +473,7 @@ async function submitReview() {
     <div style="margin-bottom: 10px">
       <el-button type="success" :disabled="!selected.length" @click="onBulkPublish">批量上架</el-button>
       <el-button type="danger" plain :disabled="!selected.length" @click="onBulkUnpublish">批量下架</el-button>
+      <el-button type="primary" plain @click="openImport">导入新课程</el-button>
       <span style="margin-left: 8px; color: var(--el-text-color-secondary)">已选 {{ selected.length }} 门</span>
     </div>
 
@@ -615,6 +672,25 @@ async function submitReview() {
         </el-form>
       </div>
     </el-drawer>
+
+    <el-dialog v-model="importVisible" title="导入新课程（资源包）" width="760px">
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="先把资源放到服务器内容目录的 imports/<source_root>/ 下；清单里只写相对路径。HTML 目录会整目录复制（含 assets/），MP4 / 音频配置 COS 时上传 COS，否则落本地。"
+        style="margin-bottom: 12px"
+      />
+      <el-form label-position="top">
+        <el-form-item label="导入清单（JSON）">
+          <el-input v-model="importManifest" type="textarea" :rows="18" spellcheck="false" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="importVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="submitImport">开始导入</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 

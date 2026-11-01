@@ -266,7 +266,9 @@ func (s *Server) streamInlineAsset(c *gin.Context) {
 			resolvedDir, dirErr := filepath.EvalSymlinks(assetDir)
 			if imageErr == nil && dirErr == nil && strings.HasPrefix(resolvedImage, resolvedDir+string(os.PathSeparator)) {
 				switch strings.ToLower(filepath.Ext(key)) {
-				case ".jpg", ".jpeg", ".png", ".gif", ".webp":
+				case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".css", ".js", ".json",
+					".woff", ".woff2", ".ttf", ".otf", ".map":
+					// HTML 课件目录下的静态依赖（图片 / 样式 / 脚本 / 字体）同样受签名与学习权限约束。
 					kind = "image"
 					err = nil
 				}

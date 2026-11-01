@@ -802,3 +802,14 @@ export async function addBlacklist(input: {
 export async function resolveBlacklistAppeal(id: number, accept: boolean, note: string): Promise<void> {
   await unwrap<unknown>(http.patch(`/admin/risk/blacklist/${id}`, { accept, note, confirm: true }))
 }
+export interface CourseImportResult {
+  course_code: string
+  lectures: number
+  assets: number
+  storage_keys: string[]
+  status: string
+  note: string
+}
+export async function importCourse(manifest: Record<string, unknown>): Promise<CourseImportResult> {
+  return unwrap<CourseImportResult>(http.post('/admin/courses/import', { confirm: true, manifest }))
+}
