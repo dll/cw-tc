@@ -366,6 +366,7 @@
 | POST | `/admin/ugc/{targetType}/{id}/remove` | 管理员 | 下架评论 / 帖 / 回复：**`reason_kind` 必填**（枚举无"差评/不利"），写审计 + 通知发布者 |
 | POST | `/admin/ugc/{targetType}/{id}/restore` | 管理员 | 误判恢复（写审计） |
 | GET | `/admin/insights` | 管理员 | **全平台课程运营看板**（六项状态 + 漏斗，可按专业/来源筛选） |
+| GET · POST | /admin/courses/{code}/ai-insights · /generate | 管理员 | **AI 运营报告**：基于 T+1 统计/评价/讨论/异常生成五段报告；每条建议必须带 vidence_map，不可溯源拒绝保存；记录 model / filing_no |
 | GET | `/admin/stats/{courseCode}` | 管理员 | 单课统计明细（**与教师版同一套口径**，M-0） |
 | GET · POST | `/admin/appeals` · `/{id}/handle` | 管理员 | **账号申诉待办与处理**（§7.10.10（三）） |
 | GET · POST | `/admin/deletions` · `/{id}/approve` | 管理员 | **注销审核**：前置校验 + 匿名化执行（§7.10.10（五）） |

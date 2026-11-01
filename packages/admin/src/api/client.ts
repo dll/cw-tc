@@ -1081,3 +1081,25 @@ export async function reviewAdminAIDraft(id: number, verdict: 'approved' | 'reje
 export async function publishAdminAIDraft(id: number): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/ai-drafts/${id}/publish`, {}))
 }
+// ── AI 运营报告 ──
+export interface AIInsightItem {
+  id: number
+  period_start: string
+  period_end: string
+  summary: string
+  suggestions: unknown
+  evidence_map: unknown
+  model_info: unknown
+  tokens: number
+  generated_at: string
+}
+export async function listAIInsights(courseCode: string): Promise<AIInsightItem[]> {
+  const data = await unwrap<{ items: AIInsightItem[] }>(http.get(`/admin/courses/${courseCode}/ai-insights`))
+  return data.items
+}
+export async function generateAIInsight(courseCode: string): Promise<Record<string, unknown>> {
+  return unwrap(http.post(`/admin/courses/${courseCode}/ai-insights/generate`, {}))
+}
+export async function getAIInsight(courseCode: string, id: number): Promise<Record<string, unknown>> {
+  return unwrap(http.get(`/admin/courses/${courseCode}/ai-insights/${id}`))
+}
