@@ -813,3 +813,23 @@ export interface CourseImportResult {
 export async function importCourse(manifest: Record<string, unknown>): Promise<CourseImportResult> {
   return unwrap<CourseImportResult>(http.post('/admin/courses/import', { confirm: true, manifest }))
 }
+// ── 管理员账号（仅 super） ──
+export interface AdminAccountItem {
+  id: number
+  account: string
+  name: string
+  role: string
+  status: string
+  created_at: string
+}
+export async function listAdmins(): Promise<AdminAccountItem[]> {
+  const data = await unwrap<{ items: AdminAccountItem[] }>(http.get('/admin/admins'))
+  return data.items
+}
+export async function createAdmin(input: { account: string; name: string; role: string; password: string }): Promise<number> {
+  const data = await unwrap<{ id: number }>(http.post('/admin/admins', input))
+  return data.id
+}
+export async function disableAdmin(id: number): Promise<void> {
+  await unwrap<unknown>(http.delete(`/admin/admins/${id}`))
+}

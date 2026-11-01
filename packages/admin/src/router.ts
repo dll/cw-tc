@@ -8,6 +8,7 @@ import Certs from '@/pages/Certs.vue'
 import Users from '@/pages/Users.vue'
 import Broadcast from '@/pages/Broadcast.vue'
 import Staff from '@/pages/Staff.vue'
+import Admins from '@/pages/Admins.vue'
 import Courses from '@/pages/Courses.vue'
 import Comments from '@/pages/Comments.vue'
 import Suggestions from '@/pages/Suggestions.vue'
@@ -53,6 +54,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/broadcast', component: Broadcast },
   { path: '/admin/users', component: Users },
   { path: '/admin/staff', component: Staff },
+  { path: '/admin/admins', component: Admins },
   { path: '/admin/audit', component: Audit },
 
   // —— 教师工作台（角色：教师）——
