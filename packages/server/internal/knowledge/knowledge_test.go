@@ -109,3 +109,31 @@ func stringsHasTag(value string) bool {
 	}
 	return false
 }
+
+func TestBuildSkipsMissingAndEmptyAssets(t *testing.T) {
+	database, dir := setup(t)
+	defer database.Close()
+	ctx := context.Background()
+	if err := os.Remove(filepath.Join(dir, "kb", "example.py")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "kb", "empty.md"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO asset(id,lecture_id,kind,title,storage_key) VALUES(4,2,'markdown','空文件','kb/empty.md')`); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := BuildCourse(ctx, database, dir, "C1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Assets != 2 {
+		t.Fatalf("缺失 / 空文件资源应跳过，实际资源 %d", stats.Assets)
+	}
+	if _, err := Search(ctx, database, "C1", 1, nil, 8); err != nil {
+		t.Fatalf("空关键词检索不应报错: %v", err)
+	}
+	if _, err := ListStatus(ctx, nil, ""); !errors.Is(err, ErrInput) {
+		t.Fatalf("空数据库状态应拒绝: %v", err)
+	}
+}

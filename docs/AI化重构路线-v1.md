@@ -60,4 +60,4 @@ go run ./cmd/aicheck --sample 50         # 回答带引用率 100%
 ## 6. 当前进度
 
 - ✅ P0：`internal/aigateway` 已建立；`/ai/ask` 已从直连 DeepSeek 改为**别名 + 网关**。
-- ✅ P5 起步：教师主观题 **AI 阅卷建议**（只建议不判负，留痕 model / filing_no）。`n- ✅ P1 起步：`knowledge_chunk` + 管理员重建 / 状态；`/ai/ask` 优先用知识库切片，未构建时回落文件扫描。`n- ✅ P4 起步：`/me/learning-plan` AI 学习路径（基于进度/成绩/知识库引用，不承诺通过）。`n- ⏳ P2~P3 按上表推进；每阶段单独提交、可回滚。
+- ✅ P5 起步：教师主观题 **AI 阅卷建议**（只建议不判负，留痕 model / filing_no）。`n- ✅ P1 起步：`knowledge_chunk` + 管理员重建 / 状态；`/ai/ask` 优先用知识库切片，未构建时回落文件扫描。`n- ✅ P4 起步：`/me/learning-plan` AI 学习路径（基于进度/成绩/知识库引用，不承诺通过）。`n- ✅ P2 起步：教师 AI 草稿 → 自动体检 → 教师一审 → 管理员二审 → 章级原子上架；双审与 AIGC 标识硬校验。`n- ⏳ P3 按上表推进；每阶段单独提交、可回滚。

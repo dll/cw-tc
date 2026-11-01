@@ -20,6 +20,8 @@ import Appeals from '@/pages/Appeals.vue'
 import Deletions from '@/pages/Deletions.vue'
 import Reconcile from '@/pages/Reconcile.vue'
 import Knowledge from '@/pages/Knowledge.vue'
+import TeacherAIDrafts from '@/pages/TeacherAIDrafts.vue'
+import AdminAIDrafts from '@/pages/AdminAIDrafts.vue'
 import Risk from '@/pages/Risk.vue'
 import ExamAnomalies from '@/pages/ExamAnomalies.vue'
 import Settings from '@/pages/Settings.vue'
@@ -57,6 +59,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/comments', component: Comments },
   { path: '/admin/suggestions', component: Suggestions },
   { path: '/admin/kb', component: Knowledge },
+  { path: '/admin/ai-drafts', component: AdminAIDrafts },
   { path: '/admin/broadcast', component: Broadcast },
   { path: '/admin/users', component: Users },
   { path: '/admin/staff', component: Staff },
@@ -68,6 +71,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/teacher/courses/new', component: Placeholder, props: { title: '新建课程', detail: '提交后需管理员审核上架' } },
   { path: '/teacher/review', component: TeacherGrade },
   { path: '/teacher/discussions', component: TeacherDiscussions },
+  { path: '/teacher/ai-drafts', component: TeacherAIDrafts },
 ]
 
 export const router = createRouter({

@@ -1035,3 +1035,49 @@ export async function listKnowledgeStatus(courseCode = ''): Promise<{ items: Kno
 export async function rebuildKnowledge(courseCode: string): Promise<{ assets: number; chunks: number; chars: number; built_at: string }> {
   return unwrap(http.post(`/admin/courses/${courseCode}/kb/rebuild`, {}))
 }
+// ── AI 内容草稿与双审 ──
+export interface AIDraftItem {
+  id: number
+  course_code: string
+  draft_scope: string
+  lecture_count: number
+  status: string
+  auto_check_passed: boolean
+  aigc_labeled: boolean
+  content_md: string
+  model_id: string
+  model_version: string
+  filing_no: string
+  created_at: string
+  updated_at: string
+  lectures?: Array<{ title: string; content_md: string }>
+  source_citations?: unknown
+  auto_check?: unknown
+}
+export async function listTeacherAIDrafts(status = ''): Promise<AIDraftItem[]> {
+  const data = await unwrap<{ items: AIDraftItem[] }>(http.get('/teacher/ai-drafts', { params: { status } }))
+  return data.items
+}
+export async function createTeacherAIDraft(input: {
+  course_code: string
+  draft_scope: string
+  kind?: string
+  trigger_kind?: string
+  source_topic_ids: number[]
+  lecture_count: number
+}): Promise<AIDraftItem> {
+  return unwrap<AIDraftItem>(http.post('/teacher/ai-drafts', input))
+}
+export async function reviewTeacherAIDraft(id: number, verdict: 'approved' | 'rejected', issueList: string[] = [], editedByTeacher = false): Promise<void> {
+  await unwrap<unknown>(http.post(`/teacher/ai-drafts/${id}/review`, { verdict, issue_list: issueList, edited_by_teacher: editedByTeacher }))
+}
+export async function listAdminAIDrafts(status = 'pending_admin'): Promise<AIDraftItem[]> {
+  const data = await unwrap<{ items: AIDraftItem[] }>(http.get('/admin/ai-drafts', { params: { status } }))
+  return data.items
+}
+export async function reviewAdminAIDraft(id: number, verdict: 'approved' | 'rejected', issueList: string[] = []): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/ai-drafts/${id}/review`, { verdict, issue_list: issueList }))
+}
+export async function publishAdminAIDraft(id: number): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/ai-drafts/${id}/publish`, {}))
+}

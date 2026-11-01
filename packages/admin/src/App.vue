@@ -33,6 +33,7 @@ const adminGroups: MenuGroup[] = [
       { path: '/admin/content-requests', label: '下架申请' },
       { path: '/admin/majors', label: '专业分类' },
       { path: '/admin/kb', label: '知识库重建' },
+      { path: '/admin/ai-drafts', label: 'AI 内容二审' },
     ],
   },
   {
@@ -100,6 +101,7 @@ const teacherGroups: MenuGroup[] = [
     icon: EditPen,
     items: [
       { path: '/teacher/review', label: '阅卷台' },
+      { path: '/teacher/ai-drafts', label: 'AI 内容草稿' },
     ],
   },
   {
