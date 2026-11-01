@@ -131,6 +131,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/me/export", authRequired(s.identity), s.exportMyData)
 	v1.PUT("/me/courses/:code/progress", authRequired(s.identity), s.reportCourseProgress)
 	v1.GET("/me/entitlements", authRequired(s.identity), s.listEntitlements)
+	v1.GET("/me/learning-plan", authRequired(s.identity), s.myLearningPlan)
 	v1.POST("/auth/sms/send", s.sendSMS)
 	v1.POST("/auth/logout-all", s.logoutAll)
 	v1.POST("/auth/logout", s.logout)

@@ -395,6 +395,7 @@
 | POST | `/me/orders/{orderNo}/pay` | 学员 | **继续支付**（复用同一订单，不新建，§7.13 L-2） |
 | POST | `/me/orders/{orderNo}/cancel` | 学员 | 取消待支付订单 |
 | GET | `/me/scores` | 学员 | 我的成绩（**历次不覆盖**） |
+| GET | /me/learning-plan?course_code= | 学员（已解锁） | **AI 学习路径**：基于本课进度、最近测评与课程资料生成未来 3 步；返回 citations / model / iling_no；无资料拒绝生成，不承诺通过 |
 | GET | `/me/certs` | 学员 | 我的证书（含 `status`：有效 / 即将到期 / 已过期 / 已撤销） |
 | GET | `/me/certs/{certNo}/file` | 学员 | **下载 / 重新下载证书 PDF**（短时私有链接，§7.8 D-5） |
 | GET | `/me/messages` | 学员 | 消息中心（`type`：系统 / 事务 / 广播；`unread`） |
