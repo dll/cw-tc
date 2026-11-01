@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -135,5 +136,11 @@ func (s *Server) adminRefundOrder(c *gin.Context) {
 		return
 	}
 	s.notifyOrderRefunded(c.Request.Context(), c.Param("orderNo"))
+	after, _ := json.Marshal(gin.H{"kind": req.Kind, "amount_cents": req.AmountCents, "reason": req.Reason})
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "order.refund", TargetType: "orders", TargetID: c.Param("orderNo"),
+		After: string(after), IP: c.ClientIP(),
+	})
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"refund_no": ref.RefundNo}})
 }

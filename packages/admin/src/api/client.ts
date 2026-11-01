@@ -84,10 +84,13 @@ export async function changePassword(oldPassword: string, newPassword: string): 
 export interface OrderItem {
   order_no: string
   phone: string
+  student_no: string
+  course_code: string
   course_name: string
   amount_cents: number
   status: string
   channel: string
+  paid_at: string
   created_at: string
 }
 export interface RefundItem {
@@ -116,9 +119,29 @@ export interface CertItem {
   revoked_reason: string | null
   revoked_at: string | null
 }
-export async function listOrders(): Promise<OrderItem[]> {
-  const r = await unwrap<{ items: OrderItem[] }>(http.get('/admin/orders'))
-  return r.items
+export async function listOrders(params: {
+  status?: string
+  course_code?: string
+  q?: string
+  from?: string
+  to?: string
+  limit?: number
+  offset?: number
+} = {}): Promise<{ items: OrderItem[]; total: number }> {
+  return unwrap<{ items: OrderItem[]; total: number }>(http.get('/admin/orders', { params }))
+}
+export async function downloadOrdersCsv(params: {
+  status?: string
+  course_code?: string
+  q?: string
+  from?: string
+  to?: string
+} = {}): Promise<Blob> {
+  const res = await http.get('/admin/orders/export', { params, responseType: 'blob' })
+  return res.data as Blob
+}
+export async function partialRefundOrder(orderNo: string, input: { amount_cents: number; basis: string; basis_ref: string; reason: string }): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/orders/${orderNo}/partial-refund`, { ...input, confirm: true }))
 }
 export async function listRefunds(): Promise<RefundItem[]> {
   const r = await unwrap<{ items: RefundItem[] }>(http.get('/admin/refunds'))
