@@ -256,6 +256,8 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.POST("/suggestions/:id/reply", s.adminReplySuggestion)
 	adminOnly.POST("/comments/:id/remove", s.adminRemoveComment)
 	adminOnly.GET("/comment-reports", s.adminListCommentReports)
+	adminOnly.POST("/comment-reports/:id/handle", s.adminHandleCommentReport)
+	adminOnly.POST("/comments/:id/restore", s.adminRestoreComment)
 	adminOnly.GET("/operations", s.adminListOperations)
 	adminOnly.POST("/operations", s.adminCreateOperation)
 	adminOnly.PATCH("/operations/:id", s.adminUpdateOperation)
