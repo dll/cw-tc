@@ -235,6 +235,8 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.GET("/users/:id/reveal", s.adminRevealUser)
 	adminOnly.POST("/users/:id/reveal", s.adminRevealUser)
 	adminOnly.POST("/users/:id/approve-registration", requireAdminOps(s), s.adminApproveRegistration)
+	adminOnly.GET("/deletions", s.adminListDeletions)
+	adminOnly.POST("/deletions/:id/approve", s.adminHandleDeletion)
 	adminOnly.GET("/appeals", s.adminListAppeals)
 	adminOnly.POST("/appeals/:id/handle", s.adminHandleAppeal)
 	adminOnly.GET("/risk", s.adminRiskOverview)

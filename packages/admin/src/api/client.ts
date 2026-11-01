@@ -997,3 +997,23 @@ export async function getExamAnomalies(sessionId: number): Promise<{
 export async function reviewExamAnomaly(sessionId: number, verdict: 'kept' | 'invalid' | 'manual_check', reason: string, anomalyId?: number): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/exams/${sessionId}/verdict`, { verdict, reason, anomaly_id: anomalyId, confirm: true }))
 }
+// ── 注销审核 ──
+export interface DeletionRequestItem {
+  id: number
+  student_id: number
+  student_no: string
+  name: string
+  phone_masked: string
+  reason: string
+  status: string
+  result_note: string | null
+  created_at: string
+  handled_at: string | null
+}
+export async function listDeletionRequests(status = 'pending'): Promise<DeletionRequestItem[]> {
+  const data = await unwrap<{ items: DeletionRequestItem[] }>(http.get('/admin/deletions', { params: { status } }))
+  return data.items
+}
+export async function handleDeletionRequest(id: number, approve: boolean, note: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/deletions/${id}/approve`, { approve, note, confirm: true }))
+}

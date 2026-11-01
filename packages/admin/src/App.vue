@@ -54,6 +54,7 @@ const adminGroups: MenuGroup[] = [
     items: [
       { path: '/admin/users', label: '用户管理', badge: 'pending' },
       { path: '/admin/appeals', label: '账号申诉' },
+      { path: '/admin/deletions', label: '注销审核' },
       { path: '/admin/entitlements', label: '权益台账' },
       { path: '/admin/staff', label: '内部人员' },
       { path: '/admin/admins', label: '管理员账号' },

@@ -17,6 +17,7 @@ import Operations from '@/pages/Operations.vue'
 import Statistics from '@/pages/Insights.vue'
 import Entitlements from '@/pages/Entitlements.vue'
 import Appeals from '@/pages/Appeals.vue'
+import Deletions from '@/pages/Deletions.vue'
 import Reconcile from '@/pages/Reconcile.vue'
 import Risk from '@/pages/Risk.vue'
 import ExamAnomalies from '@/pages/ExamAnomalies.vue'
@@ -43,6 +44,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/insights', component: Statistics },
   { path: '/admin/entitlements', component: Entitlements },
   { path: '/admin/appeals', component: Appeals },
+  { path: '/admin/deletions', component: Deletions },
   { path: '/admin/reconcile', component: Reconcile },
   { path: '/admin/risk', component: Risk },
   { path: '/admin/exam-anomalies', component: ExamAnomalies },
