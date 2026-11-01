@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listGradeReviews,
   gradeDetail,
   submitGrade,
+  suggestGrade,
   type GradeListItem,
   type GradeQuestion,
 } from '@/api/client'
@@ -42,6 +43,16 @@ async function openDetail(row: GradeListItem) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
     detailLoading.value = false
+  }
+}
+
+async function aiSuggest(q: GradeQuestion) {
+  if (!current.value) return
+  try {
+    const result = await suggestGrade(current.value.ResultID, q.question_id)
+    ElMessageBox.alert(`${result.suggestion}\n\n${result.note}\n模型：${result.model} / ${result.filing_no}`, 'AI 阅卷建议（仅供参考）', { confirmButtonText: '知道了' })
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : 'AI 建议失败')
   }
 }
 
@@ -90,6 +101,7 @@ async function onGrade(q: GradeQuestion) {
             <span style="margin-right: 8px">满分 {{ q.score }}</span>
             <el-input-number v-model="scores[q.question_id]" :min="0" :max="q.score" size="small" />
             <el-input v-model="comments[q.question_id]" placeholder="评语" size="small" style="width: 200px; margin-left: 8px" />
+            <el-button size="small" @click="aiSuggest(q)" style="margin-left: 8px">AI 建议</el-button>
             <el-button size="small" type="primary" :disabled="q.gradability === 'graded'" style="margin-left: 8px" @click="onGrade(q)">
               {{ q.gradability === 'graded' ? '已评' : '评分' }}
             </el-button>

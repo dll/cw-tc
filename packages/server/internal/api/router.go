@@ -286,6 +286,7 @@ func (s *Server) Router() *gin.Engine {
 	teacher.GET("/grade", s.teacherGradeList)
 	teacher.GET("/grade/:resultID", s.teacherGradeDetail)
 	teacher.POST("/grade/:resultID/questions/:questionID", s.teacherGradeSubmit)
+	teacher.POST("/grade/:resultID/questions/:questionID/ai-suggest", s.teacherAIGradeSuggest)
 	v1.POST("/payment/callback", s.paymentCallback)
 	v1.POST("/pay/alipay/notify", s.alipayNotify)
 	v1.GET("/courses", s.listPublicCourses)

@@ -301,6 +301,7 @@
 | POST | `/teacher/discussions/{id}/replies` | 教师+归属 | **教师官方回复**（不可匿名；不得含试题 / 答案；通知发帖学员；写入审计） |
 | GET | `/teacher/reviews` | 教师 | 待阅卷列表 |
 | POST | `/teacher/reviews/{id}/score` | 教师 | 采点给分（双人阅卷） |
+| POST | /teacher/grade/{resultID}/questions/{questionID}/ai-suggest | 教师+归属 | **AI 阅卷建议**：返回建议分与采点理由 + model / model_version / iling_no；**不写库、不判负**，最终分仍由教师提交 |
 | GET | `/teacher/courses/{code}/stats` | 教师+归属 | 本课学情（**仅聚合，字段白名单见 §1.9**）+ **六项状态数 + 漏斗 + 转化率**（`range=7d\|30d\|90d`，v2.8） |
 | GET | `/teacher/courses/{code}/students` | 教师+归属 | 本课学员列表（**只回 `name` / `student_no` 与进度**，§1.9） |
 | POST | `/teacher/courses/{code}/requests` | 教师+归属 | **发起下架 / 内容纠错申请**（`kind=下架\|紧急纠错`，§7.9 J-8） |

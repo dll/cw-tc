@@ -1017,3 +1017,6 @@ export async function listDeletionRequests(status = 'pending'): Promise<Deletion
 export async function handleDeletionRequest(id: number, approve: boolean, note: string): Promise<void> {
   await unwrap<unknown>(http.post(`/admin/deletions/${id}/approve`, { approve, note, confirm: true }))
 }
+export async function suggestGrade(resultId: number, questionId: number): Promise<{ suggestion: string; model: string; filing_no: string; note: string }> {
+  return unwrap(http.post(`/teacher/grade/${resultId}/questions/${questionId}/ai-suggest`, {}))
+}
