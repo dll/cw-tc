@@ -104,6 +104,26 @@ func TestAIDraftDoubleReviewAndPublish(t *testing.T) {
 	if err := database.QueryRow(`SELECT COUNT(*) FROM ai_content_review WHERE draft_id=$1`, draftID).Scan(&reviews); err != nil || reviews != 2 {
 		t.Fatalf("双审记录异常: %d %v", reviews, err)
 	}
+	var revisions int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM course_revision WHERE course_code='C1' AND content_version=(SELECT content_version FROM ai_content_draft WHERE id=$1)`, draftID).Scan(&revisions); err != nil || revisions != 1 {
+		t.Fatalf("AI 上架必须写课程版本记录: %d %v", revisions, err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO course_stat_daily(course_code,stat_date,views_uv,favorites,learning,completed,examined,certified,orders,paid,unlock,rating_count,computed_at) VALUES('C1',date('now','-10 day'),10,1,5,2,1,1,1,1,5,0,datetime('now'))`,
+		`INSERT INTO course_stat_daily(course_code,stat_date,views_uv,favorites,learning,completed,examined,certified,orders,paid,unlock,rating_count,computed_at) VALUES('C1',date('now','+1 day'),20,2,8,4,3,2,2,2,8,0,datetime('now'))`,
+	} {
+		if _, err := database.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	effect := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/ai-drafts/"+itoaTest(draftID)+"/effect", "", adminToken)
+	if effect.Code != http.StatusOK || !containsAll(effect.Body.String(), `"before"`, `"after"`, `"learning":5`, `"learning":8`) {
+		t.Fatalf("AI 增补效果对比异常: %d %s", effect.Code, effect.Body.String())
+	}
+	teacherEffect := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/ai-drafts/"+itoaTest(draftID)+"/effect", "", teacher)
+	if teacherEffect.Code != http.StatusOK {
+		t.Fatalf("教师效果对比异常: %d", teacherEffect.Code)
+	}
 
 	// 体检未通过不得进入一审。
 	short = true
@@ -124,6 +144,9 @@ func TestAIDraftDoubleReviewAndPublish(t *testing.T) {
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/ai-drafts/"+itoaTest(badPayload.Data.ID)+"/review",
 		`{"verdict":"approved"}`, teacher); got.Code != http.StatusConflict {
 		t.Fatalf("未过体检不得一审，实际 %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/ai-drafts/"+itoaTest(badPayload.Data.ID)+"/effect", "", teacher); got.Code != http.StatusConflict {
+		t.Fatalf("未上架草稿不能对比效果: %d", got.Code)
 	}
 }
 

@@ -598,16 +598,33 @@ func (s *Server) adminPublishAIDraft(c *gin.Context) {
 			return
 		}
 	}
-	if _, err := tx.ExecContext(c.Request.Context(),
+	var newVersion int
+	if err := tx.QueryRowContext(c.Request.Context(),
 		`UPDATE course SET lecture_count=(SELECT COUNT(*) FROM lecture WHERE course_id=$1),
-		        content_version=content_version+1, updated_at=$2 WHERE id=$1`, courseID, now); err != nil {
+		        content_version=content_version+1, updated_at=$2 WHERE id=$1 RETURNING content_version`,
+		courseID, now).Scan(&newVersion); err != nil {
+		cleanupFiles(written)
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "上架失败"})
+		return
+	}
+	var revisionNo int
+	if err := tx.QueryRowContext(c.Request.Context(),
+		`SELECT COALESCE(MAX(revision_no),0)+1 FROM course_revision WHERE course_code=$1`, draft.CourseCode).Scan(&revisionNo); err != nil {
 		cleanupFiles(written)
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "上架失败"})
 		return
 	}
 	if _, err := tx.ExecContext(c.Request.Context(),
-		`UPDATE ai_content_draft SET status='published', aigc_meta_written=true, content_version=(SELECT content_version FROM course WHERE id=$2), updated_at=$3 WHERE id=$1`,
-		id, courseID, now); err != nil {
+		`INSERT INTO course_revision(course_code, revision_no, content_version, plan_id, changed_digest, published_at)
+		 VALUES($1,$2,$3,NULL,$4,$5)`,
+		draft.CourseCode, revisionNo, newVersion, fmt.Sprintf("AI 增补 %d 讲（草稿 #%d）", len(lectures), id), now); err != nil {
+		cleanupFiles(written)
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "上架失败"})
+		return
+	}
+	if _, err := tx.ExecContext(c.Request.Context(),
+		`UPDATE ai_content_draft SET status='published', aigc_meta_written=true, content_version=$2, updated_at=$3 WHERE id=$1`,
+		id, newVersion, now); err != nil {
 		cleanupFiles(written)
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "上架失败"})
 		return
@@ -630,4 +647,52 @@ func cleanupFiles(paths []string) {
 	for _, path := range paths {
 		_ = os.Remove(path)
 	}
+}
+
+// teacherAIDraftEffect GET /teacher/ai-drafts/:id/effect —— AI 增补讲次上架前后 30 天效果对比。
+func (s *Server) teacherAIDraftEffect(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	draft, ok := s.aiDraftOwned(c, id)
+	if !ok {
+		return
+	}
+	s.writeAIDraftEffect(c, draft)
+}
+
+// adminAIDraftEffect GET /admin/ai-drafts/:id/effect —— 管理员查看 AI 增补效果。
+func (s *Server) adminAIDraftEffect(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	draft, err := scanAIDraft(s.dbConn.QueryRowContext(c.Request.Context(), aiDraftQuery+` WHERE id = $1`, id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "草稿不存在"})
+		return
+	}
+	s.writeAIDraftEffect(c, draft)
+}
+
+func (s *Server) writeAIDraftEffect(c *gin.Context, draft aiDraft) {
+	if draft.Status != "published" || !draft.ContentVersion.Valid {
+		c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: "草稿尚未上架，无法对比效果"})
+		return
+	}
+	var publishedAt string
+	if err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT CAST(published_at AS TEXT) FROM course_revision WHERE course_code=$1 AND content_version=$2
+		 ORDER BY revision_no DESC LIMIT 1`, draft.CourseCode, draft.ContentVersion.Int64).Scan(&publishedAt); err != nil {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "版本记录不存在"})
+		return
+	}
+	at, err := time.Parse(time.RFC3339, publishedAt)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "版本时间异常"})
+		return
+	}
+	before := s.statsWindow(c, draft.CourseCode, at.AddDate(0, 0, -30).Format("2006-01-02"), at.Format("2006-01-02"))
+	after := s.statsWindow(c, draft.CourseCode, at.Format("2006-01-02"), at.AddDate(0, 0, 30).Format("2006-01-02"))
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+		"draft_id": draft.ID, "course_code": draft.CourseCode,
+		"content_version": draft.ContentVersion.Int64, "published_at": publishedAt,
+		"before": before, "after": after,
+		"note": "AI 增补不回溯：已学进度与已发证书不受影响；对比仅作改版参考",
+	}})
 }

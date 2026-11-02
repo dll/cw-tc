@@ -463,6 +463,7 @@
 | POST | `/admin/lectures/{id}/unpublish` | 管理员 | **下架某条增补讲次**（`origin<>upstream`）；已发证书不受影响（§7.16 P-6） |
 | POST | `/admin/lectures/{id}/emergency-remove` | 管理员 | **讲次级紧急撤下（v2.12）**：只撤这一讲（不必整课下架）；**须填原因 + 写审计**；<br>撤下后该讲**不进测评范围**、学员端显示"内容核对中"；**已学进度与证书不受影响**；**不物理删除** |
 | GET | `/admin/lectures?origin=ai_assisted` | 管理员 | 本课 **AI 增补讲次**列表（含 `in_exam_scope` 与效果对比入口） |
+| GET | /admin/ai-drafts/{id}/effect · /teacher/ai-drafts/{id}/effect | 管理员 / 教师+归属 | **AI 增补效果对比**：按 course_revision.published_at 切分前后 30 天统计；仅已上架草稿可查 |
 
 > ⚠️ **三条接口层硬约束**：
 > ① **单审不可上架**：`/publish` 前置校验**必须存在 `stage=teacher` 与 `stage=admin` 两条 `approved`**，

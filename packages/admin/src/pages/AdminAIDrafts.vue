@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listAdminAIDrafts, publishAdminAIDraft, reviewAdminAIDraft, type AIDraftItem } from '@/api/client'
+import { getAIDraftEffect, listAdminAIDrafts, publishAdminAIDraft, reviewAdminAIDraft, type AIDraftItem } from '@/api/client'
 
 const rows = ref<AIDraftItem[]>([])
 const loading = ref(false)
@@ -15,6 +15,15 @@ async function load() {
     ElMessage.error(e instanceof Error ? e.message : '二审队列加载失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function effect(row: AIDraftItem) {
+  try {
+    const data = await getAIDraftEffect(row.id, 'admin')
+    ElMessageBox.alert(JSON.stringify(data, null, 2), 'AI 增补效果对比', { confirmButtonText: '关闭' })
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '效果对比失败')
   }
 }
 
@@ -77,6 +86,8 @@ onMounted(load)
             <el-button size="small" type="success" @click="review(row, 'approved')">通过</el-button>
             <el-button size="small" type="danger" plain @click="review(row, 'rejected')">驳回</el-button>
           </template>
+          <el-button v-if="row.status === 'published'" size="small" @click="effect(row)">效果</el-button>
+          <el-button v-if="row.status === 'published'" size="small" @click="effect(row)">效果</el-button>
           <el-button v-if="row.status === 'admin_approved'" size="small" type="primary" @click="publish(row)">上架</el-button>
           <span v-if="row.status !== 'pending_admin' && row.status !== 'admin_approved'">-</span>
         </template>

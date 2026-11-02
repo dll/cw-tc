@@ -1154,3 +1154,6 @@ export async function createRevisionPlan(input: {
 export async function updateRevisionPlan(id: number, status: string, abandonReason = ''): Promise<void> {
   await unwrap<unknown>(http.patch(`/teacher/revision-plans/${id}`, { status, abandon_reason: abandonReason }))
 }
+export async function getAIDraftEffect(id: number, role: 'teacher' | 'admin'): Promise<Record<string, unknown>> {
+  return unwrap(http.get(`/${role}/ai-drafts/${id}/effect`))
+}
