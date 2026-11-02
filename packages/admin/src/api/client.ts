@@ -1220,3 +1220,31 @@ export async function createPromo(input: {
 export async function setPromoStatus(code: string, status: 'active' | 'disabled'): Promise<void> {
   await unwrap<unknown>(http.patch(`/admin/promo/${code}`, { status, confirm: true }))
 }
+// ── 讨论治理 ──
+export interface AdminDiscussionItem {
+  id: number
+  course_code: string
+  course_name: string
+  lecture_no: number
+  lecture_title: string
+  student_id: number
+  student_no: string
+  student_name: string
+  body: string
+  status: string
+  remove_reason_kind: string
+  created_at: string
+  reply_count: number
+}
+export async function listAdminDiscussions(status = 'visible'): Promise<AdminDiscussionItem[]> {
+  const data = await unwrap<{ items: AdminDiscussionItem[] }>(http.get('/admin/discussions', { params: { status } }))
+  return data.items
+}
+export async function removeUGC(targetType: string, id: number, reasonKind: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/ugc/${targetType}/${id}/remove`, { reason_kind: reasonKind, confirm: true }))
+}
+export async function restoreUGC(targetType: string, id: number, note: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/admin/ugc/${targetType}/${id}/restore`, { note, confirm: true }))
+}export async function getCourseCheckup(code: string): Promise<Record<string, unknown>> {
+  return unwrap(http.get(`/admin/courses/${code}/checkup`))
+}

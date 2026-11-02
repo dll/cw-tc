@@ -57,3 +57,21 @@ func TestSecurityHeadersAndNoStore(t *testing.T) {
 		t.Fatal("公开课程接口不应被强制 no-store（可缓存）")
 	}
 }
+
+func TestIPRateLimitOnVerify(t *testing.T) {
+	r := newTestRouter(t, true)
+	var last *httptest.ResponseRecorder
+	for i := 0; i < 21; i++ {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/verify/CW-CN-M000000099", nil)
+		req.RemoteAddr = "203.0.113.77:4321"
+		r.ServeHTTP(w, req)
+		last = w
+	}
+	if last.Code != http.StatusTooManyRequests {
+		t.Fatalf("第 21 次应限频 429，实际 %d %s", last.Code, last.Body.String())
+	}
+	if last.Header().Get("Retry-After") == "" {
+		t.Fatal("限频响应应带 Retry-After")
+	}
+}

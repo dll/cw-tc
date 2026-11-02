@@ -17,6 +17,7 @@ import {
   bulkUnpublishCourses,
   importCourse,
   getAdminReviewDetail,
+  getCourseCheckup,
   type AdminReviewDetail,
   type BulkCourseResult,
   type AdminCourse,
@@ -41,6 +42,15 @@ const revisions = ref<CourseRevision[]>([])
 const reviewDetailVisible = ref(false)
 const reviewDetailLoading = ref(false)
 const reviewDetail = ref<AdminReviewDetail | null>(null)
+
+async function checkup(row: AdminCourse) {
+  try {
+    const data = await getCourseCheckup(row.course_code)
+    ElMessageBox.alert(JSON.stringify(data, null, 2), '课程内容体检', { confirmButtonText: '关闭' })
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '体检失败')
+  }
+}
 
 async function openReviewDetail(row: AdminCourse) {
   reviewDetailVisible.value = true
@@ -547,6 +557,7 @@ async function submitReview() {
         <template #default="{ row }">
             <el-button v-if="row.status === 'submitted'" size="small" type="primary" @click="openReview(row)">审核</el-button>
             <el-button v-if="row.status === 'submitted'" size="small" @click="openReviewDetail(row)">审核详情</el-button>
+            <el-button size="small" @click="checkup(row)">体检</el-button>
           <el-button
             v-if="row.status === 'approved' || row.status === 'unpublished'"
             size="small"

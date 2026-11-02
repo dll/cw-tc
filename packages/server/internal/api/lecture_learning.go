@@ -172,7 +172,7 @@ func (s *Server) listLectureTopics(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT id,student_id,body,like_count,created_at FROM lecture_topic WHERE lecture_id=$1 ORDER BY like_count DESC,created_at DESC,id DESC LIMIT 100`, lectureID)
+	rows, err := s.dbConn.QueryContext(c.Request.Context(), `SELECT id,student_id,body,like_count,created_at FROM lecture_topic WHERE lecture_id=$1 AND status='visible' ORDER BY like_count DESC,created_at DESC,id DESC LIMIT 100`, lectureID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "讨论不可用"})
 		return
@@ -230,7 +230,7 @@ func (s *Server) topicInLecture(c *gin.Context, lectureID int64) (int64, bool) {
 		return 0, false
 	}
 	var exists int
-	err = s.dbConn.QueryRowContext(c.Request.Context(), `SELECT 1 FROM lecture_topic WHERE id=$1 AND lecture_id=$2`, id, lectureID).Scan(&exists)
+	err = s.dbConn.QueryRowContext(c.Request.Context(), `SELECT 1 FROM lecture_topic WHERE id=$1 AND lecture_id=$2 AND status='visible'`, id, lectureID).Scan(&exists)
 	if err != nil {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "讨论不存在"})
 		return 0, false
@@ -249,10 +249,10 @@ func (s *Server) listLectureReplies(c *gin.Context) {
 	}
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
 		`SELECT r.id, r.student_id, NULL AS staff_id, r.body, r.created_at, NULL AS staff_name
-		 FROM lecture_reply r WHERE r.topic_id = $1
+		 FROM lecture_reply r WHERE r.topic_id = $1 AND r.status='visible'
 		 UNION ALL
 		 SELECT rs.id, NULL AS student_id, rs.staff_id, rs.body, rs.created_at, st.name
-		 FROM lecture_reply_staff rs JOIN staff st ON st.id = rs.staff_id WHERE rs.topic_id = $1
+		 FROM lecture_reply_staff rs JOIN staff st ON st.id = rs.staff_id WHERE rs.topic_id = $1 AND rs.status='visible'
 		 ORDER BY created_at, id LIMIT 200`, topicID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "评论不可用"})
