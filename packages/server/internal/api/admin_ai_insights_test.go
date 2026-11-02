@@ -11,7 +11,7 @@ func TestAdminGenerateAIInsight(t *testing.T) {
 	invalidEvidence := false
 	invalidJSON := false
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		evidence := `["stats.learning","comment.1"]`
+		evidence := `["stats.learning","comment.1","comments.count","topics.unanswered"]`
 		if invalidEvidence {
 			evidence = `["made.up"]`
 		}

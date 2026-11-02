@@ -106,6 +106,52 @@ func (s *Server) adminGenerateAIInsight(c *gin.Context) {
 		`SELECT COUNT(*) FROM exam_anomaly a JOIN exam_session e ON e.id=a.exam_id
 		 WHERE e.course_id=$1 AND a.verdict='pending'`, courseID).Scan(&anomalies)
 	evidence["anomalies.pending_count"] = anomalies
+	evidence["stats.orders"] = stat.Orders
+	evidence["stats.paid"] = stat.Paid
+	evidence["stats.unlock"] = stat.Unlock
+	evidence["comments.count"] = len(comments)
+	if stat.RatingCount > 0 && stat.AvgRating != nil {
+		evidence["comments.avg_rating"] = *stat.AvgRating
+	}
+	evidence["topics.count"] = len(topics)
+	var unanswered int
+	_ = s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT COUNT(*) FROM lecture_topic t JOIN lecture l ON l.id=t.lecture_id
+		 WHERE l.course_id=$1 AND NOT EXISTS(SELECT 1 FROM lecture_reply r WHERE r.topic_id=t.id)
+		   AND NOT EXISTS(SELECT 1 FROM lecture_reply_staff rs WHERE rs.topic_id=t.id)`, courseID).Scan(&unanswered)
+	evidence["topics.unanswered"] = unanswered
+	var aiUsage int
+	_ = s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT COALESCE(SUM(used),0) FROM ai_daily_quota WHERE course_id=$1`, courseID).Scan(&aiUsage)
+	evidence["ai.usage_total"] = aiUsage
+	var publishedDrafts int
+	_ = s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT COUNT(*) FROM ai_content_draft WHERE course_code=$1 AND status='published'`, code).Scan(&publishedDrafts)
+	evidence["ai_drafts.published_count"] = publishedDrafts
+	var latestDraftID, latestDraftVersion int64
+	if err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT id, content_version FROM ai_content_draft
+		 WHERE course_code=$1 AND status='published' AND content_version IS NOT NULL
+		 ORDER BY id DESC LIMIT 1`, code).Scan(&latestDraftID, &latestDraftVersion); err == nil {
+		evidence["ai_drafts.latest_id"] = latestDraftID
+		var publishedAt string
+		if err := s.dbConn.QueryRowContext(c.Request.Context(),
+			`SELECT CAST(published_at AS TEXT) FROM course_revision
+			 WHERE course_code=$1 AND content_version=$2 ORDER BY revision_no DESC LIMIT 1`,
+			code, latestDraftVersion).Scan(&publishedAt); err == nil {
+			if at, err := time.Parse(time.RFC3339, publishedAt); err == nil {
+				before := s.statsWindow(c, code, at.AddDate(0, 0, -30).Format("2006-01-02"), at.Format("2006-01-02"))
+				after := s.statsWindow(c, code, at.Format("2006-01-02"), at.AddDate(0, 0, 30).Format("2006-01-02"))
+				for key, value := range before {
+					evidence[fmt.Sprintf("ai_draft.%d.before.%s", latestDraftID, key)] = value
+				}
+				for key, value := range after {
+					evidence[fmt.Sprintf("ai_draft.%d.after.%s", latestDraftID, key)] = value
+				}
+				evidence[fmt.Sprintf("ai_draft.%d.published_at", latestDraftID)] = publishedAt
+			}
+		}
+	}
 	evidenceJSON, _ := json.Marshal(evidence)
 	prompt := fmt.Sprintf("课程：%s\n可用证据（建议只能引用这些 key）：%s\n评价：%s\n讨论：%s\n请只输出 JSON：{\"summary\":\"...\",\"signals\":[{\"key\":\"...\",\"text\":\"...\"}],\"feedback_clusters\":[{\"label\":\"...\",\"count\":1,\"comment_ids\":[]}],\"suggestions\":[{\"problem\":\"...\",\"measure\":\"...\",\"priority\":\"P1\",\"target_metric\":\"...\",\"evidence\":[\"stats.learning\"]}],\"unknowns\":[\"...\"]}。每条建议必须至少引用一个证据 key，不得编造。",
 		courseName, string(evidenceJSON), maybeJSON(comments), maybeJSON(topics))
@@ -158,7 +204,8 @@ func (s *Server) adminGenerateAIInsight(c *gin.Context) {
 		"id": id, "summary": payload.Summary, "signals": payload.Signals,
 		"feedback_clusters": payload.FeedbackClusters, "suggestions": payload.Suggestions,
 		"unknowns": payload.Unknowns, "evidence_map": evidenceMap,
-		"model": resp.Model, "model_version": resp.ModelVersion, "filing_no": resp.FilingNo,
+		"evidence": evidence,
+		"model":    resp.Model, "model_version": resp.ModelVersion, "filing_no": resp.FilingNo,
 		"generated_at": now.Format(time.RFC3339),
 	}})
 }
