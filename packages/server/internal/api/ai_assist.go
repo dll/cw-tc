@@ -40,7 +40,7 @@ var htmlTagRE = regexp.MustCompile(`<[^>]+>`)
 
 // askAI POST /ai/ask —— AI 助学 MVP：仅当前讲次资料、必须带引用、测评中关闭。
 func (s *Server) askAI(c *gin.Context) {
-	if s.cfg == nil || !s.cfg.LLMEnabled() || s.cfg.LLMFilingNo == "" {
+	if s.cfg == nil || !s.cfg.LLMEnabled() || s.cfg.AIFastFilingNo() == "" {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10601, Msg: "AI 助学尚未完成模型登记配置"})
 		return
 	}
@@ -309,17 +309,18 @@ func (s *Server) callAssistant(ctx context.Context, question, contextText string
 //
 // 换厂商 = 改配置；未配置密钥 / 备案号时返回 nil，调用方必须 fail-closed。
 func (s *Server) aiGateway() *aigateway.Gateway {
-	if s == nil || s.cfg == nil || !s.cfg.LLMEnabled() || s.cfg.LLMFilingNo == "" {
+	if s == nil || s.cfg == nil || !s.cfg.LLMEnabled() || s.cfg.AIFastFilingNo() == "" {
 		return nil
 	}
 	providerName := strings.TrimSpace(s.cfg.LLMProvider)
 	if providerName == "" {
 		providerName = "openai-compatible"
 	}
-	model := s.cfg.LLMModelName()
 	models := []aigateway.Model{
-		{Alias: "assistant.fast", Provider: providerName, Model: model, ModelVersion: model, FilingNo: s.cfg.LLMFilingNo},
-		{Alias: "assistant.strong", Provider: providerName, Model: model, ModelVersion: model, FilingNo: s.cfg.LLMFilingNo},
+		{Alias: "assistant.fast", Provider: providerName, Model: s.cfg.AIFastModelName(),
+			ModelVersion: s.cfg.AIFastModelVersion(), FilingNo: s.cfg.AIFastFilingNo()},
+		{Alias: "assistant.strong", Provider: providerName, Model: s.cfg.AIStrongModelName(),
+			ModelVersion: s.cfg.AIStrongModelVersion(), FilingNo: s.cfg.AIStrongFilingNo()},
 	}
 	return aigateway.New(models, map[string]aigateway.Provider{
 		providerName: aigateway.NewOpenAIProvider(s.cfg.LLMBase(), s.cfg.LLMKey()),

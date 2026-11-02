@@ -39,6 +39,7 @@ type Server struct {
 	// COS 可用性探测缓存（欠费/停服时自动回退文件服务，见 cosAvailable）。
 	cosProbeMu sync.Mutex
 	cosProbes  map[string]cosProbeResult
+	aiLocks    sync.Map // studentID -> chan struct{}，限制同一学员同时 1 路 AI 请求
 }
 
 type cosProbeResult struct {
@@ -407,5 +408,20 @@ func (s *Server) accessLog() gin.HandlerFunc {
 			"status", c.Writer.Status(),
 			"costMs", time.Since(start).Milliseconds(),
 		)
+	}
+}
+
+// acquireAILock 限制同一学员同时 1 路 AI 请求（PRD §1.8 / §7.5）。
+func (s *Server) acquireAILock(studentID int64) (func(), bool) {
+	if s == nil || studentID <= 0 {
+		return func() {}, false
+	}
+	value, _ := s.aiLocks.LoadOrStore(studentID, make(chan struct{}, 1))
+	ch := value.(chan struct{})
+	select {
+	case ch <- struct{}{}:
+		return func() { <-ch }, true
+	default:
+		return func() {}, false
 	}
 }

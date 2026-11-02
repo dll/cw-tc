@@ -39,6 +39,12 @@ func (s *Server) myLearningPlan(c *gin.Context) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "解锁课程后才能生成学习路径"})
 		return
 	}
+	release, ok := s.acquireAILock(student.ID)
+	if !ok {
+		c.JSON(http.StatusTooManyRequests, envelope{Code: 10903, Msg: "已有 AI 请求进行中，请稍后再试"})
+		return
+	}
+	defer release()
 	rows, err := s.dbConn.QueryContext(c.Request.Context(),
 		`SELECT l.no, l.title, CASE WHEN p.completed_at IS NOT NULL THEN 1 ELSE 0 END,
 		        COALESCE(p.last_studied_at,'')

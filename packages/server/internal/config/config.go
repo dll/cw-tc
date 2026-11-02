@@ -32,27 +32,33 @@ const (
 	EnvSessionSecret = "CWTC_SESSION_SECRET"
 
 	// 可选凭据（未配置则该功能关闭）
-	EnvSMSProvider   = "CWTC_SMS_PROVIDER"
-	EnvSMSSecretID   = "CWTC_SMS_SECRET_ID"
-	EnvSMSSecretKey  = "CWTC_SMS_SECRET_KEY"
-	EnvLLMProvider   = "CWTC_LLM_PROVIDER"
-	EnvDeepSeekKey   = "DEEPSEEK_API_KEY"
-	EnvLLMBaseURL    = "CWTC_LLM_BASE_URL"
-	EnvLLMModel      = "CWTC_LLM_MODEL"
-	EnvLLMFilingNo   = "CWTC_LLM_FILING_NO"
-	EnvAIDailyQuota  = "CWTC_AI_DAILY_QUOTA_PER_COURSE"
-	EnvLLMAPIKey     = "CWTC_LLM_API_KEY"
-	EnvWXPayMchID    = "CWTC_WXPAY_MCH_ID"
-	EnvWXPayAPIv3Key = "CWTC_WXPAY_API_V3_KEY"
-	EnvWXPayAppID    = "CWTC_WXPAY_APP_ID"
-	EnvWXPaySerialNo = "CWTC_WXPAY_SERIAL_NO"
-	EnvWXPayKeyPath  = "CWTC_WXPAY_PRIVATE_KEY_PATH"
-	EnvWXPayNotify   = "CWTC_WXPAY_NOTIFY_URL"
-	EnvAlipayAppID   = "CWTC_ALIPAY_APP_ID"
-	EnvAlipayPrivKey = "CWTC_ALIPAY_PRIVATE_KEY_PATH"
-	EnvAlipayPubKey  = "CWTC_ALIPAY_PUBLIC_KEY_PATH"
-	EnvAlipayNotify  = "CWTC_ALIPAY_NOTIFY_URL"
-	EnvAlipayGateway = "CWTC_ALIPAY_GATEWAY"
+	EnvSMSProvider          = "CWTC_SMS_PROVIDER"
+	EnvSMSSecretID          = "CWTC_SMS_SECRET_ID"
+	EnvSMSSecretKey         = "CWTC_SMS_SECRET_KEY"
+	EnvLLMProvider          = "CWTC_LLM_PROVIDER"
+	EnvDeepSeekKey          = "DEEPSEEK_API_KEY"
+	EnvLLMBaseURL           = "CWTC_LLM_BASE_URL"
+	EnvLLMModel             = "CWTC_LLM_MODEL"
+	EnvLLMFilingNo          = "CWTC_LLM_FILING_NO"
+	EnvAIModelFast          = "CWTC_AI_MODEL_FAST"
+	EnvAIModelFastVersion   = "CWTC_AI_MODEL_FAST_VERSION"
+	EnvAIModelFastFiling    = "CWTC_AI_MODEL_FAST_FILING_NO"
+	EnvAIModelStrong        = "CWTC_AI_MODEL_STRONG"
+	EnvAIModelStrongVersion = "CWTC_AI_MODEL_STRONG_VERSION"
+	EnvAIModelStrongFiling  = "CWTC_AI_MODEL_STRONG_FILING_NO"
+	EnvAIDailyQuota         = "CWTC_AI_DAILY_QUOTA_PER_COURSE"
+	EnvLLMAPIKey            = "CWTC_LLM_API_KEY"
+	EnvWXPayMchID           = "CWTC_WXPAY_MCH_ID"
+	EnvWXPayAPIv3Key        = "CWTC_WXPAY_API_V3_KEY"
+	EnvWXPayAppID           = "CWTC_WXPAY_APP_ID"
+	EnvWXPaySerialNo        = "CWTC_WXPAY_SERIAL_NO"
+	EnvWXPayKeyPath         = "CWTC_WXPAY_PRIVATE_KEY_PATH"
+	EnvWXPayNotify          = "CWTC_WXPAY_NOTIFY_URL"
+	EnvAlipayAppID          = "CWTC_ALIPAY_APP_ID"
+	EnvAlipayPrivKey        = "CWTC_ALIPAY_PRIVATE_KEY_PATH"
+	EnvAlipayPubKey         = "CWTC_ALIPAY_PUBLIC_KEY_PATH"
+	EnvAlipayNotify         = "CWTC_ALIPAY_NOTIFY_URL"
+	EnvAlipayGateway        = "CWTC_ALIPAY_GATEWAY"
 
 	// 部署环境与数据库（开发/测试 SQLite；生产 PostgreSQL）
 	EnvDeployEnv = "DEPLOY_ENV"
@@ -112,27 +118,33 @@ type Config struct {
 	SessionSecret string
 
 	// 可选凭据
-	SMSProvider   string
-	SMSSecretID   string
-	SMSSecretKey  string
-	LLMProvider   string
-	LLMAPIKey     string
-	DeepSeekKey   string
-	LLMBaseURL    string
-	LLMModel      string
-	LLMFilingNo   string
-	AIDailyQuota  int
-	WXPayMchID    string
-	WXPayAPIv3Key string
-	WXPayAppID    string
-	WXPaySerialNo string
-	WXPayKeyPath  string
-	WXPayNotify   string
-	AlipayAppID   string
-	AlipayPrivKey string
-	AlipayPubKey  string
-	AlipayNotify  string
-	AlipayGateway string
+	SMSProvider          string
+	SMSSecretID          string
+	SMSSecretKey         string
+	LLMProvider          string
+	LLMAPIKey            string
+	DeepSeekKey          string
+	LLMBaseURL           string
+	LLMModel             string
+	LLMFilingNo          string
+	AIModelFast          string
+	AIModelFastVersion   string
+	AIModelFastFiling    string
+	AIModelStrong        string
+	AIModelStrongVersion string
+	AIModelStrongFiling  string
+	AIDailyQuota         int
+	WXPayMchID           string
+	WXPayAPIv3Key        string
+	WXPayAppID           string
+	WXPaySerialNo        string
+	WXPayKeyPath         string
+	WXPayNotify          string
+	AlipayAppID          string
+	AlipayPrivKey        string
+	AlipayPubKey         string
+	AlipayNotify         string
+	AlipayGateway        string
 
 	PublicStatusEnabled bool
 	LogRedactEnabled    bool
@@ -176,27 +188,33 @@ func LoadFrom(get Getenv) (*Config, error) {
 		IDCardHMACKey: strings.TrimSpace(get(EnvIDCardHMACKey)),
 		SessionSecret: strings.TrimSpace(get(EnvSessionSecret)),
 
-		SMSProvider:   strings.TrimSpace(get(EnvSMSProvider)),
-		SMSSecretID:   strings.TrimSpace(get(EnvSMSSecretID)),
-		SMSSecretKey:  strings.TrimSpace(get(EnvSMSSecretKey)),
-		LLMProvider:   strings.TrimSpace(get(EnvLLMProvider)),
-		LLMAPIKey:     strings.TrimSpace(get(EnvLLMAPIKey)),
-		DeepSeekKey:   strings.TrimSpace(get(EnvDeepSeekKey)),
-		LLMBaseURL:    strings.TrimSpace(get(EnvLLMBaseURL)),
-		LLMModel:      strings.TrimSpace(get(EnvLLMModel)),
-		LLMFilingNo:   strings.TrimSpace(get(EnvLLMFilingNo)),
-		AIDailyQuota:  intDefault(get(EnvAIDailyQuota), 20),
-		WXPayMchID:    strings.TrimSpace(get(EnvWXPayMchID)),
-		WXPayAPIv3Key: strings.TrimSpace(get(EnvWXPayAPIv3Key)),
-		WXPayAppID:    strings.TrimSpace(get(EnvWXPayAppID)),
-		WXPaySerialNo: strings.TrimSpace(get(EnvWXPaySerialNo)),
-		WXPayKeyPath:  strings.TrimSpace(get(EnvWXPayKeyPath)),
-		WXPayNotify:   strings.TrimSpace(get(EnvWXPayNotify)),
-		AlipayAppID:   strings.TrimSpace(get(EnvAlipayAppID)),
-		AlipayPrivKey: strings.TrimSpace(get(EnvAlipayPrivKey)),
-		AlipayPubKey:  strings.TrimSpace(get(EnvAlipayPubKey)),
-		AlipayNotify:  strings.TrimSpace(get(EnvAlipayNotify)),
-		AlipayGateway: strings.TrimSpace(get(EnvAlipayGateway)),
+		SMSProvider:          strings.TrimSpace(get(EnvSMSProvider)),
+		SMSSecretID:          strings.TrimSpace(get(EnvSMSSecretID)),
+		SMSSecretKey:         strings.TrimSpace(get(EnvSMSSecretKey)),
+		LLMProvider:          strings.TrimSpace(get(EnvLLMProvider)),
+		LLMAPIKey:            strings.TrimSpace(get(EnvLLMAPIKey)),
+		DeepSeekKey:          strings.TrimSpace(get(EnvDeepSeekKey)),
+		LLMBaseURL:           strings.TrimSpace(get(EnvLLMBaseURL)),
+		LLMModel:             strings.TrimSpace(get(EnvLLMModel)),
+		LLMFilingNo:          strings.TrimSpace(get(EnvLLMFilingNo)),
+		AIModelFast:          strings.TrimSpace(get(EnvAIModelFast)),
+		AIModelFastVersion:   strings.TrimSpace(get(EnvAIModelFastVersion)),
+		AIModelFastFiling:    strings.TrimSpace(get(EnvAIModelFastFiling)),
+		AIModelStrong:        strings.TrimSpace(get(EnvAIModelStrong)),
+		AIModelStrongVersion: strings.TrimSpace(get(EnvAIModelStrongVersion)),
+		AIModelStrongFiling:  strings.TrimSpace(get(EnvAIModelStrongFiling)),
+		AIDailyQuota:         intDefault(get(EnvAIDailyQuota), 20),
+		WXPayMchID:           strings.TrimSpace(get(EnvWXPayMchID)),
+		WXPayAPIv3Key:        strings.TrimSpace(get(EnvWXPayAPIv3Key)),
+		WXPayAppID:           strings.TrimSpace(get(EnvWXPayAppID)),
+		WXPaySerialNo:        strings.TrimSpace(get(EnvWXPaySerialNo)),
+		WXPayKeyPath:         strings.TrimSpace(get(EnvWXPayKeyPath)),
+		WXPayNotify:          strings.TrimSpace(get(EnvWXPayNotify)),
+		AlipayAppID:          strings.TrimSpace(get(EnvAlipayAppID)),
+		AlipayPrivKey:        strings.TrimSpace(get(EnvAlipayPrivKey)),
+		AlipayPubKey:         strings.TrimSpace(get(EnvAlipayPubKey)),
+		AlipayNotify:         strings.TrimSpace(get(EnvAlipayNotify)),
+		AlipayGateway:        strings.TrimSpace(get(EnvAlipayGateway)),
 
 		// 部署环境与数据库（默认按开发环境；生产必须显式设 postgres）
 		DeployEnv: strings.ToLower(strings.TrimSpace(get(EnvDeployEnv))),
@@ -354,4 +372,50 @@ func boolDefault(v string, def bool) bool {
 	default:
 		return def
 	}
+}
+
+// AIFastModelName / AIStrongModelName 返回别名对应的物理模型（未单独配置时回退旧 CWTC_LLM_MODEL）。
+func (c *Config) AIFastModelName() string {
+	if c != nil && strings.TrimSpace(c.AIModelFast) != "" {
+		return strings.TrimSpace(c.AIModelFast)
+	}
+	return c.LLMModelName()
+}
+
+func (c *Config) AIStrongModelName() string {
+	if c != nil && strings.TrimSpace(c.AIModelStrong) != "" {
+		return strings.TrimSpace(c.AIModelStrong)
+	}
+	return c.AIFastModelName()
+}
+
+func (c *Config) AIFastFilingNo() string {
+	if c != nil && strings.TrimSpace(c.AIModelFastFiling) != "" {
+		return strings.TrimSpace(c.AIModelFastFiling)
+	}
+	if c == nil {
+		return ""
+	}
+	return strings.TrimSpace(c.LLMFilingNo)
+}
+
+func (c *Config) AIStrongFilingNo() string {
+	if c != nil && strings.TrimSpace(c.AIModelStrongFiling) != "" {
+		return strings.TrimSpace(c.AIModelStrongFiling)
+	}
+	return c.AIFastFilingNo()
+}
+
+func (c *Config) AIFastModelVersion() string {
+	if c != nil && strings.TrimSpace(c.AIModelFastVersion) != "" {
+		return strings.TrimSpace(c.AIModelFastVersion)
+	}
+	return c.AIFastModelName()
+}
+
+func (c *Config) AIStrongModelVersion() string {
+	if c != nil && strings.TrimSpace(c.AIModelStrongVersion) != "" {
+		return strings.TrimSpace(c.AIModelStrongVersion)
+	}
+	return c.AIStrongModelName()
 }
