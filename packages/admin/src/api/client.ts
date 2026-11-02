@@ -1103,3 +1103,54 @@ export async function generateAIInsight(courseCode: string): Promise<Record<stri
 export async function getAIInsight(courseCode: string, id: number): Promise<Record<string, unknown>> {
   return unwrap(http.get(`/admin/courses/${courseCode}/ai-insights/${id}`))
 }
+// ── 教师 AI 周报与改版计划 ──
+export interface TeacherInsightItem {
+  id: number
+  course_code: string
+  period_start: string
+  period_end: string
+  summary: string
+  verdict: string
+  verdict_note: string
+  generated_at: string
+}
+export async function listTeacherInsights(courseCode = ''): Promise<TeacherInsightItem[]> {
+  const data = await unwrap<{ items: TeacherInsightItem[] }>(http.get('/teacher/insights', { params: { course_code: courseCode } }))
+  return data.items
+}
+export async function verdictTeacherInsight(id: number, verdict: 'accepted' | 'rejected', note: string): Promise<void> {
+  await unwrap<unknown>(http.post(`/teacher/insights/${id}/verdict`, { verdict, note }))
+}
+export interface RevisionPlanItem {
+  id: number
+  course_code: string
+  source: string
+  insight_id: number
+  problem: string
+  evidence: string
+  measure: string
+  priority: string
+  target_metric: string
+  status: string
+  abandon_reason: string
+  updated_at: string
+}
+export async function listRevisionPlans(courseCode = ''): Promise<RevisionPlanItem[]> {
+  const data = await unwrap<{ items: RevisionPlanItem[] }>(http.get('/teacher/revision-plans', { params: { course_code: courseCode } }))
+  return data.items
+}
+export async function createRevisionPlan(input: {
+  course_code: string
+  source?: string
+  insight_id?: number
+  problem: string
+  evidence: string
+  measure: string
+  priority?: string
+  target_metric: string
+}): Promise<void> {
+  await unwrap<unknown>(http.post('/teacher/revision-plans', input))
+}
+export async function updateRevisionPlan(id: number, status: string, abandonReason = ''): Promise<void> {
+  await unwrap<unknown>(http.patch(`/teacher/revision-plans/${id}`, { status, abandon_reason: abandonReason }))
+}

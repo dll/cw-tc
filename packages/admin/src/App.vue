@@ -103,6 +103,7 @@ const teacherGroups: MenuGroup[] = [
     items: [
       { path: '/teacher/review', label: '阅卷台' },
       { path: '/teacher/ai-drafts', label: 'AI 内容草稿' },
+      { path: '/teacher/insights', label: 'AI 周报与改版' },
     ],
   },
   {

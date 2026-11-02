@@ -21,6 +21,7 @@ import Deletions from '@/pages/Deletions.vue'
 import Reconcile from '@/pages/Reconcile.vue'
 import Knowledge from '@/pages/Knowledge.vue'
 import TeacherAIDrafts from '@/pages/TeacherAIDrafts.vue'
+import TeacherInsights from '@/pages/TeacherInsights.vue'
 import AdminAIDrafts from '@/pages/AdminAIDrafts.vue'
 import AIInsights from '@/pages/AIInsights.vue'
 import Risk from '@/pages/Risk.vue'
@@ -74,6 +75,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/teacher/review', component: TeacherGrade },
   { path: '/teacher/discussions', component: TeacherDiscussions },
   { path: '/teacher/ai-drafts', component: TeacherAIDrafts },
+  { path: '/teacher/insights', component: TeacherInsights },
 ]
 
 export const router = createRouter({
