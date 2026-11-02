@@ -1157,3 +1157,6 @@ export async function updateRevisionPlan(id: number, status: string, abandonReas
 export async function getAIDraftEffect(id: number, role: 'teacher' | 'admin'): Promise<Record<string, unknown>> {
   return unwrap(http.get(`/${role}/ai-drafts/${id}/effect`))
 }
+export async function exportAIDraft(id: number, role: 'teacher' | 'admin'): Promise<Record<string, unknown>> {
+  return unwrap(http.get(`/${role}/ai-drafts/${id}/export`))
+}

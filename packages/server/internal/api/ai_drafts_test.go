@@ -124,6 +124,21 @@ func TestAIDraftDoubleReviewAndPublish(t *testing.T) {
 	if teacherEffect.Code != http.StatusOK {
 		t.Fatalf("教师效果对比异常: %d", teacherEffect.Code)
 	}
+	var aiStorageKey string
+	if err := database.QueryRow(`SELECT storage_key FROM asset WHERE aigc_label='assisted' ORDER BY id DESC LIMIT 1`).Scan(&aiStorageKey); err != nil {
+		t.Fatal(err)
+	}
+	publishedFile, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(aiStorageKey)))
+	if err != nil || !strings.Contains(string(publishedFile), "AIGC_label") || !strings.Contains(string(publishedFile), "AIGC_filing_no") {
+		t.Fatalf("导出文件缺少 AIGC 隐式元数据: %v", err)
+	}
+	exported := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/ai-drafts/"+itoaTest(draftID)+"/export", "", adminToken)
+	if exported.Code != http.StatusOK || !containsAll(exported.Body.String(), `"aigc"`, `"service_provider"`, `"content_sha256"`, `"filing_no":"FIL-GEN"`) {
+		t.Fatalf("AI 草稿导出异常: %d %s", exported.Code, exported.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/ai-drafts/"+itoaTest(draftID)+"/export", "", teacher); got.Code != http.StatusOK {
+		t.Fatalf("教师导出异常: %d", got.Code)
+	}
 
 	// 体检未通过不得进入一审。
 	short = true

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createTeacherAIDraft, getAIDraftEffect, listTeacherAIDrafts, reviewTeacherAIDraft, type AIDraftItem } from '@/api/client'
+import { createTeacherAIDraft, exportAIDraft, getAIDraftEffect, listTeacherAIDrafts, reviewTeacherAIDraft, type AIDraftItem } from '@/api/client'
 
 const rows = ref<AIDraftItem[]>([])
 const loading = ref(false)
@@ -50,6 +50,21 @@ async function effect(row: AIDraftItem) {
     ElMessageBox.alert(JSON.stringify(data, null, 2), 'AI 增补效果对比', { confirmButtonText: '关闭' })
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '效果对比失败')
+  }
+}
+
+async function downloadExport(row: AIDraftItem) {
+  try {
+    const data = await exportAIDraft(row.id, 'teacher')
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `ai-draft-${row.id}-aigc.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '导出失败')
   }
 }
 
@@ -109,6 +124,7 @@ onMounted(load)
       <el-table-column label="操作" width="180">
         <template #default="{ row }">
           <el-button v-if="row.status === 'published'" size="small" @click="effect(row)">效果</el-button>
+          <el-button v-if="row.status === 'published'" size="small" @click="downloadExport(row)">导出</el-button>
           <template v-if="row.status === 'pending_teacher'">
             <el-button size="small" type="success" @click="review(row, 'approved')">通过</el-button>
             <el-button size="small" type="danger" plain @click="review(row, 'rejected')">驳回</el-button>

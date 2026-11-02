@@ -574,7 +574,12 @@ func (s *Server) adminPublishAIDraft(c *gin.Context) {
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "上架失败"})
 			return
 		}
-		body := "# " + lecture.Title + "\n\n" + lecture.ContentMD
+		body, digest := aicontent.RenderMarkdown(lecture.Title, lecture.ContentMD, aicontent.ExportMeta{
+			Label: "assisted", ServiceProvider: "滁州畅网智能科技有限公司",
+			ContentID: fmt.Sprintf("ai-draft-%d-%d", id, idx),
+			Model:     draft.ModelID, ModelVersion: draft.ModelVersion, FilingNo: draft.FilingNo,
+			GeneratedAt: draft.CreatedAt,
+		})
 		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			cleanupFiles(written)
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "上架失败"})
@@ -590,9 +595,9 @@ func (s *Server) adminPublishAIDraft(c *gin.Context) {
 			return
 		}
 		if _, err := tx.ExecContext(c.Request.Context(),
-			`INSERT INTO asset(lecture_id,kind,title,storage_key,size_bytes,aigc_label,aigc_meta_written)
-			 VALUES($1,'markdown','AI 辅助讲义',$2,$3,'assisted',true)`,
-			lectureID, storageKey, len(body)); err != nil {
+			`INSERT INTO asset(lecture_id,kind,title,storage_key,size_bytes,sha256,aigc_label,aigc_meta_written)
+			 VALUES($1,'markdown','AI 辅助讲义',$2,$3,$4,'assisted',true)`,
+			lectureID, storageKey, len(body), digest); err != nil {
 			cleanupFiles(written)
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "上架失败"})
 			return
@@ -694,5 +699,66 @@ func (s *Server) writeAIDraftEffect(c *gin.Context, draft aiDraft) {
 		"content_version": draft.ContentVersion.Int64, "published_at": publishedAt,
 		"before": before, "after": after,
 		"note": "AI 增补不回溯：已学进度与已发证书不受影响；对比仅作改版参考",
+	}})
+}
+
+func (s *Server) adminExportAIDraft(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	draft, err := scanAIDraft(s.dbConn.QueryRowContext(c.Request.Context(), aiDraftQuery+` WHERE id = $1`, id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "草稿不存在"})
+		return
+	}
+	s.writeAIDraftExport(c, draft)
+}
+
+func (s *Server) teacherExportAIDraft(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	draft, ok := s.aiDraftOwned(c, id)
+	if !ok {
+		return
+	}
+	s.writeAIDraftExport(c, draft)
+}
+
+func (s *Server) writeAIDraftExport(c *gin.Context, draft aiDraft) {
+	if draft.Status != "published" || !draft.AIGCMetaWritten {
+		c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: "未上架或隐式 AIGC 元数据未写入，不允许导出"})
+		return
+	}
+	var lectures []aicontent.Lecture
+	if err := json.Unmarshal([]byte(draft.LecturesJSON), &lectures); err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: "草稿内容损坏"})
+		return
+	}
+	exported := make([]gin.H, 0, len(lectures))
+	for idx, lecture := range lectures {
+		meta := aicontent.ExportMeta{
+			Label: "assisted", ServiceProvider: "滁州畅网智能科技有限公司",
+			ContentID: fmt.Sprintf("ai-draft-%d-%d", draft.ID, idx),
+			Model:     draft.ModelID, ModelVersion: draft.ModelVersion, FilingNo: draft.FilingNo,
+			GeneratedAt: draft.CreatedAt,
+		}
+		markdown, digest := aicontent.RenderMarkdown(lecture.Title, lecture.ContentMD, meta)
+		exported = append(exported, gin.H{
+			"title": lecture.Title, "content_md": lecture.ContentMD,
+			"content_sha256": digest, "markdown": markdown,
+		})
+	}
+	admin := c.MustGet(staffContextKey).(staff.Staff)
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role), Action: "ai.draft_export",
+		TargetType: "ai_content_draft", TargetID: strconv.FormatInt(draft.ID, 10),
+		After: `{"content_version":` + strconv.FormatInt(draft.ContentVersion.Int64, 10) + `}`, IP: c.ClientIP(),
+	})
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+		"draft_id": draft.ID, "course_code": draft.CourseCode,
+		"aigc": gin.H{
+			"label": "assisted", "service_provider": "滁州畅网智能科技有限公司",
+			"model": draft.ModelID, "model_version": draft.ModelVersion,
+			"filing_no": draft.FilingNo, "generated_at": draft.CreatedAt,
+		},
+		"lectures": exported,
+		"note":     "导出包含 AIGC 隐式元数据；不得删除、篡改、伪造或隐匿标识",
 	}})
 }

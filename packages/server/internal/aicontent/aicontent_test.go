@@ -54,3 +54,19 @@ func TestAutoCheck(t *testing.T) {
 		t.Fatal("内容变化后指纹必须变化")
 	}
 }
+
+func TestRenderMarkdownAIGCMetadata(t *testing.T) {
+	markdown, digest := RenderMarkdown("第一讲", "正文内容", ExportMeta{
+		Label: "assisted", ServiceProvider: "滁州畅网智能科技有限公司",
+		ContentID: "ai-draft-1-0", Model: "assistant.strong", ModelVersion: "m-v1",
+		FilingNo: "FIL-1", GeneratedAt: "2026-10-31T00:00:00Z",
+	})
+	if digest == "" || !strings.Contains(markdown, "AIGC_label: \"assisted\"") ||
+		!strings.Contains(markdown, "AIGC_service_provider") || !strings.Contains(markdown, "AIGC_content_sha256") ||
+		!strings.Contains(markdown, "AIGC_filing_no: \"FIL-1\"") {
+		t.Fatalf("AIGC 元数据缺失: %s", markdown)
+	}
+	if !strings.Contains(markdown, "# 第一讲") || !strings.Contains(markdown, "正文内容") {
+		t.Fatalf("正文缺失: %s", markdown)
+	}
+}

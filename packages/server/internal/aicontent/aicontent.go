@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -129,4 +131,38 @@ func Hash(lectures []Lecture) string {
 	raw, _ := json.Marshal(lectures)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// ExportMeta 是 AIGC 导出包/文件的隐式标识（元数据），不得由调用方省略或篡改。
+type ExportMeta struct {
+	Label           string
+	ServiceProvider string
+	ContentID       string
+	Model           string
+	ModelVersion    string
+	FilingNo        string
+	GeneratedAt     string
+}
+
+// RenderMarkdown 生成带 AIGC 元数据头的 Markdown，并返回正文哈希（写入元数据与数据库）。
+func RenderMarkdown(title, content string, meta ExportMeta) (string, string) {
+	body := "# " + title + "\n\n" + content
+	sum := sha256.Sum256([]byte(body))
+	digest := hex.EncodeToString(sum[:])
+	var builder strings.Builder
+	builder.WriteString("---\n")
+	writeMeta := func(key, value string) {
+		fmt.Fprintf(&builder, "AIGC_%s: %s\n", key, strconv.Quote(value))
+	}
+	writeMeta("label", meta.Label)
+	writeMeta("service_provider", meta.ServiceProvider)
+	writeMeta("content_id", meta.ContentID)
+	writeMeta("model", meta.Model)
+	writeMeta("model_version", meta.ModelVersion)
+	writeMeta("filing_no", meta.FilingNo)
+	writeMeta("generated_at", meta.GeneratedAt)
+	writeMeta("content_sha256", digest)
+	builder.WriteString("---\n\n")
+	builder.WriteString(body)
+	return builder.String(), digest
 }
