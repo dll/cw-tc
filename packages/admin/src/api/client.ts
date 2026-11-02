@@ -1162,3 +1162,29 @@ export async function exportAIDraft(id: number, role: 'teacher' | 'admin'): Prom
 }export async function getRevisionPlanEffect(id: number): Promise<Record<string, unknown>> {
   return unwrap(http.get(`/teacher/revision-plans/${id}/effect`))
 }
+
+// ── 对外展示（模块 Q） ──
+export interface WebContentItem { id: number; block: string; slot: number; title: string; body: string; evidence_ref: string; version: number; status: string; published_at: string; updated_at: string }
+export async function listWebContent(status = ''): Promise<WebContentItem[]> {
+  const data = await unwrap<{ items: WebContentItem[] }>(http.get('/admin/content', { params: { status } }))
+  return data.items
+}
+export async function updateWebContent(input: { block: string; slot: number; title: string; body: string; evidence_ref: string; status: string; confirm: boolean }): Promise<void> {
+  await unwrap<unknown>(http.patch('/admin/content', input))
+}
+export interface JobMapItem { id: number; course_code: string; course_name: string; cert_level: string; job_direction: string; skill_items: unknown; lecture_refs: unknown; evidence_ref: string; status: string; major_id: number; reviewed_at: string }
+export async function listJobMap(status = ''): Promise<JobMapItem[]> {
+  const data = await unwrap<{ items: JobMapItem[] }>(http.get('/admin/job-map', { params: { status } }))
+  return data.items
+}
+export async function updateJobMap(input: Record<string, unknown>): Promise<void> {
+  await unwrap<unknown>(http.patch('/admin/job-map', input))
+}
+export interface ShowcaseAdminItem { id: number; student_id: number; kind: string; nickname: string; cert_no: string; cert_level: string; summary: string; job_direction: string; company_name: string; company_consent: boolean; status: string; display_consent_at: string; consent_revoked_at: string; verified_at: string; created_at: string }
+export async function listAdminShowcase(status = ''): Promise<ShowcaseAdminItem[]> {
+  const data = await unwrap<{ items: ShowcaseAdminItem[] }>(http.get('/admin/showcase', { params: { status } }))
+  return data.items
+}
+export async function updateAdminShowcase(id: number, action: 'verify' | 'withdraw', note: string): Promise<void> {
+  await unwrap<unknown>(http.patch('/admin/showcase', { id, action, note, confirm: true }))
+}

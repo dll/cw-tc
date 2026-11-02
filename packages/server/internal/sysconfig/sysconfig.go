@@ -22,6 +22,7 @@ const (
 	KeyStatsDisplayThreshold   = "stats.display_threshold"
 	KeyCommentDisplayThreshold = "comment.display_threshold"
 	KeyOfflineValidDays        = "offline.valid_days"
+	KeyShowcaseRevokeHours     = "site.showcase_revoke_hours"
 
 	DefaultStatsDisplayThreshold   = 10
 	DefaultCommentDisplayThreshold = 10
@@ -250,7 +251,7 @@ func parseIntValue(raw string) (int, error) {
 // KnownKey 只认数据字典登记过的业务参数，避免把任意键写进配置表。
 func KnownKey(key string) bool {
 	switch key {
-	case KeyStatsDisplayThreshold, KeyCommentDisplayThreshold, KeyOfflineValidDays:
+	case KeyStatsDisplayThreshold, KeyCommentDisplayThreshold, KeyOfflineValidDays, KeyShowcaseRevokeHours:
 		return true
 	default:
 		return false

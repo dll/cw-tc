@@ -37,8 +37,8 @@ func TestListAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 3 {
-		t.Fatalf("首批应有 3 个业务参数，实际 %d", len(items))
+	if len(items) != 4 {
+		t.Fatalf("首批应有 4 个业务参数，实际 %d", len(items))
 	}
 	if got := store.Int(context.Background(), sysconfig.KeyStatsDisplayThreshold, 99); got != 10 {
 		t.Fatalf("stats.display_threshold 默认应为 10，实际 %d", got)
@@ -111,8 +111,8 @@ func TestGetAndNonIntValues(t *testing.T) {
 		}
 	}
 	items, err := store.List(ctx)
-	if err != nil || len(items) != 6 {
-		t.Fatalf("列表应包含 6 项: %d %v", len(items), err)
+	if err != nil || len(items) != 7 {
+		t.Fatalf("列表应包含 7 项: %d %v", len(items), err)
 	}
 	flag, err := store.Get(ctx, "demo.flag")
 	if err != nil || flag.Value != true {

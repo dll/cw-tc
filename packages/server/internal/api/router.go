@@ -257,6 +257,12 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.PATCH("/risk/blacklist/:id", s.adminResolveBlacklistAppeal)
 	adminOnly.GET("/exams/:id/anomalies", s.adminExamAnomalies)
 	adminOnly.POST("/exams/:id/verdict", s.adminExamVerdict)
+	adminOnly.GET("/content", s.adminListContent)
+	adminOnly.PATCH("/content", s.adminUpdateContent)
+	adminOnly.GET("/job-map", s.adminListJobMap)
+	adminOnly.PATCH("/job-map", s.adminUpdateJobMap)
+	adminOnly.GET("/showcase", s.adminListShowcase)
+	adminOnly.PATCH("/showcase", s.adminUpdateShowcase)
 	adminOnly.GET("/audit", s.adminAudit)
 	adminOnly.GET("/settings", s.requireSuper, s.adminSettings)
 	adminOnly.PATCH("/settings", s.requireSuper, s.adminUpdateSetting)
@@ -346,6 +352,12 @@ func (s *Server) Router() *gin.Engine {
 	// 未启用时路由不注册，避免"存在但不可用"的暧昧状态。
 	if s.cfg.PublicStatusEnabled {
 		v1.GET("/public/status", s.publicStatus)
+		v1.GET("/public/overview", s.publicOverview)
+		v1.GET("/public/job-map", s.publicJobMap)
+		v1.GET("/public/showcase", s.publicShowcase)
+		v1.GET("/me/showcase", authRequired(s.identity), s.myShowcase)
+		v1.POST("/me/showcase", authRequired(s.identity), s.createShowcase)
+		v1.POST("/me/showcase/:id/revoke", authRequired(s.identity), s.revokeShowcase)
 		v1.GET("/public/operations", s.publicOperations)
 	}
 	return r

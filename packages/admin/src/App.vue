@@ -35,6 +35,7 @@ const adminGroups: MenuGroup[] = [
       { path: '/admin/kb', label: '知识库重建' },
       { path: '/admin/ai-drafts', label: 'AI 内容二审' },
       { path: '/admin/ai-insights', label: 'AI 运营报告' },
+      { path: '/admin/public-site', label: '对外展示' },
     ],
   },
   {
