@@ -41,9 +41,11 @@ import { hasToken } from '@/api/client'
 /// 路由表按 PRD v2 §8.1 的站点地图固化。
 /// 权限由后端 RBAC + 资源归属校验把关（前端只做菜单可见性，不作为安全边界）。
 const routes: RouteRecordRaw[] = [
-  { path: '/login', component: Login },
-  { path: '/change-password', component: ChangePassword },
+  { path: '/admin/login', component: Login },
+  { path: '/admin/change-password', component: ChangePassword },
   { path: '/', redirect: '/admin/courses' },
+  { path: '/admin', redirect: '/admin/courses' },
+  { path: '/admin/', redirect: '/admin/courses' },
 
   // —— 管理端（角色：管理员）——
   { path: '/admin/courses', component: Courses },
@@ -76,12 +78,12 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/audit', component: Audit },
 
   // —— 教师工作台（角色：教师）——
-  { path: '/teacher/courses', component: TeacherCourses },
-  { path: '/teacher/courses/new', component: Placeholder, props: { title: '新建课程', detail: '提交后需管理员审核上架' } },
-  { path: '/teacher/review', component: TeacherGrade },
-  { path: '/teacher/discussions', component: TeacherDiscussions },
-  { path: '/teacher/ai-drafts', component: TeacherAIDrafts },
-  { path: '/teacher/insights', component: TeacherInsights },
+  { path: '/admin/teacher/courses', component: TeacherCourses },
+  { path: '/admin/teacher/courses/new', component: Placeholder, props: { title: '新建课程', detail: '提交后需管理员审核上架' } },
+  { path: '/admin/teacher/review', component: TeacherGrade },
+  { path: '/admin/teacher/discussions', component: TeacherDiscussions },
+  { path: '/admin/teacher/ai-drafts', component: TeacherAIDrafts },
+  { path: '/admin/teacher/insights', component: TeacherInsights },
 ]
 
 export const router = createRouter({
@@ -90,8 +92,8 @@ export const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (to.path !== '/login' && !hasToken()) return '/login'
-  if (to.path === '/login' && hasToken()) return '/admin/courses'
+  if (to.path !== '/admin/login' && !hasToken()) return '/admin/login'
+  if (to.path === '/admin/login' && hasToken()) return '/admin/courses'
   return true
 })
 

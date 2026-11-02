@@ -46,7 +46,7 @@ http.interceptors.response.use(
     const status = err?.response?.status
     if (status === 401) {
       clearToken()
-      if (location.pathname !== '/login') location.href = '/login'
+      if (location.pathname !== '/admin/login') location.href = '/admin/login'
     }
     // 提取后端信封里的 msg，避免前端只显示 "Request failed with status code 401"
     const msg = err?.response?.data?.msg

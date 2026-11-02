@@ -17,11 +17,11 @@ RELEASE_ID="${TIMESTAMP}-${SHORT_COMMIT}"
 RELEASE_DIR="$OUT_DIR/$RELEASE_ID"
 
 rm -rf "$OUT_DIR"
-mkdir -p "$RELEASE_DIR/bin" "$RELEASE_DIR/deploy" "$RELEASE_DIR/migrations"
+mkdir -p "$RELEASE_DIR/bin" "$RELEASE_DIR/deploy" "$RELEASE_DIR/migrations" "$RELEASE_DIR/web"
 
 (
   cd "$SERVER"
-  CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/cw-tc/server/internal/api.Version=$SHORT_COMMIT" \
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X github.com/cw-tc/server/internal/api.Version=$SHORT_COMMIT" \
     -o "bin/cw-tc-server" ./cmd/server
 )
 cp "$SERVER/bin/cw-tc-server" "$RELEASE_DIR/bin/cw-tc-server"
@@ -32,6 +32,27 @@ cp "$ROOT/deploy/systemd/cw-tc-server.service" "$RELEASE_DIR/deploy/"
 cp "$ROOT/deploy/nginx/cw-tc.conf" "$RELEASE_DIR/deploy/"
 cp "$ROOT/deploy/scripts/migration-preflight.sh" "$RELEASE_DIR/deploy/"
 cp "$ROOT/deploy/scripts/server-install-release.sh" "$RELEASE_DIR/deploy/"
+
+# 管理端（Vue 3）：构建产物直接进发布包，避免“只发后端、页面还是旧的”。
+if ! command -v npm >/dev/null 2>&1; then
+  echo "缺少 npm，无法构建管理端；发布包必须包含前端资产" >&2
+  exit 1
+fi
+(cd "$ROOT/packages/admin" && npm ci --no-audit --no-fund && MSYS_NO_PATHCONV=1 npm run build -- --base=/admin/)
+mkdir -p "$RELEASE_DIR/web/admin"
+cp -R "$ROOT/packages/admin/dist/." "$RELEASE_DIR/web/admin/"
+
+# 学员端（Flutter Web）：必须固定 base-href=/student/。
+if ! command -v flutter >/dev/null 2>&1; then
+  echo "缺少 flutter，无法构建学员端；发布包必须包含前端资产" >&2
+  exit 1
+fi
+(cd "$ROOT/packages/app" && flutter pub get && MSYS_NO_PATHCONV=1 flutter build web --release --no-pub --base-href=/student/)
+mkdir -p "$RELEASE_DIR/web/student"
+cp -R "$ROOT/packages/app/build/web/." "$RELEASE_DIR/web/student/"
+
+# 门户静态页
+cp -R "$ROOT/deploy/static" "$RELEASE_DIR/web/portal"
 
 cat > "$RELEASE_DIR/RELEASE-MANIFEST.txt" <<EOF
 release_id=$RELEASE_ID
@@ -45,6 +66,9 @@ approval_required=true
 files:
 - bin/cw-tc-server
 - migrations/postgres/*.sql
+- web/admin/*
+- web/student/*
+- web/portal/*
 - deploy/.env.example
 - deploy/cw-tc-server.service
 - deploy/cw-tc.conf
@@ -53,7 +77,7 @@ files:
 - deployment-approval-request.json
 EOF
 
-(cd "$RELEASE_DIR" && sha256sum bin/cw-tc-server > SHA256SUMS)
+(cd "$RELEASE_DIR" && { sha256sum bin/cw-tc-server; find web -type f -print0 | sort -z | xargs -0 sha256sum; } > SHA256SUMS)
 cat > "$RELEASE_DIR/deployment-approval-request.json" <<EOF
 {
   "release_id": "$RELEASE_ID",
@@ -62,6 +86,7 @@ cat > "$RELEASE_DIR/deployment-approval-request.json" <<EOF
   "database_driver": "postgres",
   "database_provider": "腾讯云 PostgreSQL（沿用 CCIT 既有环境参数，由服务器端 shared/.env 注入）",
   "migration_source": "migrations/postgres",
+  "frontend_assets": ["web/admin", "web/student", "web/portal"],
   "deployment_mode": "approval_required",
   "production_touch": false,
   "rollback": "切回上一 releases/<timestamp>-<commit> 软链；数据库 DDL 仅按既有备份恢复流程处理",

@@ -9,8 +9,8 @@ type MenuItem = { path: string; label: string; badge?: 'pending' }
 type MenuGroup = { key: string; label: string; icon: unknown; items: MenuItem[] }
 
 const route = useRoute()
-const title = computed(() => (route.path.startsWith('/teacher') ? '教师工作台' : '管理后台'))
-const isLogin = computed(() => route.path === '/login' || route.path === '/change-password')
+const title = computed(() => (route.path.startsWith('/admin/teacher') ? '教师工作台' : '管理后台'))
+const isLogin = computed(() => route.path === '/admin/login' || route.path === '/admin/change-password')
 const pendingCount = ref(0)
 let pendingTimer: ReturnType<typeof setInterval> | undefined
 async function refreshPending() {
@@ -95,8 +95,8 @@ const teacherGroups: MenuGroup[] = [
     label: '我的教学',
     icon: School,
     items: [
-      { path: '/teacher/courses', label: '我的课程' },
-      { path: '/teacher/courses/new', label: '新建课程' },
+      { path: '/admin/teacher/courses', label: '我的课程' },
+      { path: '/admin/teacher/courses/new', label: '新建课程' },
     ],
   },
   {
@@ -104,9 +104,9 @@ const teacherGroups: MenuGroup[] = [
     label: '评审与阅卷',
     icon: EditPen,
     items: [
-      { path: '/teacher/review', label: '阅卷台' },
-      { path: '/teacher/ai-drafts', label: 'AI 内容草稿' },
-      { path: '/teacher/insights', label: 'AI 周报与改版' },
+      { path: '/admin/teacher/review', label: '阅卷台' },
+      { path: '/admin/teacher/ai-drafts', label: 'AI 内容草稿' },
+      { path: '/admin/teacher/insights', label: 'AI 周报与改版' },
     ],
   },
   {
@@ -114,7 +114,7 @@ const teacherGroups: MenuGroup[] = [
     label: '答疑与讨论',
     icon: ChatDotRound,
     items: [
-      { path: '/teacher/discussions', label: '讨论与问答' },
+      { path: '/admin/teacher/discussions', label: '讨论与问答' },
     ],
   },
 ]

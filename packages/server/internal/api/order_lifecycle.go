@@ -20,6 +20,12 @@ func (s *Server) getOrder(c *gin.Context) {
 }
 
 func (s *Server) preparePayment(c *gin.Context) {
+	// 该接口目前仅用于开发 / staging 的 mock 联调；生产必须走真实渠道
+	// （当前为支付宝预下单），不能返回虚假的成功意图。
+	if s.cfg == nil || s.cfg.IsProduction() {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10306, Msg: "支付渠道未接入，请联系管理员"})
+		return
+	}
 	student := c.MustGet(studentContextKey).(identity.Student)
 	var input struct {
 		Channel     string `json:"channel"`
