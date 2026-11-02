@@ -34,15 +34,16 @@ type OrderInput struct {
 }
 
 type Order struct {
-	ID          int64
-	OrderNo     string
-	StudentID   int64
-	CourseID    int64
-	CourseName  string
-	PriceCents  int64
-	AmountCents int64
-	Status      string
-	ExpiredAt   time.Time
+	ID            int64
+	OrderNo       string
+	StudentID     int64
+	CourseID      int64
+	CourseName    string
+	PriceCents    int64
+	DiscountCents int64
+	AmountCents   int64
+	Status        string
+	ExpiredAt     time.Time
 }
 
 type Service struct{ db *sql.DB }

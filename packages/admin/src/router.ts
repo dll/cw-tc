@@ -25,6 +25,7 @@ import TeacherInsights from '@/pages/TeacherInsights.vue'
 import AdminAIDrafts from '@/pages/AdminAIDrafts.vue'
 import AIInsights from '@/pages/AIInsights.vue'
 import PublicSite from '@/pages/PublicSite.vue'
+import Promo from '@/pages/Promo.vue'
 import Risk from '@/pages/Risk.vue'
 import ExamAnomalies from '@/pages/ExamAnomalies.vue'
 import Settings from '@/pages/Settings.vue'
@@ -65,6 +66,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/ai-drafts', component: AdminAIDrafts },
   { path: '/admin/ai-insights', component: AIInsights },
   { path: '/admin/public-site', component: PublicSite },
+  { path: '/admin/promo', component: Promo },
   { path: '/admin/broadcast', component: Broadcast },
   { path: '/admin/users', component: Users },
   { path: '/admin/staff', component: Staff },

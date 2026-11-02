@@ -1188,3 +1188,35 @@ export async function listAdminShowcase(status = ''): Promise<ShowcaseAdminItem[
 export async function updateAdminShowcase(id: number, action: 'verify' | 'withdraw', note: string): Promise<void> {
   await unwrap<unknown>(http.patch('/admin/showcase', { id, action, note, confirm: true }))
 }
+// ── 优惠码 ──
+export interface PromoItem {
+  code: string
+  kind: string
+  value: number
+  total_limit: number | null
+  per_student_limit: number | null
+  valid_from: string
+  valid_to: string
+  status: string
+  used: number
+  remaining: number | null
+  discounted_cents: number
+}
+export async function listPromo(status = ''): Promise<PromoItem[]> {
+  const data = await unwrap<{ items: PromoItem[] }>(http.get('/admin/promo', { params: { status } }))
+  return data.items
+}
+export async function createPromo(input: {
+  code: string
+  kind: string
+  value: number
+  total_limit?: number | null
+  per_student_limit?: number | null
+  valid_from: string
+  valid_to: string
+}): Promise<void> {
+  await unwrap<unknown>(http.post('/admin/promo', { ...input, confirm: true }))
+}
+export async function setPromoStatus(code: string, status: 'active' | 'disabled'): Promise<void> {
+  await unwrap<unknown>(http.patch(`/admin/promo/${code}`, { status, confirm: true }))
+}
