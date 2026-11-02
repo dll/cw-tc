@@ -19,6 +19,7 @@ import (
 	"github.com/cw-tc/server/internal/platform/clock"
 	"github.com/cw-tc/server/internal/platform/db"
 	"github.com/cw-tc/server/internal/redact"
+	smsprovider "github.com/cw-tc/server/internal/sms"
 )
 
 // Version 为构建版本，发布时由 -ldflags 注入（见 Makefile）。
@@ -29,11 +30,14 @@ var StartedAt = time.Now()
 
 // Server 持有路由所需的依赖。
 type Server struct {
-	cfg      *config.Config
-	identity *identity.Service
-	database db.Pinger
-	dbConn   *sql.DB
-	sms      *identity.SMSService
+	cfg       *config.Config
+	identity  *identity.Service
+	database  db.Pinger
+	dbConn    *sql.DB
+	sms       *identity.SMSService
+	smsSender interface {
+		Send(context.Context, string, string) error
+	}
 	cosStore *cosstore.Store
 
 	// COS 可用性探测缓存（欠费/停服时自动回退文件服务，见 cosAvailable）。
@@ -58,6 +62,13 @@ func New(cfg *config.Config) *Server {
 	s := &Server{cfg: cfg}
 	if cfg != nil {
 		s.cosStore = cosstore.New(cfg.CosSecretID, cfg.CosSecretKey, cfg.CosBucket, cfg.CosRegion)
+		if cfg.SMSEnabled() {
+			s.sms = identity.NewSMSService()
+			s.smsSender = &smsprovider.Tencent{
+				SecretID: cfg.SMSSecretID, SecretKey: cfg.SMSSecretKey, SdkAppID: cfg.SMSSdkAppID,
+				SignName: cfg.SMSSignName, TemplateID: cfg.SMSTemplateID, Region: cfg.SMSRegion,
+			}
+		}
 	}
 	return s
 }
@@ -133,7 +144,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.PUT("/me/courses/:code/progress", authRequired(s.identity), s.reportCourseProgress)
 	v1.GET("/me/entitlements", authRequired(s.identity), s.listEntitlements)
 	v1.GET("/me/learning-plan", authRequired(s.identity), s.myLearningPlan)
-	v1.POST("/auth/sms/send", s.sendSMS)
+	v1.POST("/auth/sms/send", ipRateLimit(20, time.Hour), s.sendSMS)
 	v1.POST("/auth/logout-all", s.logoutAll)
 	v1.POST("/auth/logout", s.logout)
 	v1.POST("/auth/login", ipRateLimit(20, time.Minute), s.login)

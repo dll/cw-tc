@@ -35,6 +35,10 @@ const (
 	EnvSMSProvider          = "CWTC_SMS_PROVIDER"
 	EnvSMSSecretID          = "CWTC_SMS_SECRET_ID"
 	EnvSMSSecretKey         = "CWTC_SMS_SECRET_KEY"
+	EnvSMSSdkAppID          = "CWTC_SMS_SDK_APP_ID"
+	EnvSMSSignName          = "CWTC_SMS_SIGN_NAME"
+	EnvSMSTemplateID        = "CWTC_SMS_TEMPLATE_ID"
+	EnvSMSRegion            = "CWTC_SMS_REGION"
 	EnvLLMProvider          = "CWTC_LLM_PROVIDER"
 	EnvDeepSeekKey          = "DEEPSEEK_API_KEY"
 	EnvLLMBaseURL           = "CWTC_LLM_BASE_URL"
@@ -121,6 +125,10 @@ type Config struct {
 	SMSProvider          string
 	SMSSecretID          string
 	SMSSecretKey         string
+	SMSSdkAppID          string
+	SMSSignName          string
+	SMSTemplateID        string
+	SMSRegion            string
 	LLMProvider          string
 	LLMAPIKey            string
 	DeepSeekKey          string
@@ -191,6 +199,10 @@ func LoadFrom(get Getenv) (*Config, error) {
 		SMSProvider:          strings.TrimSpace(get(EnvSMSProvider)),
 		SMSSecretID:          strings.TrimSpace(get(EnvSMSSecretID)),
 		SMSSecretKey:         strings.TrimSpace(get(EnvSMSSecretKey)),
+		SMSSdkAppID:          strings.TrimSpace(get(EnvSMSSdkAppID)),
+		SMSSignName:          strings.TrimSpace(get(EnvSMSSignName)),
+		SMSTemplateID:        strings.TrimSpace(get(EnvSMSTemplateID)),
+		SMSRegion:            strings.TrimSpace(get(EnvSMSRegion)),
 		LLMProvider:          strings.TrimSpace(get(EnvLLMProvider)),
 		LLMAPIKey:            strings.TrimSpace(get(EnvLLMAPIKey)),
 		DeepSeekKey:          strings.TrimSpace(get(EnvDeepSeekKey)),
@@ -309,7 +321,8 @@ func (c *Config) Addr() string { return c.Host + ":" + c.Port }
 
 // SMSEnabled 短信通道是否可用（fail-closed：三项齐备才启用）。
 func (c *Config) SMSEnabled() bool {
-	return c.SMSProvider != "" && c.SMSSecretID != "" && c.SMSSecretKey != ""
+	return c.SMSProvider == "tencent" && c.SMSSecretID != "" && c.SMSSecretKey != "" &&
+		c.SMSSdkAppID != "" && c.SMSSignName != "" && c.SMSTemplateID != ""
 }
 
 // LLMEnabled AI 网关是否可用（fail-closed）。
