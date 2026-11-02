@@ -18,6 +18,8 @@ import (
 	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/platform/clock"
 	"github.com/cw-tc/server/internal/platform/db"
+	platformredis "github.com/cw-tc/server/internal/platform/redis"
+	"github.com/cw-tc/server/internal/ratelimit"
 	"github.com/cw-tc/server/internal/redact"
 	smsprovider "github.com/cw-tc/server/internal/sms"
 )
@@ -30,12 +32,13 @@ var StartedAt = time.Now()
 
 // Server 持有路由所需的依赖。
 type Server struct {
-	cfg       *config.Config
-	identity  *identity.Service
-	database  db.Pinger
-	dbConn    *sql.DB
-	sms       *identity.SMSService
-	smsSender interface {
+	cfg         *config.Config
+	identity    *identity.Service
+	database    db.Pinger
+	dbConn      *sql.DB
+	rateLimiter ratelimit.Limiter
+	sms         *identity.SMSService
+	smsSender   interface {
 		Send(context.Context, string, string) error
 	}
 	cosStore *cosstore.Store
@@ -59,9 +62,18 @@ func New(cfg *config.Config) *Server {
 	if cfg != nil && cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	s := &Server{cfg: cfg}
+	s := &Server{cfg: cfg, rateLimiter: ratelimit.NewMemory()}
 	if cfg != nil {
 		s.cosStore = cosstore.New(cfg.CosSecretID, cfg.CosSecretKey, cfg.CosBucket, cfg.CosRegion)
+		if cfg.RedisEnabled() {
+			client, err := platformredis.New(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+			if err != nil {
+				slog.Warn("Redis 连接失败，限频降级为进程内", "err", err)
+			} else {
+				s.rateLimiter = ratelimit.NewFailover(ratelimit.NewRedis(client), s.rateLimiter)
+				slog.Info("Redis 限频已启用", "addr", cfg.RedisAddr, "db", cfg.RedisDB)
+			}
+		}
 		if cfg.SMSEnabled() {
 			s.sms = identity.NewSMSService()
 			s.smsSender = &smsprovider.Tencent{
@@ -144,11 +156,11 @@ func (s *Server) Router() *gin.Engine {
 	v1.PUT("/me/courses/:code/progress", authRequired(s.identity), s.reportCourseProgress)
 	v1.GET("/me/entitlements", authRequired(s.identity), s.listEntitlements)
 	v1.GET("/me/learning-plan", authRequired(s.identity), s.myLearningPlan)
-	v1.POST("/auth/sms/send", ipRateLimit(20, time.Hour), s.sendSMS)
+	v1.POST("/auth/sms/send", s.ipRateLimit(20, time.Hour), s.sendSMS)
 	v1.POST("/auth/logout-all", s.logoutAll)
 	v1.POST("/auth/logout", s.logout)
-	v1.POST("/auth/login", ipRateLimit(20, time.Minute), s.login)
-	v1.POST("/auth/sms-login", ipRateLimit(20, time.Minute), s.smsLogin)
+	v1.POST("/auth/login", s.ipRateLimit(20, time.Minute), s.login)
+	v1.POST("/auth/sms-login", s.ipRateLimit(20, time.Minute), s.smsLogin)
 	v1.POST("/auth/reset-password", s.resetPassword)
 	v1.POST("/auth/password/reset", s.resetPasswordByAdminCode)
 	v1.POST("/auth/password/reset-identity", s.resetPasswordByIdentity)
@@ -158,7 +170,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/me/devices", authRequired(s.identity), s.listDevices)
 	v1.POST("/me/devices/:id/revoke", authRequired(s.identity), s.revokeDevice)
 	v1.POST("/me/logout-all", authRequired(s.identity), s.logoutAllStudent)
-	v1.POST("/promo/validate", ipRateLimit(20, time.Minute), authRequired(s.identity), s.validatePromo)
+	v1.POST("/promo/validate", s.ipRateLimit(20, time.Minute), authRequired(s.identity), s.validatePromo)
 	v1.POST("/orders", authRequired(s.identity), s.createOrder)
 	v1.GET("/orders", authRequired(s.identity), s.listMyOrders)
 	v1.GET("/me/orders", authRequired(s.identity), s.listMyOrders)
@@ -367,7 +379,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/assets/inline/:student/:asset/:expires/:sig/*relative", s.streamInlineAsset)
 	v1.GET("/majors", s.listMajors)
 	v1.GET("/health", s.health)
-	v1.GET("/verify/:certNo", ipRateLimit(20, time.Minute), s.verifyCert)
+	v1.GET("/verify/:certNo", s.ipRateLimit(20, time.Minute), s.verifyCert)
 
 	// 对外公开状态（PRD v2 §7.12 K-2）：只读、聚合、**不含任何个人信息**。
 	// 未启用时路由不注册，避免"存在但不可用"的暧昧状态。

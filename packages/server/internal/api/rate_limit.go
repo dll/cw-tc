@@ -3,44 +3,29 @@ package api
 import (
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/cw-tc/server/internal/ratelimit"
 )
 
-type rateEntry struct {
-	start time.Time
-	count int
-}
+var defaultRateLimiter = ratelimit.NewMemory()
 
-var (
-	rateMu      sync.Mutex
-	rateEntries = map[string]*rateEntry{}
-)
-
-// ipRateLimit 简单的单实例固定窗口限频（Redis 不可用时的兜底；生产多实例仍应接 Redis）。
-func ipRateLimit(limit int, window time.Duration) gin.HandlerFunc {
+// ipRateLimit 按路由 + 客户端 IP 限频；配置 Redis 后多实例共享计数。
+func (s *Server) ipRateLimit(limit int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.FullPath() + "|" + c.ClientIP()
-		now := time.Now()
-		rateMu.Lock()
-		entry, ok := rateEntries[key]
-		if !ok || now.Sub(entry.start) >= window {
-			entry = &rateEntry{start: now}
-			rateEntries[key] = entry
+		limiter := s.rateLimiter
+		if limiter == nil {
+			limiter = defaultRateLimiter
 		}
-		entry.count++
-		count := entry.count
-		if len(rateEntries) > 20000 {
-			for k, v := range rateEntries {
-				if now.Sub(v.start) >= window {
-					delete(rateEntries, k)
-				}
-			}
+		allowed, err := limiter.Allow(c.Request.Context(), key, limit, window)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, envelope{Code: 10904, Msg: "限频服务暂不可用，请稍后再试"})
+			return
 		}
-		rateMu.Unlock()
-		if count > limit {
+		if !allowed {
 			c.Header("Retry-After", strconv.Itoa(int(window.Seconds())))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, envelope{Code: 10903, Msg: "请求过于频繁，请稍后再试"})
 			return

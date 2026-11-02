@@ -65,9 +65,12 @@ const (
 	EnvAlipayGateway        = "CWTC_ALIPAY_GATEWAY"
 
 	// 部署环境与数据库（开发/测试 SQLite；生产 PostgreSQL）
-	EnvDeployEnv = "DEPLOY_ENV"
-	EnvDBDriver  = "CWTC_DB_DRIVER"
-	EnvDBDSN     = "CWTC_DB_DSN"
+	EnvDeployEnv     = "DEPLOY_ENV"
+	EnvDBDriver      = "CWTC_DB_DRIVER"
+	EnvDBDSN         = "CWTC_DB_DSN"
+	EnvRedisAddr     = "CWTC_REDIS_ADDR"
+	EnvRedisPassword = "CWTC_REDIS_PASSWORD"
+	EnvRedisDB       = "CWTC_REDIS_DB"
 
 	// 资源文件根目录（签名下载服务从此目录按 storage_key 取文件）
 	EnvContentDir = "CWTC_CONTENT_DIR"
@@ -158,9 +161,12 @@ type Config struct {
 	LogRedactEnabled    bool
 
 	// 部署环境与数据库（开发/测试 SQLite；生产 PostgreSQL）
-	DeployEnv string
-	DBDriver  string
-	DBDSN     string
+	DeployEnv     string
+	DBDriver      string
+	DBDSN         string
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
 
 	// 资源文件根目录（签名下载服务从此目录取文件）
 	ContentDir string
@@ -229,9 +235,12 @@ func LoadFrom(get Getenv) (*Config, error) {
 		AlipayGateway:        strings.TrimSpace(get(EnvAlipayGateway)),
 
 		// 部署环境与数据库（默认按开发环境；生产必须显式设 postgres）
-		DeployEnv: strings.ToLower(strings.TrimSpace(get(EnvDeployEnv))),
-		DBDriver:  strings.ToLower(strings.TrimSpace(get(EnvDBDriver))),
-		DBDSN:     strings.TrimSpace(get(EnvDBDSN)),
+		DeployEnv:     strings.ToLower(strings.TrimSpace(get(EnvDeployEnv))),
+		DBDriver:      strings.ToLower(strings.TrimSpace(get(EnvDBDriver))),
+		DBDSN:         strings.TrimSpace(get(EnvDBDSN)),
+		RedisAddr:     strings.TrimSpace(get(EnvRedisAddr)),
+		RedisPassword: strings.TrimSpace(get(EnvRedisPassword)),
+		RedisDB:       intDefault(get(EnvRedisDB), 0),
 
 		ContentDir: strings.TrimSpace(get(EnvContentDir)),
 
@@ -318,6 +327,9 @@ func (c *Config) IsProduction() bool { return c.DeployEnv == "production" }
 
 // Addr 返回监听地址。
 func (c *Config) Addr() string { return c.Host + ":" + c.Port }
+
+// RedisEnabled 是否配置 Redis（多实例共享限频）。
+func (c *Config) RedisEnabled() bool { return c != nil && strings.TrimSpace(c.RedisAddr) != "" }
 
 // SMSEnabled 短信通道是否可用（fail-closed：三项齐备才启用）。
 func (c *Config) SMSEnabled() bool {
