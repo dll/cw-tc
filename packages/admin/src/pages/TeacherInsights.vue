@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   createRevisionPlan,
+  getRevisionPlanEffect,
   listRevisionPlans,
   listTeacherInsights,
   updateRevisionPlan,
@@ -64,9 +65,27 @@ async function submitPlan() {
   }
 }
 
+async function planEffect(row: RevisionPlanItem) {
+  try {
+    const data = await getRevisionPlanEffect(row.id)
+    ElMessageBox.alert(JSON.stringify(data, null, 2), '改版效果对比', { confirmButtonText: '关闭' })
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '效果读取失败')
+  }
+}
+
 async function setPlan(row: RevisionPlanItem, status: string) {
   try {
     let reason = ''
+    if (status === 'done') {
+      const { value } = await ElMessageBox.prompt('完成改版必须关联版本记录 course_revision ID', '完成改版', {
+        inputValidator: (v: string) => (Number(v) > 0 ? true : '请输入有效版本 ID'),
+      })
+      await updateRevisionPlan(row.id, status, '', Number(value))
+      ElMessage.success('已完成并关联版本')
+      await load()
+      return
+    }
     if (status === 'abandoned') {
       const { value } = await ElMessageBox.prompt('放弃改版必须填写原因', '放弃改版', { inputValidator: (v: string) => (v && v.trim() ? true : '原因必填') })
       reason = value.trim()
@@ -124,6 +143,7 @@ onMounted(load)
         <template #default="{ row }">
           <el-button size="small" @click="setPlan(row, 'in_progress')">进行中</el-button>
           <el-button size="small" type="success" @click="setPlan(row, 'done')">完成</el-button>
+          <el-button v-if="row.status === 'done'" size="small" @click="planEffect(row)">效果</el-button>
           <el-button size="small" type="danger" plain @click="setPlan(row, 'abandoned')">放弃</el-button>
         </template>
       </el-table-column>

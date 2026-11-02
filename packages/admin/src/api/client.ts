@@ -1151,12 +1151,14 @@ export async function createRevisionPlan(input: {
 }): Promise<void> {
   await unwrap<unknown>(http.post('/teacher/revision-plans', input))
 }
-export async function updateRevisionPlan(id: number, status: string, abandonReason = ''): Promise<void> {
-  await unwrap<unknown>(http.patch(`/teacher/revision-plans/${id}`, { status, abandon_reason: abandonReason }))
+export async function updateRevisionPlan(id: number, status: string, abandonReason = '', revisionId = 0): Promise<void> {
+  await unwrap<unknown>(http.patch(`/teacher/revision-plans/${id}`, { status, abandon_reason: abandonReason, revision_id: revisionId }))
 }
 export async function getAIDraftEffect(id: number, role: 'teacher' | 'admin'): Promise<Record<string, unknown>> {
   return unwrap(http.get(`/${role}/ai-drafts/${id}/effect`))
 }
 export async function exportAIDraft(id: number, role: 'teacher' | 'admin'): Promise<Record<string, unknown>> {
   return unwrap(http.get(`/${role}/ai-drafts/${id}/export`))
+}export async function getRevisionPlanEffect(id: number): Promise<Record<string, unknown>> {
+  return unwrap(http.get(`/teacher/revision-plans/${id}/effect`))
 }

@@ -50,7 +50,7 @@ func TestTeacherInsightsPlansAndCompare(t *testing.T) {
 		}
 	}
 	created := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/revision-plans",
-		`{"course_code":"C1","source":"ai","insight_id":1,"problem":"例子不足","evidence":"周报建议 0","measure":"补充案例","priority":"P1","target_metric":"learning +20%"}`,
+		`{"course_code":"C1","source":"ai","insight_id":1,"suggestion_index":0,"problem":"例子不足","evidence":"周报建议 0","measure":"补充案例","priority":"P1","target_metric":"learning +20%"}`,
 		teacher)
 	if created.Code != http.StatusOK || !containsAll(created.Body.String(), `"id"`) {
 		t.Fatalf("创建改版计划失败: %d %s", created.Code, created.Body.String())
@@ -65,13 +65,24 @@ func TestTeacherInsightsPlansAndCompare(t *testing.T) {
 	if list := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/revision-plans?course_code=C1", "", teacher); list.Code != http.StatusOK || !containsAll(list.Body.String(), `"evidence":"周报建议 0"`) {
 		t.Fatalf("改版计划列表异常: %d", list.Code)
 	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/revision-plans/"+itoaTest(planID)+"/effect", "", teacher); got.Code != http.StatusConflict {
+		t.Fatalf("未完成计划不应有效果: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/revision-plans",
+		`{"course_code":"C1","source":"ai","insight_id":1,"suggestion_index":99,"problem":"p","evidence":"e","measure":"m","target_metric":"t"}`, teacher); got.Code != http.StatusBadRequest {
+		t.Fatalf("建议序号越界应 400: %d", got.Code)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPatch, "/api/v1/teacher/revision-plans/"+itoaTest(planID),
+		`{"status":"done","revision_id":999}`, teacher); got.Code != http.StatusBadRequest {
+		t.Fatalf("版本不属于本课应 400: %d", got.Code)
+	}
 	if got := performJSONWithBearer(t, r, http.MethodPatch, "/api/v1/teacher/revision-plans/"+itoaTest(planID),
 		`{"status":"abandoned"}`, teacher); got.Code != http.StatusBadRequest {
 		t.Fatalf("放弃缺原因应 400，实际 %d", got.Code)
 	}
 	if got := performJSONWithBearer(t, r, http.MethodPatch, "/api/v1/teacher/revision-plans/"+itoaTest(planID),
-		`{"status":"done"}`, teacher); got.Code != http.StatusOK {
-		t.Fatalf("完成改版计划失败: %d", got.Code)
+		`{"status":"done"}`, teacher); got.Code != http.StatusBadRequest {
+		t.Fatalf("完成改版必须关联版本记录: %d", got.Code)
 	}
 	if got := performJSONWithBearer(t, r, http.MethodPatch, "/api/v1/teacher/revision-plans/"+itoaTest(planID),
 		`{"status":"abandoned","abandon_reason":"优先级调整"}`, other); got.Code != http.StatusForbidden {
@@ -81,6 +92,10 @@ func TestTeacherInsightsPlansAndCompare(t *testing.T) {
 	if _, err := database.Exec(`INSERT INTO course_revision(id,course_code,revision_no,content_version,changed_digest,published_at)
 		VALUES(1,'C1',1,2,'补充案例','2026-10-31T00:00:00Z')`); err != nil {
 		t.Fatal(err)
+	}
+	if got := performJSONWithBearer(t, r, http.MethodPatch, "/api/v1/teacher/revision-plans/"+itoaTest(planID),
+		`{"status":"done","revision_id":1}`, teacher); got.Code != http.StatusOK {
+		t.Fatalf("关联版本完成改版失败: %d %s", got.Code, got.Body.String())
 	}
 	for _, row := range []string{
 		`INSERT INTO course_stat_daily(course_code,stat_date,views_uv,favorites,learning,completed,examined,certified,orders,paid,unlock,rating_count,computed_at) VALUES('C1','2026-10-20',10,1,5,2,1,1,1,1,5,0,'2026-10-20T00:00:00Z')`,
@@ -93,6 +108,10 @@ func TestTeacherInsightsPlansAndCompare(t *testing.T) {
 	compare := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/revisions/1/compare", "", teacher)
 	if compare.Code != http.StatusOK || !containsAll(compare.Body.String(), `"before"`, `"after"`, `"learning":5`, `"learning":8`) {
 		t.Fatalf("版本对比异常: %d %s", compare.Code, compare.Body.String())
+	}
+	planEffect := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/teacher/revision-plans/"+itoaTest(planID)+"/effect", "", teacher)
+	if planEffect.Code != http.StatusOK || !containsAll(planEffect.Body.String(), `"plan_id"`, `"learning":5`, `"learning":8`) {
+		t.Fatalf("改版计划效果异常: %d %s", planEffect.Code, planEffect.Body.String())
 	}
 	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/teacher/insights/1/verdict", `{"verdict":"bad"}`, teacher); got.Code != http.StatusBadRequest {
 		t.Fatalf("非法周报结论应 400: %d", got.Code)

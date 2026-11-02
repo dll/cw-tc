@@ -311,6 +311,7 @@
 | POST | `/teacher/insights/{id}/verdict` | 教师+归属 | **采纳 / 驳回**（记意见）—— **不能编辑报告正文** |
 | GET · POST | `/teacher/revision-plans` | 教师+归属 | **改版计划列表 / 新建**（`problem` / `evidence` / `measure` / `target_metric` **必填**） |
 | PATCH | `/teacher/revision-plans/{id}` | 教师+归属 | 更新状态（`已完成` 时**关联 `course_revision`**；`已放弃` 须填原因） |
+| GET | /teacher/revision-plans/{id}/effect | 教师+归属 | **改版效果**：计划完成且关联版本后，按 course_revision.published_at 对比前后 30 天统计 |
 | GET | `/teacher/revisions/{id}/compare` | 教师+归属 | **改版前后对比**（按 `content_version` 切分，窗口默认前后各 30 天） |
 
 ### 2.11 管理后台（模块 E）

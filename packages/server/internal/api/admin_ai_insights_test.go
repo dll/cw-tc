@@ -11,7 +11,7 @@ func TestAdminGenerateAIInsight(t *testing.T) {
 	invalidEvidence := false
 	invalidJSON := false
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		evidence := `["stats.learning","comment.1","comments.count","topics.unanswered"]`
+		evidence := `["stats.learning","comment.1","comments.count","topics.unanswered","plan.1.after.learning"]`
 		if invalidEvidence {
 			evidence = `["made.up"]`
 		}
@@ -35,13 +35,29 @@ func TestAdminGenerateAIInsight(t *testing.T) {
 		VALUES('C1','2026-10-31',10,2,1,0,0,0,1,1,1,0,'2026-10-31T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.Exec(`INSERT INTO revision_plan(id,course_code,source,problem,evidence,measure,target_metric,status,created_at,updated_at)
+		VALUES(1,'C1','ai','例子不足','周报建议','补充案例','learning +20%','done','2026-10-01T00:00:00Z','2026-10-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO course_revision(id,course_code,revision_no,content_version,plan_id,changed_digest,published_at)
+		VALUES(1,'C1',1,2,1,'补充案例','2026-10-31T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO course_stat_daily(course_code,stat_date,views_uv,favorites,learning,completed,examined,certified,orders,paid,unlock,rating_count,computed_at) VALUES('C1','2026-10-20',10,1,5,2,1,1,1,1,5,0,'2026-10-20T00:00:00Z')`,
+		`INSERT INTO course_stat_daily(course_code,stat_date,views_uv,favorites,learning,completed,examined,certified,orders,paid,unlock,rating_count,computed_at) VALUES('C1','2026-11-05',20,2,8,4,3,2,2,2,8,0,'2026-11-05T00:00:00Z')`,
+	} {
+		if _, err := database.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := database.Exec(`INSERT INTO course_comment(id,course_code,student_id,rating,body,nickname_shown,status)
 		VALUES(1,'C1',1,3,'希望增加更多实例和练习，特别是分布式一致性的实际案例。','学员***','visible')`); err != nil {
 		t.Fatal(err)
 	}
 	r := server.Router()
 	got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/courses/C1/ai-insights/generate", `{}`, token)
-	if got.Code != http.StatusOK || !containsAll(got.Body.String(), `"suggestions"`, `"evidence_map"`, `"filing_no":"FIL-INSIGHT"`, `"stats.learning"`) {
+	if got.Code != http.StatusOK || !containsAll(got.Body.String(), `"suggestions"`, `"evidence_map"`, `"filing_no":"FIL-INSIGHT"`, `"stats.learning"`, `"plan.1.after.learning"`) {
 		t.Fatalf("AI 运营报告生成失败: %d %s", got.Code, got.Body.String())
 	}
 	list := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/courses/C1/ai-insights", "", token)

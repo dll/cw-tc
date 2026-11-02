@@ -152,6 +152,39 @@ func (s *Server) adminGenerateAIInsight(c *gin.Context) {
 			}
 		}
 	}
+	type planEvidence struct {
+		id          int64
+		problem     string
+		publishedAt string
+	}
+	planItems := make([]planEvidence, 0)
+	planRows, err := s.dbConn.QueryContext(c.Request.Context(),
+		`SELECT p.id, p.problem, CAST(r.published_at AS TEXT)
+		 FROM revision_plan p JOIN course_revision r ON r.plan_id = p.id
+		 WHERE p.course_code = $1 AND p.status = 'done' ORDER BY r.published_at DESC LIMIT 10`, code)
+	if err == nil {
+		for planRows.Next() {
+			var item planEvidence
+			if planRows.Scan(&item.id, &item.problem, &item.publishedAt) == nil {
+				planItems = append(planItems, item)
+			}
+		}
+		planRows.Close()
+	}
+	for _, plan := range planItems {
+		evidence[fmt.Sprintf("plan.%d.problem", plan.id)] = plan.problem
+		evidence[fmt.Sprintf("plan.%d.published_at", plan.id)] = plan.publishedAt
+		if at, err := time.Parse(time.RFC3339, plan.publishedAt); err == nil {
+			before := s.statsWindow(c, code, at.AddDate(0, 0, -30).Format("2006-01-02"), at.Format("2006-01-02"))
+			after := s.statsWindow(c, code, at.Format("2006-01-02"), at.AddDate(0, 0, 30).Format("2006-01-02"))
+			for key, value := range before {
+				evidence[fmt.Sprintf("plan.%d.before.%s", plan.id, key)] = value
+			}
+			for key, value := range after {
+				evidence[fmt.Sprintf("plan.%d.after.%s", plan.id, key)] = value
+			}
+		}
+	}
 	evidenceJSON, _ := json.Marshal(evidence)
 	prompt := fmt.Sprintf("课程：%s\n可用证据（建议只能引用这些 key）：%s\n评价：%s\n讨论：%s\n请只输出 JSON：{\"summary\":\"...\",\"signals\":[{\"key\":\"...\",\"text\":\"...\"}],\"feedback_clusters\":[{\"label\":\"...\",\"count\":1,\"comment_ids\":[]}],\"suggestions\":[{\"problem\":\"...\",\"measure\":\"...\",\"priority\":\"P1\",\"target_metric\":\"...\",\"evidence\":[\"stats.learning\"]}],\"unknowns\":[\"...\"]}。每条建议必须至少引用一个证据 key，不得编造。",
 		courseName, string(evidenceJSON), maybeJSON(comments), maybeJSON(topics))

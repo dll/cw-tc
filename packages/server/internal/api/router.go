@@ -296,6 +296,7 @@ func (s *Server) Router() *gin.Engine {
 	teacher.GET("/revision-plans", s.teacherListRevisionPlans)
 	teacher.POST("/revision-plans", s.teacherCreateRevisionPlan)
 	teacher.PATCH("/revision-plans/:id", s.teacherUpdateRevisionPlan)
+	teacher.GET("/revision-plans/:id/effect", s.teacherRevisionPlanEffect)
 	teacher.GET("/revisions/:id/compare", s.teacherRevisionCompare)
 	teacher.GET("/ai-drafts", s.teacherListAIDrafts)
 	teacher.POST("/ai-drafts", s.teacherCreateAIDraft)

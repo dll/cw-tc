@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -150,14 +151,15 @@ func (s *Server) teacherListRevisionPlans(c *gin.Context) {
 
 func (s *Server) teacherCreateRevisionPlan(c *gin.Context) {
 	var input struct {
-		CourseCode   string `json:"course_code"`
-		Source       string `json:"source"`
-		InsightID    int64  `json:"insight_id"`
-		Problem      string `json:"problem"`
-		Evidence     string `json:"evidence"`
-		Measure      string `json:"measure"`
-		Priority     string `json:"priority"`
-		TargetMetric string `json:"target_metric"`
+		CourseCode      string `json:"course_code"`
+		Source          string `json:"source"`
+		InsightID       int64  `json:"insight_id"`
+		Problem         string `json:"problem"`
+		Evidence        string `json:"evidence"`
+		Measure         string `json:"measure"`
+		Priority        string `json:"priority"`
+		TargetMetric    string `json:"target_metric"`
+		SuggestionIndex *int   `json:"suggestion_index"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil || strings.TrimSpace(input.CourseCode) == "" ||
 		strings.TrimSpace(input.Problem) == "" || strings.TrimSpace(input.Evidence) == "" ||
@@ -188,16 +190,34 @@ func (s *Server) teacherCreateRevisionPlan(c *gin.Context) {
 		}
 		insight = input.InsightID
 	}
+	suggestionIndex := any(nil)
+	if input.SuggestionIndex != nil {
+		if input.InsightID <= 0 || *input.SuggestionIndex < 0 {
+			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "suggestion_index 必须配合 insight_id 且非负"})
+			return
+		}
+		var suggestionsRaw string
+		if err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT suggestions FROM course_insight WHERE id=$1`, input.InsightID).Scan(&suggestionsRaw); err != nil {
+			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "关联报告不存在"})
+			return
+		}
+		var suggestions []any
+		if json.Unmarshal([]byte(suggestionsRaw), &suggestions) != nil || *input.SuggestionIndex >= len(suggestions) {
+			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "suggestion_index 超出报告建议范围"})
+			return
+		}
+		suggestionIndex = *input.SuggestionIndex
+	}
 	st := c.MustGet(staffContextKey).(staff.Staff)
 	now := time.Now().UTC().Format(time.RFC3339)
 	var id int64
 	if err := s.dbConn.QueryRowContext(c.Request.Context(),
 		`INSERT INTO revision_plan(course_code, source, insight_id, problem, evidence, measure, priority,
-		   target_metric, owner_id, status, created_at, updated_at)
-		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'evaluating',$10,$10) RETURNING id`,
+		   target_metric, owner_id, status, created_at, updated_at, suggestion_index)
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'evaluating',$10,$10,$11) RETURNING id`,
 		input.CourseCode, input.Source, insight, strings.TrimSpace(input.Problem), strings.TrimSpace(input.Evidence),
 		strings.TrimSpace(input.Measure), nullIfBlank(input.Priority), strings.TrimSpace(input.TargetMetric),
-		st.ID, now).Scan(&id); err != nil {
+		st.ID, now, suggestionIndex).Scan(&id); err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "改版计划保存失败"})
 		return
 	}
@@ -213,6 +233,7 @@ func (s *Server) teacherUpdateRevisionPlan(c *gin.Context) {
 	var input struct {
 		Status        string `json:"status"`
 		AbandonReason string `json:"abandon_reason"`
+		RevisionID    int64  `json:"revision_id"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
@@ -236,15 +257,72 @@ func (s *Server) teacherUpdateRevisionPlan(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "放弃必须填写原因"})
 		return
 	}
+	if input.Status == "done" {
+		if input.RevisionID <= 0 {
+			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "完成改版必须关联 course_revision（版本记录）"})
+			return
+		}
+		var revisionCourse string
+		if err := s.dbConn.QueryRowContext(c.Request.Context(),
+			`SELECT course_code FROM course_revision WHERE id=$1`, input.RevisionID).Scan(&revisionCourse); err != nil || revisionCourse != code {
+			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "版本记录不属于本课"})
+			return
+		}
+		if _, err := s.dbConn.ExecContext(c.Request.Context(),
+			`UPDATE course_revision SET plan_id=$1 WHERE id=$2`, id, input.RevisionID); err != nil {
+			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "改版计划更新失败"})
+			return
+		}
+	}
 	if _, err := s.dbConn.ExecContext(c.Request.Context(),
 		`UPDATE revision_plan SET status=$1, abandon_reason=$2, updated_at=$3 WHERE id=$4`,
 		input.Status, nullIfBlank(input.AbandonReason), time.Now().UTC().Format(time.RFC3339), id); err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "改版计划更新失败"})
 		return
 	}
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: c.MustGet(staffContextKey).(staff.Staff).ID,
+		ActorRole: string(c.MustGet(staffContextKey).(staff.Staff).Role), Action: "revision_plan.update",
+		TargetType: "revision_plan", TargetID: strconv.FormatInt(id, 10), After: input.Status, IP: c.ClientIP(),
+	})
 	c.JSON(http.StatusOK, envelope{Code: 0})
 }
 
+// teacherRevisionPlanEffect GET /teacher/revision-plans/:id/effect —— 计划完成后的前后 30 天效果。
+func (s *Server) teacherRevisionPlanEffect(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var code, status string
+	if err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT course_code, status FROM revision_plan WHERE id=$1`, id).Scan(&code, &status); err != nil {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "改版计划不存在"})
+		return
+	}
+	if _, ok := s.teacherOwnsCode(c, code); !ok {
+		return
+	}
+	if status != "done" {
+		c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: "改版计划未完成，暂无效果数据"})
+		return
+	}
+	var publishedAt string
+	if err := s.dbConn.QueryRowContext(c.Request.Context(),
+		`SELECT CAST(published_at AS TEXT) FROM course_revision WHERE plan_id=$1 ORDER BY revision_no DESC LIMIT 1`, id).
+		Scan(&publishedAt); err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: "计划尚未关联版本记录"})
+		return
+	}
+	at, err := time.Parse(time.RFC3339, publishedAt)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "版本时间异常"})
+		return
+	}
+	before := s.statsWindow(c, code, at.AddDate(0, 0, -30).Format("2006-01-02"), at.Format("2006-01-02"))
+	after := s.statsWindow(c, code, at.Format("2006-01-02"), at.AddDate(0, 0, 30).Format("2006-01-02"))
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+		"plan_id": id, "course_code": code, "published_at": publishedAt,
+		"before": before, "after": after,
+	}})
+}
 func (s *Server) teacherRevisionCompare(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var code, publishedAt string
