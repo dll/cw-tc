@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cw-tc/server/internal/offline"
 	"github.com/cw-tc/server/internal/risk"
 )
 
@@ -110,6 +111,10 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (Refund, error) {
 
 	if in.Kind == "normal" {
 		if _, err := tx.ExecContext(ctx, `UPDATE entitlement SET revoked_at = $1, revoke_reason = 'order_refunded' WHERE student_id = $2 AND course_id = $3 AND revoked_at IS NULL`, time.Now().UTC().Format(time.RFC3339), studentID, courseID); err != nil {
+			return Refund{}, err
+		}
+		// B-11：退款后离线内容必须失效 —— 同一事务内撤销下载授权（reward 保留，不撤）。
+		if err := offline.RevokeForCourse(ctx, tx, studentID, courseID, time.Now().UTC()); err != nil {
 			return Refund{}, err
 		}
 		// 铁律 4 / M3-08：退款撤证联动 —— 同一事务内连带撤销该学员本课的有效证书，

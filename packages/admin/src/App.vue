@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { ChatDotRound, EditPen, Money, Reading, School, Setting, TrendCharts, User } from '@element-plus/icons-vue'
 import { getRole, pendingRegistrationCount } from '@/api/client'
 
-// M0 骨架：左侧菜单 + 路由出口。菜单项与 router.ts 一一对应，
-// M1 起按登录角色（管理员 / 教师）过滤可见项。
+// 左侧菜单按业务域分组（级联菜单）；进入页面时自动展开当前分组、收起其它分组。
+type MenuItem = { path: string; label: string; badge?: 'pending' }
+type MenuGroup = { key: string; label: string; icon: unknown; items: MenuItem[] }
+
 const route = useRoute()
-const title = computed(() => (route.path.startsWith('/teacher') ? '教师工作台' : '管理后台'))
-const isLogin = computed(() => route.path === '/login' || route.path === '/change-password')
+const title = computed(() => (route.path.startsWith('/admin/teacher') ? '教师工作台' : '管理后台'))
+const isLogin = computed(() => route.path === '/admin/login' || route.path === '/admin/change-password')
 const pendingCount = ref(0)
 let pendingTimer: ReturnType<typeof setInterval> | undefined
 async function refreshPending() {
@@ -20,51 +23,163 @@ onMounted(() => {
 })
 onUnmounted(() => { if (pendingTimer) clearInterval(pendingTimer) })
 
-const adminMenus = { group: '管理端', items: [
-  { path: '/admin/courses', label: '课程管理' },
-  { path: '/admin/content-requests', label: '下架申请' },
-  { path: '/admin/operations', label: '运营位' },
-  { path: '/admin/majors', label: '专业分类' },
-  { path: '/admin/orders', label: '订单与退款' },
-  { path: '/admin/certs', label: '证书台账' },
-  { path: '/admin/comments', label: '评价审核' },
-  { path: '/admin/suggestions', label: '学员建议' },
-  { path: '/admin/kb', label: '知识库重建' },
-  { path: '/admin/broadcast', label: '广播通知' },
-  { path: '/admin/users', label: '用户管理' },
-  { path: '/admin/staff', label: '内部人员' },
-  { path: '/admin/audit', label: '审计日志' },
-] }
-const teacherMenus = { group: '教师工作台', items: [
-  { path: '/teacher/courses', label: '我的课程' },
-  { path: '/teacher/courses/new', label: '新建课程' },
-  { path: '/teacher/review', label: '阅卷台' },
-] }
+const adminGroups: MenuGroup[] = [
+  {
+    key: 'content',
+    label: '内容与课程',
+    icon: Reading,
+    items: [
+      { path: '/admin/courses', label: '课程管理' },
+      { path: '/admin/content-requests', label: '下架申请' },
+      { path: '/admin/majors', label: '专业分类' },
+      { path: '/admin/kb', label: '知识库重建' },
+      { path: '/admin/ai-drafts', label: 'AI 内容二审' },
+      { path: '/admin/ai-insights', label: 'AI 运营报告' },
+      { path: '/admin/public-site', label: '对外展示' },
+      { path: '/admin/promo', label: '优惠码' },
+      { path: '/admin/discussions', label: '讨论治理' },
+    ],
+  },
+  {
+    key: 'operation',
+    label: '运营与数据',
+    icon: TrendCharts,
+    items: [
+      { path: '/admin/operations', label: '运营位' },
+      { path: '/admin/insights', label: '运营统计' },
+      { path: '/admin/comments', label: '评价审核' },
+      { path: '/admin/suggestions', label: '学员建议' },
+      { path: '/admin/broadcast', label: '广播通知' },
+    ],
+  },
+  {
+    key: 'users',
+    label: '用户与权限',
+    icon: User,
+    items: [
+      { path: '/admin/users', label: '用户管理', badge: 'pending' },
+      { path: '/admin/appeals', label: '账号申诉' },
+      { path: '/admin/deletions', label: '注销审核' },
+      { path: '/admin/entitlements', label: '权益台账' },
+      { path: '/admin/staff', label: '内部人员' },
+      { path: '/admin/admins', label: '管理员账号' },
+      { path: '/admin/audit', label: '审计日志' },
+    ],
+  },
+  {
+    key: 'finance',
+    label: '交易与证书',
+    icon: Money,
+    items: [
+      { path: '/admin/orders', label: '订单管理' },
+      { path: '/admin/refunds', label: '退款处理' },
+      { path: '/admin/reconcile', label: '对账与渠道' },
+      { path: '/admin/certs', label: '证书台账' },
+    ],
+  },
+  {
+    key: 'security',
+    label: '风控与系统',
+    icon: Setting,
+    items: [
+      { path: '/admin/risk', label: '风控与黑名单' },
+      { path: '/admin/exam-anomalies', label: '测评异常复核' },
+      { path: '/admin/settings', label: '系统配置' },
+    ],
+  },
+]
 
-const menus = computed(() => {
+const teacherGroups: MenuGroup[] = [
+  {
+    key: 'teaching',
+    label: '我的教学',
+    icon: School,
+    items: [
+      { path: '/admin/teacher/courses', label: '我的课程' },
+      { path: '/admin/teacher/courses/new', label: '新建课程' },
+    ],
+  },
+  {
+    key: 'review',
+    label: '评审与阅卷',
+    icon: EditPen,
+    items: [
+      { path: '/admin/teacher/review', label: '阅卷台' },
+      { path: '/admin/teacher/ai-drafts', label: 'AI 内容草稿' },
+      { path: '/admin/teacher/insights', label: 'AI 周报与改版' },
+    ],
+  },
+  {
+    key: 'qa',
+    label: '答疑与讨论',
+    icon: ChatDotRound,
+    items: [
+      { path: '/admin/teacher/discussions', label: '讨论与问答' },
+    ],
+  },
+]
+
+const menus = computed<MenuGroup[]>(() => {
   const role = getRole()
-  if (role === 'teacher') return [teacherMenus]
-  if (role === 'admin_ops' || role === 'admin_super') return [adminMenus]
+  if (role === 'teacher') return teacherGroups
+  if (role === 'admin_ops' || role === 'admin_super') return adminGroups
   // 旧会话尚未写入角色时保持兼容；重新登录后按角色收敛。
-  return [adminMenus, teacherMenus]
+  return [...adminGroups, ...teacherGroups]
 })
+
+function groupKeyForPath(path: string): string {
+  for (const group of menus.value) {
+    if (group.items.some((item) => item.path === path)) return group.key
+  }
+  return ''
+}
+
+const menuRef = ref<{ open: (index: string) => void; close: (index: string) => void } | null>(null)
+const initialOpenGroups = computed(() => {
+  const key = groupKeyForPath(route.path)
+  return key ? [key] : []
+})
+
+watch(
+  () => route.path,
+  async (next, prev) => {
+    const nextKey = groupKeyForPath(next)
+    const prevKey = prev ? groupKeyForPath(prev) : ''
+    await nextTick()
+    if (prevKey && prevKey !== nextKey) menuRef.value?.close(prevKey)
+    if (nextKey) menuRef.value?.open(nextKey)
+  },
+)
 </script>
 
 <template>
   <router-view v-if="isLogin" />
   <el-container v-else class="layout">
-    <el-aside width="220px" class="aside">
+    <el-aside width="232px" class="aside">
       <div class="brand">第三课堂</div>
       <div class="brand-sub">{{ title }}</div>
-      <el-menu :default-active="route.path" router>
-        <template v-for="m in menus" :key="m.group">
-          <el-menu-item-group :title="m.group">
-            <el-menu-item v-for="it in m.items" :key="it.path" :index="it.path">
-              {{ it.label }}
-              <el-badge v-if="it.path === '/admin/users' && pendingCount > 0" :value="pendingCount" style="margin-left: 10px" />
-            </el-menu-item>
-          </el-menu-item-group>
-        </template>
+      <el-menu
+        ref="menuRef"
+        :default-active="route.path"
+        :default-openeds="initialOpenGroups"
+        unique-opened
+        router
+        class="menu"
+      >
+        <el-sub-menu v-for="group in menus" :key="group.key" :index="group.key">
+          <template #title>
+            <el-icon><component :is="group.icon" /></el-icon>
+            <span>{{ group.label }}</span>
+          </template>
+          <el-menu-item v-for="item in group.items" :key="item.path" :index="item.path">
+            <span>{{ item.label }}</span>
+            <el-badge
+              v-if="item.badge === 'pending' && pendingCount > 0"
+              :value="pendingCount"
+              class="menu-badge"
+            />
+          </el-menu-item>
+        </el-sub-menu>
       </el-menu>
     </el-aside>
     <el-main>
@@ -75,8 +190,10 @@ const menus = computed(() => {
 
 <style scoped>
 .layout { height: 100vh; }
-.aside { border-right: 1px solid var(--el-border-color-light); }
+.aside { border-right: 1px solid var(--el-border-color-light); display: flex; flex-direction: column; }
 .brand { padding: 16px 16px 0; font-size: 16px; font-weight: 600; }
 .brand-sub { padding: 4px 16px 16px; font-size: 12px; color: var(--el-text-color-secondary); }
+.menu { border-right: none; flex: 1; overflow-y: auto; }
+.menu-badge { margin-left: auto; }
+:deep(.el-menu-item) { display: flex; align-items: center; }
 </style>
-

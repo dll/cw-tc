@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listTeacherCourses, createTeacherCourse, updateTeacherCourse, deleteTeacherCourse, submitCourse, listPublicMajors, createContentRequest, listMyContentRequests, type AdminCourse, type ContentRequestItem, type MajorItem } from '@/api/client'
+import { listTeacherCourses, createTeacherCourse, updateTeacherCourse, deleteTeacherCourse, submitCourse, listPublicMajors, createContentRequest, listMyContentRequests, getTeacherCourseContent, addTeacherLecture, uploadTeacherAsset, deleteTeacherAsset, type AdminCourse, type ContentRequestItem, type MajorItem, type TeacherCourseContent } from '@/api/client'
 
 const rows = ref<AdminCourse[]>([])
 const loading = ref(false)
@@ -28,6 +28,83 @@ onMounted(() => {
   loadMajors()
 })
 
+
+// 内容管理：讲次 + 资源上传（HTML / MP4 / Markdown / 课件 / 代码）
+const contentVisible = ref(false)
+const contentLoading = ref(false)
+const contentTarget = ref<AdminCourse | null>(null)
+const content = ref<TeacherCourseContent | null>(null)
+const newLectureTitle = ref('')
+const uploadNo = ref<number | null>(null)
+const uploadKind = ref('')
+const uploadTitle = ref('')
+const uploadFile = ref<File | null>(null)
+
+async function openContent(row: AdminCourse) {
+  contentTarget.value = row
+  contentVisible.value = true
+  contentLoading.value = true
+  content.value = null
+  newLectureTitle.value = ''
+  try {
+    content.value = await getTeacherCourseContent(row.course_code)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '内容读取失败')
+    contentVisible.value = false
+  } finally {
+    contentLoading.value = false
+  }
+}
+
+async function refreshContent() {
+  if (!contentTarget.value) return
+  content.value = await getTeacherCourseContent(contentTarget.value.course_code)
+}
+
+async function addLecture() {
+  if (!contentTarget.value || !newLectureTitle.value.trim()) return
+  try {
+    await addTeacherLecture(contentTarget.value.course_code, { title: newLectureTitle.value.trim(), is_preview: false })
+    newLectureTitle.value = ''
+    await refreshContent()
+    ElMessage.success('已新增讲次')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '新增讲次失败')
+  }
+}
+
+function onPickFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  uploadFile.value = input.files?.[0] ?? null
+}
+
+async function submitUpload() {
+  if (!contentTarget.value || !uploadNo.value || !uploadFile.value) {
+    ElMessage.warning('请选择讲次与文件')
+    return
+  }
+  try {
+    await uploadTeacherAsset(contentTarget.value.course_code, uploadNo.value, uploadKind.value, uploadTitle.value, uploadFile.value)
+    uploadFile.value = null
+    uploadTitle.value = ''
+    uploadFile.value = null
+    await refreshContent()
+    ElMessage.success('资源已上传')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '上传失败')
+  }
+}
+
+async function removeAsset(lectureNo: number, assetId: number) {
+  if (!contentTarget.value) return
+  try {
+    await ElMessageBox.confirm('确认删除该资源？', '删除资源', { type: 'warning' })
+    await deleteTeacherAsset(contentTarget.value.course_code, lectureNo, assetId)
+    await refreshContent()
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessage.error(e.message)
+  }
+}
 const dialogVisible = ref(false)
 const form = ref({ course_code: '', name: '', line: 'main', major_id: null as number | null, intro: '' })
 
@@ -161,8 +238,9 @@ async function openMyRequests() {
       <el-table-column label="状态" width="100">
         <template #default="{ row }">{{ statusLabel[row.status] ?? row.status }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="360">
+      <el-table-column label="操作" width="420">
         <template #default="{ row }">
+          <el-button size="small" type="success" plain @click="openContent(row)">内容</el-button>
           <el-button v-if="row.status === 'proposed' || row.status === 'rejected'" size="small" @click="openEdit(row)">
             编辑
           </el-button>
@@ -279,5 +357,75 @@ async function openMyRequests() {
       </el-table>
       <el-empty v-if="!myRequests.length" description="暂无申请记录" />
     </el-dialog>
+
+    <el-drawer v-model="contentVisible" :title="contentTarget ? `课程内容 · ${contentTarget.name}` : '课程内容'" size="72%">
+      <div v-loading="contentLoading">
+        <template v-if="content">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            :title="content.editable ? '可编辑：新增讲次、上传 HTML / MP4 / Markdown / 课件 / 代码资源' : '当前状态只读（已提交 / 已上架课程请走版本或下架申请）'"
+            style="margin-bottom: 12px"
+          />
+          <template v-if="content.editable">
+            <div style="display: flex; gap: 12px; margin-bottom: 12px">
+              <el-input v-model="newLectureTitle" placeholder="新讲次标题" style="width: 260px" />
+              <el-button type="primary" @click="addLecture">新增讲次</el-button>
+            </div>
+            <el-form :inline="true" style="margin-bottom: 12px">
+              <el-form-item label="讲次">
+                <el-select v-model="uploadNo" placeholder="选择讲次" style="width: 140px">
+                  <el-option v-for="l in content.lectures" :key="l.id" :label="`第 ${l.no} 讲`" :value="l.no" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="类型">
+                <el-select v-model="uploadKind" placeholder="按扩展名推断" clearable style="width: 150px">
+                  <el-option label="视频 MP4" value="video" />
+                  <el-option label="音频" value="audio" />
+                  <el-option label="HTML" value="html" />
+                  <el-option label="Markdown" value="markdown" />
+                  <el-option label="课件" value="slide" />
+                  <el-option label="代码" value="code" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="标题">
+                <el-input v-model="uploadTitle" placeholder="可留空" style="width: 160px" />
+              </el-form-item>
+              <el-form-item label="文件">
+                <input type="file" @change="onPickFile" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="success" @click="submitUpload">上传资源</el-button>
+              </el-form-item>
+            </el-form>
+            <el-alert
+              type="warning"
+              :closable="false"
+              title="单个 HTML 文件按自包含页面处理；带 assets/ 的完整 HTML 包请使用管理员「课程导入」。MP4 / 音频配置 COS 时自动上传 COS。"
+              style="margin-bottom: 12px"
+            />
+          </template>
+
+          <el-empty v-if="!content.lectures.length" description="还没有讲次" />
+          <div v-for="lecture in content.lectures" :key="lecture.id" style="margin-bottom: 16px">
+            <h4>第 {{ lecture.no }} 讲 · {{ lecture.title }} <el-tag v-if="lecture.is_preview" size="small">试学</el-tag></h4>
+            <el-table :data="lecture.assets" size="small">
+              <el-table-column prop="title" label="资源" min-width="160" />
+              <el-table-column prop="kind" label="类型" width="110" />
+              <el-table-column prop="storage_key" label="存储键" min-width="260" />
+              <el-table-column label="大小" width="100">
+                <template #default="{ row }">{{ (row.size_bytes / 1024).toFixed(1) }} KB</template>
+              </el-table-column>
+              <el-table-column v-if="content.editable" label="操作" width="100">
+                <template #default="{ row }">
+                  <el-button size="small" type="danger" plain @click="removeAsset(lecture.no, row.id)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </template>
+      </div>
+    </el-drawer>
   </el-card>
 </template>

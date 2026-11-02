@@ -25,7 +25,16 @@
 │   ├── .env                    密钥/口令（**不进版本库**）
 │   └── data/                   PostgreSQL 数据（跨版本保留）
 └── backups/
+
+/var/www/cw-tc/
+├── admin/      管理端（Vue，构建 base=/admin/）
+├── student/    学员端（Flutter Web，构建 base-href=/student/）
+└── portal/     门户静态页（/、/about、/privacy 等）
 ```
+
+> **nginx 必须按 `deploy/nginx/cw-tc.conf` 配置**：`/api/` 反代到 `127.0.0.1:8071`，
+> `/admin/`、`/student/`、`/` 直接读上述静态目录。只更新后端而不更新 nginx 配置，
+> 会出现“后端已发布、页面仍 404/仍走旧代理”的假发布。发布包已包含三套前端资产。
 
 ## 三、环境变量与密钥（**照同系列项目一样处理**）
 

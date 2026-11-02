@@ -20,6 +20,10 @@ import os
 import re
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 DOC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "对外展示内容-v1.md")
 UPSTREAM_DEFAULT = os.environ.get(
     "CWTC_UPSTREAM_DIR",

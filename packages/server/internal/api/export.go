@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -16,35 +17,63 @@ func maskPhone(phone string) string {
 	return phone[:3] + "****" + phone[7:]
 }
 
-// exportMyData GET /me/export —— 学员自助导出（不含明文身份证号，写审计）。
-func (s *Server) exportMyData(c *gin.Context) {
-	student := c.MustGet(studentContextKey).(identity.Student)
+// buildStudentExport 组装学员数据导出内容（脱敏、不含明文身份证号与密码）。
+func (s *Server) buildStudentExport(ctx context.Context, student identity.Student, includeNotes bool) gin.H {
 	result := gin.H{
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 		"account": gin.H{
 			"student_no": student.StudentNo, "name": student.Name,
 			"phone": maskPhone(student.Phone),
 		},
+		"learning":     []any{},
 		"notes":        []any{},
 		"scores":       []any{},
 		"certificates": []any{},
 		"orders":       []any{},
 		"suggestions":  []any{},
 	}
-	if rows, err := s.dbConn.QueryContext(c.Request.Context(),
-		`SELECT co.course_code, n.lecture_no, n.title, n.content_md, n.created_at FROM note n JOIN course co ON co.id=n.course_id WHERE n.student_id=$1 ORDER BY n.created_at`, student.ID); err == nil {
+	if rows, err := s.dbConn.QueryContext(ctx,
+		`SELECT co.course_code, co.name, COUNT(DISTINCT l.id),
+		        COUNT(DISTINCT CASE WHEN p.completed_at IS NOT NULL THEN l.id END),
+		        MAX(p.last_studied_at)
+		 FROM lecture_progress p
+		 JOIN lecture l ON l.id = p.lecture_id
+		 JOIN course co ON co.id = l.course_id
+		 WHERE p.student_id = $1
+		 GROUP BY co.id, co.course_code, co.name
+		 ORDER BY MAX(p.last_studied_at) DESC`, student.ID); err == nil {
 		items := make([]gin.H, 0)
 		for rows.Next() {
-			var code, title, body, createdAt string
-			var lectureNo any
-			if err := rows.Scan(&code, &lectureNo, &title, &body, &createdAt); err == nil {
-				items = append(items, gin.H{"course_code": code, "lecture_no": lectureNo, "title": title, "body": body, "created_at": createdAt})
+			var code, name string
+			var lectureCount, learned int
+			var lastAt string
+			if err := rows.Scan(&code, &name, &lectureCount, &learned, &lastAt); err == nil {
+				items = append(items, gin.H{
+					"course_code": code, "name": name, "lecture_count": lectureCount,
+					"learned_lectures": learned, "progress_percent": progressPercent(learned, lectureCount),
+					"last_learned_at": lastAt,
+				})
 			}
 		}
 		rows.Close()
-		result["notes"] = items
+		result["learning"] = items
 	}
-	if rows, err := s.dbConn.QueryContext(c.Request.Context(),
+	if includeNotes {
+		if rows, err := s.dbConn.QueryContext(ctx,
+			`SELECT co.course_code, n.lecture_no, n.title, n.content_md, n.created_at FROM note n JOIN course co ON co.id=n.course_id WHERE n.student_id=$1 ORDER BY n.created_at`, student.ID); err == nil {
+			items := make([]gin.H, 0)
+			for rows.Next() {
+				var code, title, body, createdAt string
+				var lectureNo any
+				if err := rows.Scan(&code, &lectureNo, &title, &body, &createdAt); err == nil {
+					items = append(items, gin.H{"course_code": code, "lecture_no": lectureNo, "title": title, "body": body, "created_at": createdAt})
+				}
+			}
+			rows.Close()
+			result["notes"] = items
+		}
+	}
+	if rows, err := s.dbConn.QueryContext(ctx,
 		`SELECT co.course_code, r.level, r.total_score, r.band, r.is_pass, r.graded_at
 		 FROM exam_result r JOIN course co ON co.id=r.course_id WHERE r.student_id=$1 ORDER BY r.created_at`, student.ID); err == nil {
 		items := make([]gin.H, 0)
@@ -59,7 +88,7 @@ func (s *Server) exportMyData(c *gin.Context) {
 		rows.Close()
 		result["scores"] = items
 	}
-	if rows, err := s.dbConn.QueryContext(c.Request.Context(),
+	if rows, err := s.dbConn.QueryContext(ctx,
 		`SELECT c.cert_no, co.course_code, c.level, c.status, c.issued_at, c.expires_at
 		 FROM certificate c JOIN course co ON co.id=c.course_id WHERE c.student_id=$1 ORDER BY c.issued_at`, student.ID); err == nil {
 		items := make([]gin.H, 0)
@@ -72,7 +101,7 @@ func (s *Server) exportMyData(c *gin.Context) {
 		rows.Close()
 		result["certificates"] = items
 	}
-	if rows, err := s.dbConn.QueryContext(c.Request.Context(),
+	if rows, err := s.dbConn.QueryContext(ctx,
 		`SELECT order_no, course_name_snapshot, amount_cents, status, created_at FROM orders WHERE student_id=$1 ORDER BY created_at`, student.ID); err == nil {
 		items := make([]gin.H, 0)
 		for rows.Next() {
@@ -85,6 +114,55 @@ func (s *Server) exportMyData(c *gin.Context) {
 		rows.Close()
 		result["orders"] = items
 	}
+	if rows, err := s.dbConn.QueryContext(ctx,
+		`SELECT id, body, status, reply, created_at FROM suggestion WHERE student_id=$1 ORDER BY created_at`, student.ID); err == nil {
+		items := make([]gin.H, 0)
+		for rows.Next() {
+			var id int64
+			var body, status, createdAt string
+			var reply any
+			if err := rows.Scan(&id, &body, &status, &reply, &createdAt); err == nil {
+				items = append(items, gin.H{"id": id, "body": body, "status": status, "reply": reply, "created_at": createdAt})
+			}
+		}
+		rows.Close()
+		result["suggestions"] = items
+	}
+	if !includeNotes {
+		delete(result, "notes")
+	}
+	return result
+}
+
+// filterExportScope 供代导出按 scope 裁剪内容。
+func filterExportScope(data gin.H, scope string) gin.H {
+	if scope == "" || scope == "all" {
+		return data
+	}
+	out := gin.H{"generated_at": data["generated_at"], "scope": scope}
+	switch scope {
+	case "account":
+		out["account"] = data["account"]
+	case "learning":
+		out["learning"] = data["learning"]
+	case "scores":
+		out["scores"] = data["scores"]
+	case "certs":
+		out["certificates"] = data["certificates"]
+	case "notes":
+		out["notes"] = data["notes"]
+	}
+	return out
+}
+
+// exportMyData GET /me/export —— 学员自助导出（脱敏，写审计与导出留痕）。
+func (s *Server) exportMyData(c *gin.Context) {
+	student := c.MustGet(studentContextKey).(identity.Student)
+	result := s.buildStudentExport(c.Request.Context(), student, true)
+	_, _ = s.dbConn.ExecContext(c.Request.Context(),
+		`INSERT INTO data_export(subject_type, subject_id, initiator, scope, format, created_at)
+		 VALUES('student',$1,'self','all','json',$2)`,
+		student.ID, time.Now().UTC().Format(time.RFC3339))
 	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
 		ActorType: "student", ActorID: student.ID, Action: "student.export",
 		TargetType: "student", TargetID: student.StudentNo, IP: c.ClientIP(),

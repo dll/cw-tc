@@ -52,7 +52,13 @@ func (s *Server) continueMyOrderPayment(c *gin.Context) {
 		return
 	}
 	if s.cfg == nil || !s.cfg.AlipayEnabled() {
-		// 支付渠道未配置（开发 / staging）：返回 mock，客户端显式点「模拟支付」。
+		// 生产环境绝不返回 mock 支付意图：客户端会误展示“模拟支付”，
+		// 且服务端 mock-pay 在 production 已拒绝，必然失败。
+		if s.cfg == nil || s.cfg.IsProduction() {
+			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10306, Msg: "支付渠道未接入，请联系管理员"})
+			return
+		}
+		// 开发 / staging 允许 mock，便于联调。
 		c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 			"order_no": order.OrderNo, "channel": "mock", "amount_cents": order.AmountCents,
 			"expires_at": order.ExpiredAt,

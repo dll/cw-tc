@@ -13,6 +13,20 @@ var ErrInvalidCredentials = errors.New("手机号或密码错误")
 var ErrRegistrationPending = errors.New("账号待运营管理员审核，请审核通过后登录")
 var ErrAccountLocked = errors.New("账号已锁定，请稍后再试")
 
+// AccountDisabledError 表示账号被停用 / 封禁；登录页需展示原因类别与申诉入口。
+type AccountDisabledError struct {
+	Status     string
+	ReasonKind string
+	Until      *time.Time
+}
+
+func (e *AccountDisabledError) Error() string {
+	if e.Status == "banned" {
+		return "账号已被封禁，可发起申诉"
+	}
+	return "账号已停用，可发起申诉"
+}
+
 const (
 	maxFailedLogins = 5
 	lockDuration    = 10 * time.Minute
@@ -31,10 +45,28 @@ func (s *Service) loginWithClock(ctx context.Context, phone, password string, no
 	var student Student
 	var stored string
 	var lockedUntil sql.NullString
-	var reviewStatus string
-	err := s.db.QueryRowContext(ctx, `SELECT id, student_no, name, phone, password_hash, locked_until, registration_review_status FROM student WHERE phone = $1 AND status = 'active'`, phone).
-		Scan(&student.ID, &student.StudentNo, &student.Name, &student.Phone, &stored, &lockedUntil, &reviewStatus)
+	var reviewStatus, status string
+	var reasonKind, until sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, student_no, name, phone, password_hash, locked_until, registration_review_status,
+		        status, status_reason_kind, status_until
+		 FROM student WHERE phone = $1`, phone).
+		Scan(&student.ID, &student.StudentNo, &student.Name, &student.Phone, &stored, &lockedUntil, &reviewStatus,
+			&status, &reasonKind, &until)
 	if err != nil {
+		return Student{}, ErrInvalidCredentials
+	}
+	// 停用 / 封禁必须在登录时如实告知原因与申诉入口，不允许“莫名登不上”（PRD §7.10.10（三））。
+	if status == "suspended" || status == "banned" || status == "limited" {
+		disabled := &AccountDisabledError{Status: status, ReasonKind: reasonKind.String}
+		if until.Valid && until.String != "" {
+			if parsed, perr := time.Parse(time.RFC3339, until.String); perr == nil {
+				disabled.Until = &parsed
+			}
+		}
+		return Student{}, disabled
+	}
+	if status != "active" {
 		return Student{}, ErrInvalidCredentials
 	}
 	if lockedUntil.Valid && lockedUntil.String != "" {

@@ -2,7 +2,10 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/cw-tc/server/internal/audit"
 
 	"github.com/cw-tc/server/internal/identity"
 	"github.com/gin-gonic/gin"
@@ -88,10 +91,55 @@ func (s *Server) deleteAccount(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "账号服务暂不可用"})
 		return
 	}
-	if err := s.identity.AnonymizeAccount(c.Request.Context(), student.ID); err != nil {
-		c.JSON(http.StatusBadRequest, envelope{Code: 10003, Msg: err.Error()})
+	var input struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&input)
+	if len([]rune(strings.TrimSpace(input.Reason))) > 500 {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "注销原因过长"})
 		return
 	}
+	// 注销需人工审核：先做进行中订单 / 退款前置校验。
+	if reason, err := deletionPrecheck(c.Request.Context(), s.dbConn, student.ID); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "注销前置校验失败"})
+		return
+	} else if reason != "" {
+		c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: reason})
+		return
+	}
+	tx, err := s.dbConn.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "注销申请提交失败"})
+		return
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339)
+	var requestID int64
+	if err := tx.QueryRowContext(c.Request.Context(),
+		`INSERT INTO deletion_request(student_id, reason, status, created_at) VALUES($1,$2,'pending',$3) RETURNING id`,
+		student.ID, strings.TrimSpace(input.Reason), now).Scan(&requestID); err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: "已提交过注销申请，请等待审核"})
+		return
+	}
+	res, err := tx.ExecContext(c.Request.Context(),
+		`UPDATE student SET status = 'deleting', updated_at = $1 WHERE id = $2 AND status = 'active'`, now, student.ID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "注销申请提交失败"})
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: "当前账号状态不能申请注销"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "注销申请提交失败"})
+		return
+	}
+	_ = s.identity.RevokeAllSessions(c.Request.Context(), student.ID)
 	c.SetCookie("cw_tc_sid", "", -1, "/", "", true, true)
-	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"status": "anonymized"}})
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "student", ActorID: student.ID, Action: "account.deletion_request",
+		TargetType: "student", TargetID: student.StudentNo, After: strings.TrimSpace(input.Reason), IP: c.ClientIP(),
+	})
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"status": "deleting", "request_id": requestID}})
 }

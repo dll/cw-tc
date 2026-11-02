@@ -15,6 +15,10 @@ import {
   setCourseQuality,
   bulkPublishCourses,
   bulkUnpublishCourses,
+  importCourse,
+  getAdminReviewDetail,
+  getCourseCheckup,
+  type AdminReviewDetail,
   type BulkCourseResult,
   type AdminCourse,
   type CourseRevision,
@@ -34,6 +38,87 @@ const filter = ref({ status: '', source: '', q: '' })
 const revisionVisible = ref(false)
 const revisionTarget = ref<AdminCourse | null>(null)
 const revisions = ref<CourseRevision[]>([])
+
+const reviewDetailVisible = ref(false)
+const reviewDetailLoading = ref(false)
+const reviewDetail = ref<AdminReviewDetail | null>(null)
+
+async function checkup(row: AdminCourse) {
+  try {
+    const data = await getCourseCheckup(row.course_code)
+    ElMessageBox.alert(JSON.stringify(data, null, 2), '课程内容体检', { confirmButtonText: '关闭' })
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '体检失败')
+  }
+}
+
+async function openReviewDetail(row: AdminCourse) {
+  reviewDetailVisible.value = true
+  reviewDetailLoading.value = true
+  reviewDetail.value = null
+  try {
+    reviewDetail.value = await getAdminReviewDetail(row.course_code)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '审核详情读取失败')
+  } finally {
+    reviewDetailLoading.value = false
+  }
+}
+const importVisible = ref(false)
+const importing = ref(false)
+const importManifest = ref('')
+
+const importExample = `{
+  "course_code": "PY-101",
+  "name": "Python 入门",
+  "intro": "课程简介",
+  "line": "main",
+  "price_cents": 9900,
+  "teacher_id": 2,
+  "source_root": "PY-101",
+  "lectures": [
+    {
+      "no": 1,
+      "title": "第一讲",
+      "is_preview": true,
+      "assets": [
+        { "title": "讲义", "path": "01/notes.md" },
+        { "kind": "video", "title": "视频", "path": "01/video.mp4" },
+        { "kind": "html", "title": "课件", "path": "01/slides" }
+      ]
+    }
+  ]
+}`
+
+function openImport() {
+  importManifest.value = importExample
+  importVisible.value = true
+}
+
+async function submitImport() {
+  let manifest: Record<string, unknown>
+  try {
+    manifest = JSON.parse(importManifest.value)
+  } catch {
+    ElMessage.error('清单不是合法 JSON')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('将从服务器内容目录导入资源并创建平台课程草稿（不自动上架），确认继续？', '导入课程', { type: 'warning' })
+    importing.value = true
+    const result = await importCourse(manifest)
+    importVisible.value = false
+    ElMessageBox.alert(
+      `已导入 ${result.course_code}：${result.lectures} 讲 / ${result.assets} 个资源，状态为草稿。请核对后走审核上架。`,
+      '导入完成',
+    )
+    await load()
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessage.error(e.message)
+  } finally {
+    importing.value = false
+  }
+}
 
 async function openRevisions(row: AdminCourse) {
   revisionTarget.value = row
@@ -417,6 +502,7 @@ async function submitReview() {
     <div style="margin-bottom: 10px">
       <el-button type="success" :disabled="!selected.length" @click="onBulkPublish">批量上架</el-button>
       <el-button type="danger" plain :disabled="!selected.length" @click="onBulkUnpublish">批量下架</el-button>
+      <el-button type="primary" plain @click="openImport">导入新课程</el-button>
       <span style="margin-left: 8px; color: var(--el-text-color-secondary)">已选 {{ selected.length }} 门</span>
     </div>
 
@@ -469,7 +555,9 @@ async function submitReview() {
       </el-table-column>
       <el-table-column label="操作" width="490">
         <template #default="{ row }">
-          <el-button v-if="row.status === 'submitted'" size="small" type="primary" @click="openReview(row)">审核</el-button>
+            <el-button v-if="row.status === 'submitted'" size="small" type="primary" @click="openReview(row)">审核</el-button>
+            <el-button v-if="row.status === 'submitted'" size="small" @click="openReviewDetail(row)">审核详情</el-button>
+            <el-button size="small" @click="checkup(row)">体检</el-button>
           <el-button
             v-if="row.status === 'approved' || row.status === 'unpublished'"
             size="small"
@@ -615,6 +703,68 @@ async function submitReview() {
         </el-form>
       </div>
     </el-drawer>
+
+    <el-drawer v-model="reviewDetailVisible" title="审核详情（内容快照）" size="68%">
+      <div v-loading="reviewDetailLoading">
+        <template v-if="reviewDetail">
+          <el-descriptions :column="3" border size="small">
+            <el-descriptions-item label="课程码">{{ reviewDetail.course_code }}</el-descriptions-item>
+            <el-descriptions-item label="课程">{{ reviewDetail.name }}</el-descriptions-item>
+            <el-descriptions-item label="来源">{{ reviewDetail.source }}</el-descriptions-item>
+            <el-descriptions-item label="状态">{{ reviewDetail.status }}</el-descriptions-item>
+            <el-descriptions-item label="内容版本">{{ reviewDetail.content_version }}</el-descriptions-item>
+            <el-descriptions-item label="送审时间">{{ reviewDetail.submitted_at ?? '-' }}</el-descriptions-item>
+          </el-descriptions>
+          <el-alert
+            type="info"
+            :closable="false"
+            :title="`讲次 ${reviewDetail.checkup.lecture_count} · 资源${reviewDetail.checkup.has_assets ? '已上传' : '缺失'} · 题库等级 ${reviewDetail.checkup.question_levels} 级`"
+            style="margin: 12px 0"
+          />
+          <h4>讲次与资源</h4>
+          <el-table :data="reviewDetail.lectures" size="small">
+            <el-table-column prop="no" label="讲次" width="80" />
+            <el-table-column prop="title" label="标题" min-width="180" />
+            <el-table-column label="试学" width="80"><template #default="{ row }">{{ row.is_preview ? '是' : '否' }}</template></el-table-column>
+            <el-table-column prop="asset_count" label="资源数" width="90" />
+            <el-table-column prop="question_count" label="随堂题" width="90" />
+          </el-table>
+          <h4 style="margin-top: 12px">题库分布</h4>
+          <el-table :data="reviewDetail.questions_by_level" size="small">
+            <el-table-column prop="level" label="等级" width="100" />
+            <el-table-column prop="count" label="题数" width="100" />
+          </el-table>
+          <h4 style="margin-top: 12px">历史审核</h4>
+          <el-table :data="reviewDetail.reviews" size="small">
+            <el-table-column prop="round" label="轮次" width="70" />
+            <el-table-column prop="content_version" label="版本" width="80" />
+            <el-table-column prop="reviewer_role" label="审核角色" width="120" />
+            <el-table-column prop="total_score" label="总分" width="80" />
+            <el-table-column prop="verdict" label="结论" width="100" />
+            <el-table-column prop="issue_list" label="问题清单" min-width="220" />
+            <el-table-column prop="reviewed_at" label="审核时间" width="180" />
+          </el-table>
+        </template>
+      </div>
+    </el-drawer>
+    <el-dialog v-model="importVisible" title="导入新课程（资源包）" width="760px">
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="先把资源放到服务器内容目录的 imports/<source_root>/ 下；清单里只写相对路径。HTML 目录会整目录复制（含 assets/），MP4 / 音频配置 COS 时上传 COS，否则落本地。"
+        style="margin-bottom: 12px"
+      />
+      <el-form label-position="top">
+        <el-form-item label="导入清单（JSON）">
+          <el-input v-model="importManifest" type="textarea" :rows="18" spellcheck="false" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="importVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="submitImport">开始导入</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 

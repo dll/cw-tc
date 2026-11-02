@@ -87,3 +87,22 @@ func TestMockPayGrantsEntitlement(t *testing.T) {
 		t.Fatalf("重复 mock-pay 应 400，实际 %d", pay2.Code)
 	}
 }
+
+func TestProductionNeverReturnsMockPayment(t *testing.T) {
+	s, token, cleanup := orderLifecycleServer(t)
+	defer cleanup()
+	r := s.Router()
+	created := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/orders", `{"course_code":"C1"}`, token)
+	orderNo := extractJSONField(t, created.Body.String(), "order_no")
+	s.cfg.DeployEnv = "production"
+
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/me/orders/"+orderNo+"/pay", `{}`, token); got.Code != http.StatusServiceUnavailable {
+		t.Fatalf("生产环境继续支付不得返回 mock：%d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/orders/"+orderNo+"/pay", `{"channel":"mock","amount_cents":12900}`, token); got.Code != http.StatusServiceUnavailable {
+		t.Fatalf("生产环境预支付不得返回 mock：%d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithCookie(t, r, http.MethodPost, "/api/v1/orders/"+orderNo+"/mock-pay", `{}`, token); got.Code != http.StatusForbidden {
+		t.Fatalf("生产环境 mock-pay 必须 403：%d %s", got.Code, got.Body.String())
+	}
+}

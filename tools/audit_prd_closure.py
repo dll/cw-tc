@@ -33,6 +33,11 @@ import os
 import re
 import sys
 
+# Windows 默认 GBK 控制台无法输出 ✅/✗，显式切 UTF-8，避免审计脚本在本地误报失败。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PRD = os.path.join(ROOT, "docs", "PRD-第三课堂-v2.md")
 API = os.path.join(ROOT, "docs", "API接口参考-v1.md")

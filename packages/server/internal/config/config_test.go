@@ -192,3 +192,31 @@ func TestBoolDefault(t *testing.T) {
 		}
 	}
 }
+
+func TestAIModelAliasesFallbackAndOverride(t *testing.T) {
+	env := validEnv()
+	env[EnvLLMModel] = "legacy-model"
+	env[EnvLLMFilingNo] = "LEGACY-FILING"
+	cfg, err := LoadFrom(getter(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AIFastModelName() != "legacy-model" || cfg.AIStrongModelName() != "legacy-model" ||
+		cfg.AIFastFilingNo() != "LEGACY-FILING" || cfg.AIStrongFilingNo() != "LEGACY-FILING" {
+		t.Fatalf("旧配置回退异常: fast=%s strong=%s", cfg.AIFastModelName(), cfg.AIStrongModelName())
+	}
+	env[EnvAIModelFast] = "fast-model"
+	env[EnvAIModelFastVersion] = "fast-v1"
+	env[EnvAIModelFastFiling] = "FAST-F1"
+	env[EnvAIModelStrong] = "strong-model"
+	env[EnvAIModelStrongVersion] = "strong-v2"
+	env[EnvAIModelStrongFiling] = "STRONG-F2"
+	cfg, err = LoadFrom(getter(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AIFastModelName() != "fast-model" || cfg.AIFastModelVersion() != "fast-v1" || cfg.AIFastFilingNo() != "FAST-F1" ||
+		cfg.AIStrongModelName() != "strong-model" || cfg.AIStrongModelVersion() != "strong-v2" || cfg.AIStrongFilingNo() != "STRONG-F2" {
+		t.Fatalf("别名配置异常: %+v", cfg)
+	}
+}

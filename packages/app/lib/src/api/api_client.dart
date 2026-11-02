@@ -7,6 +7,7 @@ import '../models/ai_answer.dart';
 import '../models/cert.dart';
 import '../models/course.dart';
 import '../models/course_comment.dart';
+import '../models/download_grant.dart';
 import '../models/exam.dart';
 import '../models/favorite.dart';
 import '../models/lecture.dart';
@@ -389,6 +390,35 @@ class ApiClient {
     final res = favorited
         ? await _dio.post<Map<String, dynamic>>(path)
         : await _dio.delete<Map<String, dynamic>>(path);
+    _ensureSuccess(res.data);
+  }
+
+  /// 离线下载清单（有效期 / 状态）。
+  Future<List<DownloadGrant>> downloads() async {
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/downloads');
+    _ensureSuccess(res.data);
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    final items = (data?['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return items
+        .map((e) => DownloadGrant.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 申请离线下载授权（已解锁且权益有效才签发）。
+  Future<void> requestDownload(String courseCode, int lectureNo) async {
+    final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/downloads', data: <String, dynamic>{
+      'course_code': courseCode,
+      'lecture_no': lectureNo,
+    });
+    _ensureSuccess(res.data);
+  }
+
+  /// 删除单讲下载授权（客户端需同步清理本地文件）。
+  Future<void> deleteDownload(int lectureNo, {String? courseCode}) async {
+    final query = courseCode == null || courseCode.isEmpty
+        ? ''
+        : '?course_code=${Uri.encodeQueryComponent(courseCode)}';
+    final res = await _dio.delete<Map<String, dynamic>>('/api/v1/me/downloads/$lectureNo$query');
     _ensureSuccess(res.data);
   }
   /// 记录一次讲次访问或显式完成；打开页面不应被当作完成。

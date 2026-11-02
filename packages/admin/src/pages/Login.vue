@@ -18,9 +18,9 @@ async function submit() {
   try {
     const res = await login(account.value, password.value)
     if (res.must_change_password) {
-      router.replace('/change-password')
+      router.replace('/admin/change-password')
     } else {
-      router.replace(res.role === 'teacher' ? '/teacher/courses' : '/admin/courses')
+      router.replace(res.role === 'teacher' ? '/admin/teacher/courses' : '/admin/courses')
     }
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '账号或密码错误')

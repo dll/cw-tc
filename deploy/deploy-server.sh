@@ -21,8 +21,9 @@ sudo systemctl restart cw-tc-server
 # --- 管理端 SPA ---
 if command -v npm >/dev/null 2>&1 && [ -d "$REPO/packages/admin" ]; then
   ( cd "$REPO/packages/admin" && npm install --no-audit --no-fund --silent && npx vite build --base=/admin/ )
-  mkdir -p /var/www/cw-tc-admin && rm -rf /var/www/cw-tc-admin/*
-  tar -C "$REPO/packages/admin/dist" -cf - . | tar -C /var/www/cw-tc-admin -xf -
+  sudo mkdir -p /var/www/cw-tc/admin && sudo rm -rf /var/www/cw-tc/admin/*
+  tar -C "$REPO/packages/admin/dist" -cf - . | sudo tar -C /var/www/cw-tc/admin -xf -
+  sudo chown -R ubuntu:ubuntu /var/www/cw-tc/admin
   echo "管理端已更新"
 fi
 
@@ -32,16 +33,17 @@ if [ -x /opt/flutter/bin/flutter ]; then
   # 清理旧的 Flutter Web 构建缓存，强制重生成 federated plugin registrant。
   # 否则增量构建可能漏注册 video_player_web/audioplayers_web，导致学生端资源页播放器初始化失败。
   ( cd "$REPO/packages/app" && flutter pub get >/dev/null && rm -rf .dart_tool/flutter_build build/web && flutter build web --release --base-href=/student/ )
-  mkdir -p /var/www/cw-tc-student && rm -rf /var/www/cw-tc-student/*
-  tar -C "$REPO/packages/app/build/web" -cf - . | tar -C /var/www/cw-tc-student -xf -
+  sudo mkdir -p /var/www/cw-tc/student && sudo rm -rf /var/www/cw-tc/student/*
+  tar -C "$REPO/packages/app/build/web" -cf - . | sudo tar -C /var/www/cw-tc/student -xf -
+  sudo chown -R ubuntu:ubuntu /var/www/cw-tc/student
   echo "学生端已更新"
 fi
 
 # --- 门户静态站 ---
 if [ -d "$REPO/deploy/static" ]; then
-  sudo mkdir -p /var/www/cw-tc-portal; sudo rm -rf /var/www/cw-tc-portal/*
-  sudo cp -r "$REPO/deploy/static/." /var/www/cw-tc-portal/
-  sudo chown -R ubuntu:ubuntu /var/www/cw-tc-portal
+  sudo mkdir -p /var/www/cw-tc/portal; sudo rm -rf /var/www/cw-tc/portal/*
+  sudo cp -r "$REPO/deploy/static/." /var/www/cw-tc/portal/
+  sudo chown -R ubuntu:ubuntu /var/www/cw-tc/portal
   echo "门户已更新"
 fi
 

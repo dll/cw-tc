@@ -1,11 +1,11 @@
 {
-    "name": "app",
-    "short_name": "app",
+    "name": "第三课堂",
+    "short_name": "第三课堂",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#185FA5",
+    "theme_color": "#185FA5",
+    "description": "畅网智能科技第三课堂：在线学习与能力认证平台",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

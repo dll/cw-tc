@@ -1,9 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
+	"github.com/cw-tc/server/internal/audit"
 	"github.com/cw-tc/server/internal/commerce"
 	"github.com/cw-tc/server/internal/staff"
 	"github.com/gin-gonic/gin"
@@ -22,6 +24,11 @@ func (s *Server) adminCreateStaff(c *gin.Context) {
 		return
 	}
 	admin := c.MustGet(staffContextKey).(staff.Staff)
+	// 教师账号：ops + super 可开通；管理员账号：仅 super 可开通（PRD §7.10.10）。
+	if req.Role != string(staff.RoleTeacher) && admin.Role != staff.RoleAdminSuper {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无权限"})
+		return
+	}
 	if staff.Role(req.Role) == staff.RoleAdminSuper && admin.Role != staff.RoleAdminSuper {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "无权限"})
 		return
@@ -31,20 +38,56 @@ func (s *Server) adminCreateStaff(c *gin.Context) {
 		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: err.Error()})
 		return
 	}
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "staff.create", TargetType: "staff", TargetID: strconv.FormatInt(id, 10),
+		After: `{"role":"` + req.Role + `"}`, IP: c.ClientIP(),
+	})
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"id": id}})
 }
 
-// adminDisableStaff POST /admin/staff/:id/disable —— 停用（名下课程未移交则拒）。
+// adminDisableStaff POST /admin/staff/:id/disable —— 停用（教师由 ops/super；管理员仅 super）。
 func (s *Server) adminDisableStaff(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
 		return
 	}
+	admin := c.MustGet(staffContextKey).(staff.Staff)
+	var role string
+	if err := s.dbConn.QueryRowContext(c.Request.Context(), `SELECT role FROM staff WHERE id = $1`, id).Scan(&role); err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: "账号不存在"})
+		return
+	}
+	if (role == string(staff.RoleAdminSuper) || role == string(staff.RoleAdminOps)) && admin.Role != staff.RoleAdminSuper {
+		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "仅超级管理员可停用管理员账号"})
+		return
+	}
+	if role == string(staff.RoleAdminSuper) {
+		if id == admin.ID {
+			c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: "不能停用自己"})
+			return
+		}
+		var supers int
+		if err := s.dbConn.QueryRowContext(c.Request.Context(),
+			`SELECT COUNT(*) FROM staff WHERE role = 'admin_super' AND status = 'active'`).Scan(&supers); err != nil {
+			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "服务不可用"})
+			return
+		}
+		if supers <= 1 {
+			c.JSON(http.StatusConflict, envelope{Code: 10409, Msg: "不能停用最后一个超管"})
+			return
+		}
+	}
 	if err := staff.Disable(c.Request.Context(), s.dbConn, id); err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10802, Msg: err.Error()})
 		return
 	}
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "staff.disable", TargetType: "staff", TargetID: strconv.FormatInt(id, 10),
+		After: `{"status":"disabled","role":"` + role + `"}`, IP: c.ClientIP(),
+	})
 	c.JSON(http.StatusOK, envelope{Code: 0})
 }
 
@@ -93,5 +136,11 @@ func (s *Server) adminRefundOrder(c *gin.Context) {
 		return
 	}
 	s.notifyOrderRefunded(c.Request.Context(), c.Param("orderNo"))
+	after, _ := json.Marshal(gin.H{"kind": req.Kind, "amount_cents": req.AmountCents, "reason": req.Reason})
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "order.refund", TargetType: "orders", TargetID: c.Param("orderNo"),
+		After: string(after), IP: c.ClientIP(),
+	})
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"refund_no": ref.RefundNo}})
 }

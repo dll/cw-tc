@@ -26,7 +26,9 @@ func (s *Server) publicCourseDetail(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
 	}
-	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"course_code": code, "name": name, "intro": nullableString(intro), "price_cents": price.Int64, "original_price_cents": nullableInt(original), "major_id": nullableInt(majorID), "major_name": nullableString(majorName)}})
+	// 访问埋点：详情页浏览计入统计（T+1 跑批，登录用户 24h 去重）。
+	s.recordCourseView(c, code)
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"course_code": code, "name": name, "intro": nullableString(intro), "price_cents": price.Int64, "original_price_cents": nullableInt(original), "major_id": nullableInt(majorID), "major_name": nullableString(majorName), "stats": s.publicStatsFor(c, code)}})
 }
 
 func nullableString(value sql.NullString) any {

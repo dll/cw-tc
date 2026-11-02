@@ -64,7 +64,7 @@
 |---|---|---|
 | `0` | 成功 | — |
 | `10000–10099` | **通用参数错误** | `10001` 参数缺失 · `10002` 参数格式非法 · `10003` 分页越界 |
-| `10100–10199` | **账号与认证** | `10101` 验证码错误或过期 · `10102` 账号已锁定 · `10103` 手机号已注册 · `10104` 身份证号已注册 · `10105` 身份证号校验位错误 · `10106` 需二次短信验证 · `10107` 未实名 |
+| `10100–10199` | **账号与认证** | `10101` 验证码错误或过期 · `10102` 账号已锁定 · `10103` 手机号已注册 · `10104` 身份证号已注册 · `10105` 身份证号校验位错误 · `10106` 需二次短信验证 · `10107` 未实名 · `10108` 注册待审核 · `10109` **账号已停用 / 封禁**（响应 `data` 带 `status` / `reason_kind` / `until` / `appeal_url`） |
 | `10200–10299` | **课程与资源** | `10201` 课程不存在 · `10202` 课程未上架 · `10203` **权益未解锁** · `10204` 资源不存在 |
 | `10300–10399` | **订单与支付** | `10301` 订单不存在 · `10302` 订单状态不允许此操作 · `10303` 重复下单被拒（幂等） · `10304` 金额不一致 · `10305` **退款窗口已过** · `10306` 渠道调用失败 |
 | `10400–10499` | **测评** | `10401` 试卷不存在 · `10402` 已交卷不可改 · `10403` **权益未解锁，不可参加测评** · `10404` 该档可组卷套数不足 |
@@ -293,8 +293,15 @@
 | GET | `/teacher/courses/{code}/review` | 教师+归属 | **审核结果与历史轮次**（含**逐维问题清单**，§J-2.3） |
 | GET | `/teacher/courses/{code}/selfcheck` | 教师+归属 | **送审前自检**：九件套齐备度 + 缺项清单（**不消耗送审次数**） |
 | POST | `/teacher/courses/{code}/changes` | 教师+归属 | **提交变更**（已上架课程走变更草稿，§J-2.5） |
+| GET | `/teacher/courses/{code}/content` | 教师+归属 | **课程内容管理**：讲次 + 资源清单；返回 `editable`（仅 platform 且 proposed/building/rejected 可编辑） |
+| POST | `/teacher/courses/{code}/lectures` | 教师+归属 | **新增讲次**（平台课程草稿）；递增 `content_version` 并同步 `lecture_count` |
+| POST | `/teacher/courses/{code}/lectures/{no}/assets` | 教师+归属 | **上传单个资源**（multipart：`file` + `kind` + `title`）：HTML / Markdown / MP4 / 音频 / 课件 / 代码 / 冻结输出；MP4 与音频配置 COS 时上传 COS，否则落本地 |
+| DELETE | `/teacher/courses/{code}/lectures/{no}/assets/{assetID}` | 教师+归属 | **删除自己的资源**（仅可编辑状态；同步清理本地文件） |
+| GET | `/teacher/discussions` | 教师+归属 | **讨论与问答工作台**：只看自己课程；返回每帖回复数 / 是否未回复 / 最近活动，并附按课程汇总（`course_code` / `only_unanswered` / `limit`） |
+| POST | `/teacher/discussions/{id}/replies` | 教师+归属 | **教师官方回复**（不可匿名；不得含试题 / 答案；通知发帖学员；写入审计） |
 | GET | `/teacher/reviews` | 教师 | 待阅卷列表 |
 | POST | `/teacher/reviews/{id}/score` | 教师 | 采点给分（双人阅卷） |
+| POST | /teacher/grade/{resultID}/questions/{questionID}/ai-suggest | 教师+归属 | **AI 阅卷建议**：返回建议分与采点理由 + model / model_version / iling_no；**不写库、不判负**，最终分仍由教师提交 |
 | GET | `/teacher/courses/{code}/stats` | 教师+归属 | 本课学情（**仅聚合，字段白名单见 §1.9**）+ **六项状态数 + 漏斗 + 转化率**（`range=7d\|30d\|90d`，v2.8） |
 | GET | `/teacher/courses/{code}/students` | 教师+归属 | 本课学员列表（**只回 `name` / `student_no` 与进度**，§1.9） |
 | POST | `/teacher/courses/{code}/requests` | 教师+归属 | **发起下架 / 内容纠错申请**（`kind=下架\|紧急纠错`，§7.9 J-8） |
@@ -304,6 +311,7 @@
 | POST | `/teacher/insights/{id}/verdict` | 教师+归属 | **采纳 / 驳回**（记意见）—— **不能编辑报告正文** |
 | GET · POST | `/teacher/revision-plans` | 教师+归属 | **改版计划列表 / 新建**（`problem` / `evidence` / `measure` / `target_metric` **必填**） |
 | PATCH | `/teacher/revision-plans/{id}` | 教师+归属 | 更新状态（`已完成` 时**关联 `course_revision`**；`已放弃` 须填原因） |
+| GET | /teacher/revision-plans/{id}/effect | 教师+归属 | **改版效果**：计划完成且关联版本后，按 course_revision.published_at 对比前后 30 天统计 |
 | GET | `/teacher/revisions/{id}/compare` | 教师+归属 | **改版前后对比**（按 `content_version` 切分，窗口默认前后各 30 天） |
 
 ### 2.11 管理后台（模块 E）
@@ -311,6 +319,7 @@
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
 | GET | `/admin/courses` | 管理员 | 全部课程（含草稿 / 待审 / 已下架）；支持 `status` / `source` / `q` 筛选；每项带 `intro` / `lecture_count` / `content_version` / `published_version` / `published_at` / `has_unpublished_changes`；响应含 `stats` 与 `total_lectures`。**管理端展示格式**：`v{content_version}.0.0` + `YYYY-MM-DD HH:mm:ss`（内容取 `updated_at`，线上取 `published_at`） |
+| POST | `/admin/courses/import` | 管理员 | **资源包导入平台课程**：`confirm=true` + `manifest`（课程 / 讲次 / 多类型资源）；资源放在 `ContentDir/imports/<source_root>/`；**创建 `building` 草稿，不自动上架**；HTML 目录整包复制，MP4/音频配置 COS 时上传、否则本地；写审计。详见 `docs/课程导入-v1.md` |
 | GET | `/admin/courses/{code}/revisions` | 管理员 | **课程版本历史**：`revision_no` / `content_version` / 变更摘要 / 发布时间（每次上架或重新上架追加一条） |
 | PATCH | `/admin/courses/{code}` | 管理员 | **课程设置面板**（价格、专业、上架状态、试学讲次、AI 开关与额度…） |
 | GET | `/admin/reviews` | 管理员 | **审核待办队列**（含等待天数，**超 SLA 高亮**，§J-2.2） |
@@ -358,6 +367,7 @@
 | POST | `/admin/ugc/{targetType}/{id}/remove` | 管理员 | 下架评论 / 帖 / 回复：**`reason_kind` 必填**（枚举无"差评/不利"），写审计 + 通知发布者 |
 | POST | `/admin/ugc/{targetType}/{id}/restore` | 管理员 | 误判恢复（写审计） |
 | GET | `/admin/insights` | 管理员 | **全平台课程运营看板**（六项状态 + 漏斗，可按专业/来源筛选） |
+| GET · POST | /admin/courses/{code}/ai-insights · /generate | 管理员 | **AI 运营报告**：基于 T+1 统计/评价/讨论/异常生成五段报告；每条建议必须带 vidence_map，不可溯源拒绝保存；记录 model / filing_no |
 | GET | `/admin/stats/{courseCode}` | 管理员 | 单课统计明细（**与教师版同一套口径**，M-0） |
 | GET · POST | `/admin/appeals` · `/{id}/handle` | 管理员 | **账号申诉待办与处理**（§7.10.10（三）） |
 | GET · POST | `/admin/deletions` · `/{id}/approve` | 管理员 | **注销审核**：前置校验 + 匿名化执行（§7.10.10（五）） |
@@ -387,6 +397,7 @@
 | POST | `/me/orders/{orderNo}/pay` | 学员 | **继续支付**（复用同一订单，不新建，§7.13 L-2） |
 | POST | `/me/orders/{orderNo}/cancel` | 学员 | 取消待支付订单 |
 | GET | `/me/scores` | 学员 | 我的成绩（**历次不覆盖**） |
+| GET | /me/learning-plan?course_code= | 学员（已解锁） | **AI 学习路径**：基于本课进度、最近测评与课程资料生成未来 3 步；返回 citations / model / iling_no；无资料拒绝生成，不承诺通过 |
 | GET | `/me/certs` | 学员 | 我的证书（含 `status`：有效 / 即将到期 / 已过期 / 已撤销） |
 | GET | `/me/certs/{certNo}/file` | 学员 | **下载 / 重新下载证书 PDF**（短时私有链接，§7.8 D-5） |
 | GET | `/me/messages` | 学员 | 消息中心（`type`：系统 / 事务 / 广播；`unread`） |
@@ -453,6 +464,8 @@
 | POST | `/admin/lectures/{id}/unpublish` | 管理员 | **下架某条增补讲次**（`origin<>upstream`）；已发证书不受影响（§7.16 P-6） |
 | POST | `/admin/lectures/{id}/emergency-remove` | 管理员 | **讲次级紧急撤下（v2.12）**：只撤这一讲（不必整课下架）；**须填原因 + 写审计**；<br>撤下后该讲**不进测评范围**、学员端显示"内容核对中"；**已学进度与证书不受影响**；**不物理删除** |
 | GET | `/admin/lectures?origin=ai_assisted` | 管理员 | 本课 **AI 增补讲次**列表（含 `in_exam_scope` 与效果对比入口） |
+| GET | /admin/ai-drafts/{id}/effect · /teacher/ai-drafts/{id}/effect | 管理员 / 教师+归属 | **AI 增补效果对比**：按 course_revision.published_at 切分前后 30 天统计；仅已上架草稿可查 |
+| GET | /admin/ai-drafts/{id}/export · /teacher/ai-drafts/{id}/export | 管理员 / 教师+归属 | **AIGC 导出包**：含 `aigc` 隐式元数据（label / service_provider / model / filing_no / content_sha256）；未上架或未写隐式标识 → 409 |
 
 > ⚠️ **三条接口层硬约束**：
 > ① **单审不可上架**：`/publish` 前置校验**必须存在 `stage=teacher` 与 `stage=admin` 两条 `approved`**，

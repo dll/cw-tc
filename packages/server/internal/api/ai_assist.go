@@ -1,12 +1,10 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,8 +14,10 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/cw-tc/server/internal/aigateway"
 	"github.com/cw-tc/server/internal/audit"
 	"github.com/cw-tc/server/internal/identity"
+	"github.com/cw-tc/server/internal/knowledge"
 	"github.com/gin-gonic/gin"
 )
 
@@ -40,7 +40,7 @@ var htmlTagRE = regexp.MustCompile(`<[^>]+>`)
 
 // askAI POST /ai/ask —— AI 助学 MVP：仅当前讲次资料、必须带引用、测评中关闭。
 func (s *Server) askAI(c *gin.Context) {
-	if s.cfg == nil || !s.cfg.LLMEnabled() || s.cfg.LLMFilingNo == "" {
+	if s.cfg == nil || !s.cfg.LLMEnabled() || s.cfg.AIFastFilingNo() == "" {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10601, Msg: "AI 助学尚未完成模型登记配置"})
 		return
 	}
@@ -90,11 +90,13 @@ func (s *Server) askAI(c *gin.Context) {
 	}
 
 	started := time.Now()
-	answer, tokensIn, tokensOut, err := s.callDeepSeek(c.Request.Context(), input.Question, chunks)
+	resp, err := s.callAssistant(c.Request.Context(), input.Question, chunks)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, envelope{Code: 10602, Msg: "AI 服务暂时不可用"})
 		return
 	}
+	answer := resp.Content
+	tokensIn, tokensOut := resp.TokensIn, resp.TokensOut
 	if strings.TrimSpace(answer) == "" {
 		c.JSON(http.StatusBadGateway, envelope{Code: 10602, Msg: "AI 未返回有效内容"})
 		return
@@ -108,8 +110,8 @@ func (s *Server) askAI(c *gin.Context) {
 		answer = strings.TrimSpace(answer) + "\n\n来源：" + strings.Join(parts, "；")
 	}
 	payload, _ := json.Marshal(gin.H{
-		"model": s.cfg.LLMModelName(), "model_version": s.cfg.LLMModelName(),
-		"filing_no": s.cfg.LLMFilingNo, "outcome": "answered",
+		"alias": resp.Alias, "model": resp.Model, "model_version": resp.ModelVersion,
+		"filing_no": resp.FilingNo, "outcome": "answered",
 		"citations": citations, "tokens_in": tokensIn, "tokens_out": tokensOut,
 		"latency_ms": time.Since(started).Milliseconds(), "question": input.Question,
 	})
@@ -119,7 +121,7 @@ func (s *Server) askAI(c *gin.Context) {
 	})
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: aiAnswer{
 		Answer: answer, Outcome: "answered", Citations: citations,
-		Model: s.cfg.LLMModelName(), FilingNo: s.cfg.LLMFilingNo, Remaining: remaining,
+		Model: resp.Model, FilingNo: resp.FilingNo, Remaining: remaining,
 	}})
 }
 
@@ -133,6 +135,30 @@ type contextChunk struct {
 func (s *Server) courseContext(ctx context.Context, courseID int64, lectureNo int, question string) (string, []aiCitation) {
 	if s.cfg.ContentDir == "" {
 		return "", nil
+	}
+	// 优先用已构建的课程知识库切片（带出处）；未构建时回落到文件扫描，保持兼容。
+	var courseCode string
+	if err := s.dbConn.QueryRowContext(ctx, `SELECT course_code FROM course WHERE id = $1`, courseID).Scan(&courseCode); err == nil {
+		if matches, err := knowledge.Search(ctx, s.dbConn, courseCode, lectureNo, questionTokens(question), 8); err == nil && len(matches) > 0 {
+			var builder strings.Builder
+			citations := make([]aiCitation, 0)
+			seen := map[string]bool{}
+			for _, match := range matches {
+				text := match.Content
+				if len([]rune(builder.String()))+len([]rune(text)) > 12000 {
+					break
+				}
+				fmt.Fprintf(&builder, "[L%d] %s / %s\n%s\n\n", match.LectureNo, match.LectureTitle, match.StorageKey, text)
+				key := fmt.Sprintf("%d|%s", match.LectureNo, match.LectureTitle)
+				if !seen[key] {
+					seen[key] = true
+					citations = append(citations, aiCitation{LectureNo: match.LectureNo, Title: match.LectureTitle, StorageKey: match.StorageKey})
+				}
+			}
+			if builder.Len() > 0 {
+				return builder.String(), citations
+			}
+		}
 	}
 	rows, err := s.dbConn.QueryContext(ctx,
 		`SELECT l.no, l.title, a.title, a.storage_key, a.kind
@@ -257,54 +283,55 @@ func consumeAIQuota(ctx context.Context, db *sql.DB, studentID, courseID int64, 
 	return limit - used, nil
 }
 
+const aiAssistantSystemPrompt = `你是“第三课堂”的课程助教。硬约束：
+1. 只依据本次提供的课程资料回答，不使用外部知识，不编造事实；
+2. 每条结论必须注明来源（如“来源：第N讲《标题》”）；
+3. 课程资料里没有时直接说明“这门课的资料里没有这条”，不要补编；
+4. 与课程无关的问题礼貌拒答，并引导回课程；
+5. 不提供测评答案原文，测评期间不使用；
+6. 先给结论，再给依据。`
+
+// callAssistant 通过 AI 网关别名调用模型（业务不直接依赖厂商 / 物理模型）。
+func (s *Server) callAssistant(ctx context.Context, question, contextText string) (aigateway.Response, error) {
+	gateway := s.aiGateway()
+	if gateway == nil {
+		return aigateway.Response{}, aigateway.ErrFilingRequired
+	}
+	return gateway.Complete(ctx, "assistant.fast", aigateway.Request{
+		System:      aiAssistantSystemPrompt,
+		Prompt:      "课程资料：\n" + contextText + "\n\n学员问题：" + question,
+		Temperature: 0.2,
+		MaxTokens:   800,
+	})
+}
+
+// aiGateway 从当前配置构建网关：业务只认 assistant.fast / assistant.strong。
+//
+// 换厂商 = 改配置；未配置密钥 / 备案号时返回 nil，调用方必须 fail-closed。
+func (s *Server) aiGateway() *aigateway.Gateway {
+	if s == nil || s.cfg == nil || !s.cfg.LLMEnabled() || s.cfg.AIFastFilingNo() == "" {
+		return nil
+	}
+	providerName := strings.TrimSpace(s.cfg.LLMProvider)
+	if providerName == "" {
+		providerName = "openai-compatible"
+	}
+	models := []aigateway.Model{
+		{Alias: "assistant.fast", Provider: providerName, Model: s.cfg.AIFastModelName(),
+			ModelVersion: s.cfg.AIFastModelVersion(), FilingNo: s.cfg.AIFastFilingNo()},
+		{Alias: "assistant.strong", Provider: providerName, Model: s.cfg.AIStrongModelName(),
+			ModelVersion: s.cfg.AIStrongModelVersion(), FilingNo: s.cfg.AIStrongFilingNo()},
+	}
+	return aigateway.New(models, map[string]aigateway.Provider{
+		providerName: aigateway.NewOpenAIProvider(s.cfg.LLMBase(), s.cfg.LLMKey()),
+	})
+}
+
+// callDeepSeek 保留旧调用签名供测试 / 兼容使用；实际已走 AI 网关。
 func (s *Server) callDeepSeek(ctx context.Context, question, contextText string) (string, int, int, error) {
-	system := `你是“第三课堂”的课程助教。必须遵守：
-1. 只能依据下面提供的课程资料回答，不得使用外部知识补充事实；
-2. 每条结论必须注明来源段落（形如“来源：第N讲《标题》”）；
-3. 资料没有依据时直接说“这门课的资料里没有这条”，不要编造；
-4. 与课程无关的问题礼貌拒答，并引导回本课程；
-5. 不提供测评答案原文；测评期间不允许使用。
-6. 用简洁中文回答，先给结论，再给依据。`
-	body := map[string]any{
-		"model": s.cfg.LLMModelName(),
-		"messages": []map[string]string{
-			{"role": "system", "content": system},
-			{"role": "user", "content": "课程资料：\n" + contextText + "\n\n学员问题：" + question},
-		},
-		"temperature": 0.2,
-		"max_tokens":  800,
-	}
-	raw, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimRight(s.cfg.LLMBase(), "/")+"/chat/completions", bytes.NewReader(raw))
+	resp, err := s.callAssistant(ctx, question, contextText)
 	if err != nil {
 		return "", 0, 0, err
 	}
-	req.Header.Set("Authorization", "Bearer "+s.cfg.LLMKey())
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 45 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", 0, 0, err
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", 0, 0, fmt.Errorf("deepseek status %d", resp.StatusCode)
-	}
-	var out struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(respBody, &out); err != nil || len(out.Choices) == 0 {
-		return "", 0, 0, fmt.Errorf("deepseek response invalid")
-	}
-	return out.Choices[0].Message.Content, out.Usage.PromptTokens, out.Usage.CompletionTokens, nil
+	return resp.Content, resp.TokensIn, resp.TokensOut, nil
 }

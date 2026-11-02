@@ -1,13 +1,17 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cw-tc/server/internal/audit"
 	"github.com/cw-tc/server/internal/ledger"
 	"github.com/cw-tc/server/internal/staff"
+	"github.com/cw-tc/server/internal/sysconfig"
 	"github.com/gin-gonic/gin"
 )
 
@@ -115,7 +119,51 @@ func bearerToken(c *gin.Context) string {
 
 // adminSettings GET /admin/settings —— 系统配置页（仅 super；密钥值绝不返回，铁律 8）。
 func (s *Server) adminSettings(c *gin.Context) {
-	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"note": "系统配置页：仅超级管理员可见；密钥只走 shared/.env，不回显"}})
+	items, err := sysconfig.New(s.dbConn).List(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "系统配置读取失败"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+		"items": items,
+		"note":  "仅业务参数；密钥只走 shared/.env，本页与接口均不回显",
+	}})
+}
+
+// adminUpdateSetting PATCH /admin/settings —— 逐个 key 修改业务参数（低于下限 400 + 写审计）。
+func (s *Server) adminUpdateSetting(c *gin.Context) {
+	admin := c.MustGet(staffContextKey).(staff.Staff)
+	var req struct {
+		Key   string `json:"key"`
+		Value any    `json:"value"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Key == "" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	store := sysconfig.New(s.dbConn)
+	before, _ := store.Get(c.Request.Context(), req.Key)
+	item, err := store.Set(c.Request.Context(), req.Key, req.Value, admin.ID)
+	if err != nil {
+		if errors.Is(err, sysconfig.ErrBadValue) {
+			c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: err.Error()})
+			return
+		}
+		if errors.Is(err, sysconfig.ErrUnknownKey) {
+			c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "配置项不存在"})
+			return
+		}
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "系统配置写入失败"})
+		return
+	}
+	beforeJSON, _ := json.Marshal(before)
+	afterJSON, _ := json.Marshal(item)
+	_ = audit.Record(c.Request.Context(), s.dbConn, audit.Input{
+		ActorType: "staff", ActorID: admin.ID, ActorRole: string(admin.Role),
+		Action: "system_config.update", TargetType: "system_config", TargetID: req.Key,
+		Before: string(beforeJSON), After: string(afterJSON), IP: c.ClientIP(),
+	})
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: item})
 }
 
 func (s *Server) adminOrders(c *gin.Context) {

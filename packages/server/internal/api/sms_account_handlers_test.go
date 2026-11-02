@@ -79,8 +79,8 @@ func TestDeleteAccountRoute(t *testing.T) {
 	s, _, token, cleanup := smsAccountServer(t)
 	defer cleanup()
 	response := performJSONWithCookie(t, s.Router(), http.MethodPost, "/api/v1/me/delete", `{}`, token)
-	if response.Code != http.StatusOK || !containsAll(response.Body.String(), `"status":"anonymized"`) {
-		t.Fatalf("注销失败: %d %s", response.Code, response.Body.String())
+	if response.Code != http.StatusOK || !containsAll(response.Body.String(), `"status":"deleting"`) {
+		t.Fatalf("注销申请提交失败: %d %s", response.Code, response.Body.String())
 	}
 }
 

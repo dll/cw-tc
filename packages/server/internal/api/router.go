@@ -18,7 +18,10 @@ import (
 	"github.com/cw-tc/server/internal/identity"
 	"github.com/cw-tc/server/internal/platform/clock"
 	"github.com/cw-tc/server/internal/platform/db"
+	platformredis "github.com/cw-tc/server/internal/platform/redis"
+	"github.com/cw-tc/server/internal/ratelimit"
 	"github.com/cw-tc/server/internal/redact"
+	smsprovider "github.com/cw-tc/server/internal/sms"
 )
 
 // Version 为构建版本，发布时由 -ldflags 注入（见 Makefile）。
@@ -29,16 +32,21 @@ var StartedAt = time.Now()
 
 // Server 持有路由所需的依赖。
 type Server struct {
-	cfg      *config.Config
-	identity *identity.Service
-	database db.Pinger
-	dbConn   *sql.DB
-	sms      *identity.SMSService
+	cfg         *config.Config
+	identity    *identity.Service
+	database    db.Pinger
+	dbConn      *sql.DB
+	rateLimiter ratelimit.Limiter
+	sms         *identity.SMSService
+	smsSender   interface {
+		Send(context.Context, string, string) error
+	}
 	cosStore *cosstore.Store
 
 	// COS 可用性探测缓存（欠费/停服时自动回退文件服务，见 cosAvailable）。
 	cosProbeMu sync.Mutex
 	cosProbes  map[string]cosProbeResult
+	aiLocks    sync.Map // studentID -> chan struct{}，限制同一学员同时 1 路 AI 请求
 }
 
 type cosProbeResult struct {
@@ -54,9 +62,25 @@ func New(cfg *config.Config) *Server {
 	if cfg != nil && cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	s := &Server{cfg: cfg}
+	s := &Server{cfg: cfg, rateLimiter: ratelimit.NewMemory()}
 	if cfg != nil {
 		s.cosStore = cosstore.New(cfg.CosSecretID, cfg.CosSecretKey, cfg.CosBucket, cfg.CosRegion)
+		if cfg.RedisEnabled() {
+			client, err := platformredis.New(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+			if err != nil {
+				slog.Warn("Redis 连接失败，限频降级为进程内", "err", err)
+			} else {
+				s.rateLimiter = ratelimit.NewFailover(ratelimit.NewRedis(client), s.rateLimiter)
+				slog.Info("Redis 限频已启用", "addr", cfg.RedisAddr, "db", cfg.RedisDB)
+			}
+		}
+		if cfg.SMSEnabled() {
+			s.sms = identity.NewSMSService()
+			s.smsSender = &smsprovider.Tencent{
+				SecretID: cfg.SMSSecretID, SecretKey: cfg.SMSSecretKey, SdkAppID: cfg.SMSSdkAppID,
+				SignName: cfg.SMSSignName, TemplateID: cfg.SMSTemplateID, Region: cfg.SMSRegion,
+			}
+		}
 	}
 	return s
 }
@@ -124,15 +148,19 @@ func (s *Server) Router() *gin.Engine {
 	v1.PATCH("/notes/:id", authRequired(s.identity), s.updateNote)
 	v1.DELETE("/notes/:id", authRequired(s.identity), s.deleteNote)
 	v1.GET("/me/suggestions", authRequired(s.identity), s.listMySuggestions)
+	v1.GET("/me/appeals", authRequired(s.identity), s.listMyAppeals)
+	v1.POST("/me/appeals", authRequired(s.identity), s.createMyAppeal)
+	v1.POST("/auth/appeal", s.createAnonymousAppeal)
 	v1.POST("/me/suggestions", authRequired(s.identity), s.createSuggestion)
 	v1.GET("/me/export", authRequired(s.identity), s.exportMyData)
 	v1.PUT("/me/courses/:code/progress", authRequired(s.identity), s.reportCourseProgress)
 	v1.GET("/me/entitlements", authRequired(s.identity), s.listEntitlements)
-	v1.POST("/auth/sms/send", s.sendSMS)
+	v1.GET("/me/learning-plan", authRequired(s.identity), s.myLearningPlan)
+	v1.POST("/auth/sms/send", s.ipRateLimit(20, time.Hour), s.sendSMS)
 	v1.POST("/auth/logout-all", s.logoutAll)
 	v1.POST("/auth/logout", s.logout)
-	v1.POST("/auth/login", s.login)
-	v1.POST("/auth/sms-login", s.smsLogin)
+	v1.POST("/auth/login", s.ipRateLimit(20, time.Minute), s.login)
+	v1.POST("/auth/sms-login", s.ipRateLimit(20, time.Minute), s.smsLogin)
 	v1.POST("/auth/reset-password", s.resetPassword)
 	v1.POST("/auth/password/reset", s.resetPasswordByAdminCode)
 	v1.POST("/auth/password/reset-identity", s.resetPasswordByIdentity)
@@ -142,6 +170,7 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/me/devices", authRequired(s.identity), s.listDevices)
 	v1.POST("/me/devices/:id/revoke", authRequired(s.identity), s.revokeDevice)
 	v1.POST("/me/logout-all", authRequired(s.identity), s.logoutAllStudent)
+	v1.POST("/promo/validate", s.ipRateLimit(20, time.Minute), authRequired(s.identity), s.validatePromo)
 	v1.POST("/orders", authRequired(s.identity), s.createOrder)
 	v1.GET("/orders", authRequired(s.identity), s.listMyOrders)
 	v1.GET("/me/orders", authRequired(s.identity), s.listMyOrders)
@@ -177,25 +206,53 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/me/certs/:certNo/file", authRequired(s.identity), s.downloadMyCert)
 	v1.GET("/me/certs/:certNo/download", authRequired(s.identity), s.downloadMyCert)
 	v1.POST("/me/certs/:certNo/download", authRequired(s.identity), s.downloadMyCert)
+	v1.GET("/me/downloads", authRequired(s.identity), s.listDownloads)
+	v1.POST("/me/downloads", authRequired(s.identity), s.requestDownload)
+	v1.DELETE("/me/downloads/:lectureNo", authRequired(s.identity), s.deleteDownload)
 	v1.POST("/admin/login", s.adminLogin)
 	admin := v1.Group("/admin", s.staffRequired)
 	// 改密 / 登录对所有内部人员开放；其余后台接口一律要求 ops / super。
 	admin.POST("/change-password", s.adminChangePassword)
 	adminOnly := admin.Group("", s.requireAdmin)
 	adminOnly.GET("/courses", s.adminCourses)
+	adminOnly.POST("/courses/import", s.adminImportCourse)
+	adminOnly.GET("/reviews", s.adminReviewQueue)
+	adminOnly.GET("/courses/:code/review", s.adminReviewDetail)
+	adminOnly.GET("/courses/:code/checkup", s.adminCourseCheckup)
 	adminOnly.GET("/courses/:code/revisions", s.adminCourseRevisions)
+	adminOnly.POST("/courses/:code/kb/rebuild", s.adminRebuildKnowledge)
+	adminOnly.GET("/kb/status", s.adminKnowledgeStatus)
+	adminOnly.GET("/courses/:code/ai-insights", s.adminListAIInsights)
+	adminOnly.POST("/courses/:code/ai-insights/generate", s.adminGenerateAIInsight)
+	adminOnly.GET("/courses/:code/ai-insights/:id", s.adminAIInsightDetail)
+	adminOnly.GET("/ai-drafts", s.adminListAIDrafts)
+	adminOnly.GET("/ai-drafts/:id", s.adminAIDraftDetail)
+	adminOnly.POST("/ai-drafts/:id/review", s.adminReviewAIDraft)
+	adminOnly.POST("/ai-drafts/:id/publish", s.adminPublishAIDraft)
+	adminOnly.GET("/ai-drafts/:id/effect", s.adminAIDraftEffect)
+	adminOnly.GET("/ai-drafts/:id/export", s.adminExportAIDraft)
 	adminOnly.GET("/courses/:code/quality", s.adminCourseQuality)
 	adminOnly.POST("/courses/:code/quality", s.adminCourseQualityOverride)
+	adminOnly.POST("/batch/courses", s.adminBatchCourses)
+	adminOnly.GET("/batch/:batchId", s.adminBatchResult)
 	adminOnly.POST("/bulk-courses/publish", s.adminBulkPublishCourses)
 	adminOnly.POST("/bulk-courses/unpublish", s.adminBulkUnpublishCourses)
-	adminOnly.GET("/orders", s.adminOrders)
+	adminOnly.GET("/orders", s.adminOrderLedger)
+	adminOnly.GET("/orders/export", s.adminOrderExport)
+	adminOnly.POST("/orders/:orderNo/partial-refund", s.adminPartialRefund)
 	adminOnly.GET("/refunds", s.adminRefunds)
-	adminOnly.GET("/certs", s.adminCerts)
+	adminOnly.GET("/reconcile", s.adminListReconcile)
+	adminOnly.GET("/reconcile/:date", s.adminReconcileDay)
+	adminOnly.GET("/reconcile/:date/diff", s.adminReconcileDiffCSV)
+	adminOnly.GET("/payments/channels", s.adminPaymentChannels)
+	adminOnly.GET("/certs", s.adminCertLedger)
+	adminOnly.POST("/certs/:certNo/revoke", s.adminRevokeCert)
 	adminOnly.POST("/entitlements", s.adminGrantEntitlement)
 	adminOnly.POST("/users/:id/reset-password", s.adminResetStudentPassword)
 	adminOnly.POST("/student-discounts", s.adminBatchDiscount)
 	adminOnly.POST("/student-grants", s.adminBatchFree)
-	adminOnly.DELETE("/entitlements/:studentID/:courseID", s.adminRevokeEntitlement)
+	adminOnly.GET("/entitlements", s.adminListEntitlements)
+	adminOnly.DELETE("/entitlements/:id", s.adminRevokeEntitlementByID)
 	adminOnly.POST("/courses/:code/review", s.adminReviewCourse)
 	adminOnly.POST("/courses/:code/publish", s.adminPublishCourse)
 	adminOnly.POST("/courses/:code/unpublish", s.adminUnpublishCourse)
@@ -204,16 +261,45 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.POST("/courses/:code/free-preview", s.adminSetCourseFreePreview)
 	adminOnly.POST("/broadcasts", s.adminCreateBroadcast)
 	adminOnly.POST("/broadcasts/:id/confirm", s.adminConfirmBroadcast)
+	adminOnly.GET("/admins", s.requireSuper, s.adminListAdmins)
+	adminOnly.POST("/admins", s.requireSuper, s.adminCreateAdmin)
+	adminOnly.DELETE("/admins/:id", s.requireSuper, s.adminDisableAdmin)
 	adminOnly.POST("/staff", s.adminCreateStaff)
 	adminOnly.POST("/staff/:id/disable", s.adminDisableStaff)
 	adminOnly.POST("/courses/transfer", s.adminTransferCourse)
 	adminOnly.POST("/orders/:orderNo/refund", s.adminRefundOrder)
 	adminOnly.GET("/users", s.adminListUsers)
+	adminOnly.GET("/users/:id", s.adminUserDetail)
+	adminOnly.PATCH("/users/:id/status", s.adminUpdateUserStatus)
 	adminOnly.GET("/registration-pending", requireAdminOps(s), s.adminPendingRegistrations)
+	adminOnly.GET("/users/:id/reveal", s.adminRevealUser)
 	adminOnly.POST("/users/:id/reveal", s.adminRevealUser)
 	adminOnly.POST("/users/:id/approve-registration", requireAdminOps(s), s.adminApproveRegistration)
+	adminOnly.GET("/deletions", s.adminListDeletions)
+	adminOnly.POST("/deletions/:id/approve", s.adminHandleDeletion)
+	adminOnly.GET("/appeals", s.adminListAppeals)
+	adminOnly.POST("/appeals/:id/handle", s.adminHandleAppeal)
+	adminOnly.GET("/promo", s.adminListPromo)
+	adminOnly.POST("/promo", s.adminCreatePromo)
+	adminOnly.PATCH("/promo/:code", s.adminUpdatePromo)
+	adminOnly.GET("/risk", s.adminRiskOverview)
+	adminOnly.POST("/risk/blacklist", s.adminAddBlacklist)
+	adminOnly.PATCH("/risk/blacklist/:id", s.adminResolveBlacklistAppeal)
+	adminOnly.GET("/exams/:id/anomalies", s.adminExamAnomalies)
+	adminOnly.POST("/exams/:id/verdict", s.adminExamVerdict)
+	adminOnly.GET("/content", s.adminListContent)
+	adminOnly.PATCH("/content", s.adminUpdateContent)
+	adminOnly.GET("/job-map", s.adminListJobMap)
+	adminOnly.PATCH("/job-map", s.adminUpdateJobMap)
+	adminOnly.GET("/showcase", s.adminListShowcase)
+	adminOnly.PATCH("/showcase", s.adminUpdateShowcase)
 	adminOnly.GET("/audit", s.adminAudit)
 	adminOnly.GET("/settings", s.requireSuper, s.adminSettings)
+	adminOnly.PATCH("/settings", s.requireSuper, s.adminUpdateSetting)
+	adminOnly.POST("/exports", s.requireSuper, s.adminExportStudentData)
+	adminOnly.GET("/exports", s.requireSuper, s.adminListExports)
+	adminOnly.GET("/insights", s.adminInsights)
+	adminOnly.GET("/stats/:courseCode", s.adminCourseStats)
 	adminOnly.GET("/majors", s.adminListMajors)
 	adminOnly.POST("/majors", s.adminCreateMajor)
 	adminOnly.PUT("/majors/:id", s.adminUpdateMajor)
@@ -225,6 +311,11 @@ func (s *Server) Router() *gin.Engine {
 	adminOnly.POST("/suggestions/:id/reply", s.adminReplySuggestion)
 	adminOnly.POST("/comments/:id/remove", s.adminRemoveComment)
 	adminOnly.GET("/comment-reports", s.adminListCommentReports)
+	adminOnly.GET("/discussions", s.adminListDiscussions)
+	adminOnly.POST("/ugc/:targetType/:id/remove", s.adminRemoveUGC)
+	adminOnly.POST("/ugc/:targetType/:id/restore", s.adminRestoreUGC)
+	adminOnly.POST("/comment-reports/:id/handle", s.adminHandleCommentReport)
+	adminOnly.POST("/comments/:id/restore", s.adminRestoreComment)
 	adminOnly.GET("/operations", s.adminListOperations)
 	adminOnly.POST("/operations", s.adminCreateOperation)
 	adminOnly.PATCH("/operations/:id", s.adminUpdateOperation)
@@ -235,11 +326,34 @@ func (s *Server) Router() *gin.Engine {
 	teacher.PUT("/courses/:code", s.teacherUpdateCourse)
 	teacher.DELETE("/courses/:code", s.teacherDeleteCourse)
 	teacher.POST("/courses/:code/submit", s.teacherSubmitCourse)
+	teacher.GET("/courses/:code/content", s.teacherCourseContent)
+	teacher.POST("/courses/:code/lectures", s.teacherAddLecture)
+	teacher.POST("/courses/:code/lectures/:no/assets", s.teacherUploadAsset)
+	teacher.DELETE("/courses/:code/lectures/:no/assets/:assetID", s.teacherDeleteAsset)
+	teacher.GET("/insights", s.teacherListInsights)
+	teacher.GET("/insights/:id", s.teacherInsightDetail)
+	teacher.POST("/insights/:id/verdict", s.teacherInsightVerdict)
+	teacher.GET("/revision-plans", s.teacherListRevisionPlans)
+	teacher.POST("/revision-plans", s.teacherCreateRevisionPlan)
+	teacher.PATCH("/revision-plans/:id", s.teacherUpdateRevisionPlan)
+	teacher.GET("/revision-plans/:id/effect", s.teacherRevisionPlanEffect)
+	teacher.GET("/revisions/:id/compare", s.teacherRevisionCompare)
+	teacher.GET("/ai-drafts", s.teacherListAIDrafts)
+	teacher.POST("/ai-drafts", s.teacherCreateAIDraft)
+	teacher.GET("/ai-drafts/:id", s.teacherAIDraftDetail)
+	teacher.PATCH("/ai-drafts/:id", s.teacherUpdateAIDraft)
+	teacher.POST("/ai-drafts/:id/review", s.teacherReviewAIDraft)
+	teacher.GET("/ai-drafts/:id/effect", s.teacherAIDraftEffect)
+	teacher.GET("/ai-drafts/:id/export", s.teacherExportAIDraft)
+	teacher.GET("/discussions", s.teacherDiscussions)
+	teacher.POST("/discussions/:id/replies", s.teacherReplyDiscussion)
 	teacher.POST("/courses/:code/requests", s.teacherCreateContentRequest)
+	teacher.GET("/courses/:code/stats", s.teacherCourseStats)
 	teacher.GET("/requests", s.teacherListContentRequests)
 	teacher.GET("/grade", s.teacherGradeList)
 	teacher.GET("/grade/:resultID", s.teacherGradeDetail)
 	teacher.POST("/grade/:resultID/questions/:questionID", s.teacherGradeSubmit)
+	teacher.POST("/grade/:resultID/questions/:questionID/ai-suggest", s.teacherAIGradeSuggest)
 	v1.POST("/payment/callback", s.paymentCallback)
 	v1.POST("/pay/alipay/notify", s.alipayNotify)
 	v1.GET("/courses", s.listPublicCourses)
@@ -265,12 +379,18 @@ func (s *Server) Router() *gin.Engine {
 	v1.GET("/assets/inline/:student/:asset/:expires/:sig/*relative", s.streamInlineAsset)
 	v1.GET("/majors", s.listMajors)
 	v1.GET("/health", s.health)
-	v1.GET("/verify/:certNo", s.verifyCert)
+	v1.GET("/verify/:certNo", s.ipRateLimit(20, time.Minute), s.verifyCert)
 
 	// 对外公开状态（PRD v2 §7.12 K-2）：只读、聚合、**不含任何个人信息**。
 	// 未启用时路由不注册，避免"存在但不可用"的暧昧状态。
 	if s.cfg.PublicStatusEnabled {
 		v1.GET("/public/status", s.publicStatus)
+		v1.GET("/public/overview", s.publicOverview)
+		v1.GET("/public/job-map", s.publicJobMap)
+		v1.GET("/public/showcase", s.publicShowcase)
+		v1.GET("/me/showcase", authRequired(s.identity), s.myShowcase)
+		v1.POST("/me/showcase", authRequired(s.identity), s.createShowcase)
+		v1.POST("/me/showcase/:id/revoke", authRequired(s.identity), s.revokeShowcase)
 		v1.GET("/public/operations", s.publicOperations)
 	}
 	return r
@@ -333,5 +453,20 @@ func (s *Server) accessLog() gin.HandlerFunc {
 			"status", c.Writer.Status(),
 			"costMs", time.Since(start).Milliseconds(),
 		)
+	}
+}
+
+// acquireAILock 限制同一学员同时 1 路 AI 请求（PRD §1.8 / §7.5）。
+func (s *Server) acquireAILock(studentID int64) (func(), bool) {
+	if s == nil || studentID <= 0 {
+		return func() {}, false
+	}
+	value, _ := s.aiLocks.LoadOrStore(studentID, make(chan struct{}, 1))
+	ch := value.(chan struct{})
+	select {
+	case ch <- struct{}{}:
+		return func() { <-ch }, true
+	default:
+		return func() {}, false
 	}
 }

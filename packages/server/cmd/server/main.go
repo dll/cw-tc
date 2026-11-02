@@ -25,6 +25,14 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "stats-batch" {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
+		if err := runStatsBatch(os.Args[2:]); err != nil {
+			slog.Error("课程统计跑批失败", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel(),
 	})))

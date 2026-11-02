@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cw-tc/server/internal/commerce"
@@ -18,6 +19,7 @@ func (s *Server) createOrder(c *gin.Context) {
 	student := studentValue.(identity.Student)
 	var input struct {
 		CourseCode string `json:"course_code" binding:"required"`
+		PromoCode  string `json:"promo_code"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil || input.CourseCode == "" {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10002, Msg: "请求参数非法"})
@@ -29,12 +31,12 @@ func (s *Server) createOrder(c *gin.Context) {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "课程不存在或未上架"})
 		return
 	}
-	order, err := commerce.NewService(s.dbConn).CreateOrderFromCourse(c.Request.Context(), student.ID, courseID, c.GetHeader("Idempotency-Key"), time.Now().UTC().Add(30*time.Minute))
+	order, err := commerce.NewService(s.dbConn).CreateOrderFromCourseWithPromo(c.Request.Context(), student.ID, courseID, c.GetHeader("Idempotency-Key"), strings.TrimSpace(input.PromoCode), time.Now().UTC().Add(30*time.Minute))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10002, Msg: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"order_no": order.OrderNo, "status": order.Status, "amount_cents": order.AmountCents}})
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{"order_no": order.OrderNo, "status": order.Status, "price_cents": order.PriceCents, "discount_cents": order.DiscountCents, "amount_cents": order.AmountCents}})
 }
 
 // mockPayOrder POST /orders/:orderNo/mock-pay —— 支付渠道线下未接时模拟支付成功（等价于回调）。

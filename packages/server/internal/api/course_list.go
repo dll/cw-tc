@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cw-tc/server/internal/stats"
 	"github.com/gin-gonic/gin"
 )
 
@@ -136,6 +137,23 @@ func (s *Server) listPublicCourses(c *gin.Context) {
 	if err := rows.Err(); err != nil {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 		return
+	}
+	// 行集关闭后批量取最近统计（避免每门课一次查询）。
+	rows.Close()
+	codes := make([]string, 0, len(items))
+	for _, item := range items {
+		codes = append(codes, item["course_code"].(string))
+	}
+	snapshots, _ := stats.LatestForCourses(c.Request.Context(), s.dbConn, codes)
+	threshold := s.statsThreshold(c.Request.Context())
+	for _, item := range items {
+		code := item["course_code"].(string)
+		var snapshot *stats.Snapshot
+		if value, ok := snapshots[code]; ok {
+			copied := value
+			snapshot = &copied
+		}
+		item["stats"] = publicCourseStats(snapshot, threshold)
 	}
 
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{

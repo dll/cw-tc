@@ -147,7 +147,7 @@ class _AccountSecurityPageState extends State<AccountSecurityPage> {
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('注销账号'),
         content: const Text(
-            '注销后姓名与手机号将被匿名化，身份证信息删除；证书台账依法留存，仍可按编号验真。此操作不可恢复。'),
+            '提交注销申请后由运营管理员审核；通过后姓名与手机号匿名化、身份证信息删除；证书台账依法留存，仍可按编号验真。'),
         actions: <Widget>[
           TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -161,7 +161,7 @@ class _AccountSecurityPageState extends State<AccountSecurityPage> {
     if (confirmed != true) return;
     try {
       await _api.deleteAccount();
-      _toast('账号已注销');
+      _toast('注销申请已提交，等待审核');
       if (mounted) context.go('/');
     } catch (e) {
       _toast(_friendly(e));

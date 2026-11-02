@@ -110,3 +110,63 @@ func TestOperationSlotExpireAndRemove(t *testing.T) {
 		t.Fatalf("不存在运营位应 ErrSlotNotFound: %v", err)
 	}
 }
+
+func TestOperationSlotValidationBranches(t *testing.T) {
+	database := courseDB(t)
+	defer database.Close()
+	ctx := context.Background()
+	if _, err := database.Exec(`INSERT INTO course(course_code,source,name,line,major_id,status,teacher_id) VALUES('C1','platform','已上架','main',1,'published',1)`); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	valid := OperationSlot{
+		Position: "home_banner", CourseCode: "C1", Title: "标题",
+		StartsAt: now.Add(-time.Hour).Format(time.RFC3339),
+		EndsAt:   now.Add(time.Hour).Format(time.RFC3339),
+		Status:   "active",
+	}
+	cases := []struct {
+		name string
+		slot OperationSlot
+	}{
+		{"非法位置", OperationSlot{Position: "bad", Title: "x", StartsAt: valid.StartsAt, EndsAt: valid.EndsAt, Status: "active"}},
+		{"非法状态", OperationSlot{Position: "home_banner", Title: "x", StartsAt: valid.StartsAt, EndsAt: valid.EndsAt, Status: "bad"}},
+		{"起始时间非法", OperationSlot{Position: "home_banner", Title: "x", StartsAt: "bad", EndsAt: valid.EndsAt, Status: "active"}},
+		{"结束时间非法", OperationSlot{Position: "home_banner", Title: "x", StartsAt: valid.StartsAt, EndsAt: "bad", Status: "active"}},
+		{"结束不晚于开始", OperationSlot{Position: "home_banner", Title: "x", StartsAt: valid.EndsAt, EndsAt: valid.StartsAt, Status: "active"}},
+		{"课程不存在", OperationSlot{Position: "home_banner", CourseCode: "NOPE", Title: "x", StartsAt: valid.StartsAt, EndsAt: valid.EndsAt, Status: "active"}},
+	}
+	for _, tc := range cases {
+		if _, err := CreateOperationSlot(ctx, database, tc.slot, 1); err == nil {
+			t.Fatalf("%s 应被拒绝", tc.name)
+		}
+	}
+	if _, err := CreateOperationSlot(ctx, nil, valid, 1); err != ErrSlotInput {
+		t.Fatalf("空库应拒绝: %v", err)
+	}
+	if _, err := CreateOperationSlot(ctx, database, valid, 0); err != ErrSlotInput {
+		t.Fatalf("缺少操作人应拒绝: %v", err)
+	}
+	if _, err := CreateOperationSlot(ctx, database, OperationSlot{Position: "home_banner", StartsAt: valid.StartsAt, EndsAt: valid.EndsAt, Status: "active"}, 1); err != ErrSlotInput {
+		t.Fatalf("无标题无图片应拒绝: %v", err)
+	}
+	// 无课程码的 banner 允许创建。
+	if _, err := CreateOperationSlot(ctx, database, OperationSlot{Position: "home_banner", Title: "纯 Banner", StartsAt: valid.StartsAt, EndsAt: valid.EndsAt, Status: "draft"}, 1); err != nil {
+		t.Fatalf("无课程 banner 应允许: %v", err)
+	}
+	if err := UpdateOperationSlot(ctx, database, 999, valid, 1); err != ErrSlotNotFound {
+		t.Fatalf("更新不存在运营位应 404: %v", err)
+	}
+	if err := UpdateOperationSlot(ctx, database, 1, valid, 0); err != ErrSlotInput {
+		t.Fatalf("更新缺少操作人应拒绝: %v", err)
+	}
+	if _, err := PublicOperationSlots(ctx, database, "bad", now); err != ErrSlotInput {
+		t.Fatalf("非法位置应拒绝: %v", err)
+	}
+	if _, err := PublicOperationSlots(ctx, nil, "home_banner", now); err != ErrSlotInput {
+		t.Fatalf("空库应拒绝: %v", err)
+	}
+	if _, err := ListOperationSlots(ctx, nil, now); err == nil {
+		t.Fatal("空库列表应报错")
+	}
+}

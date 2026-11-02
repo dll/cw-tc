@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/cw-tc/server/internal/platform/db"
@@ -80,5 +81,87 @@ func TestBroadcastLifecycle(t *testing.T) {
 	unread, _ := ListNotifications(ctx, database, 1, true, 100, 0)
 	if len(unread) != 0 {
 		t.Fatalf("标记已读后未读应为 0，实际 %d", len(unread))
+	}
+}
+
+func TestBroadcastValidationAndTargets(t *testing.T) {
+	database := notifyDB(t)
+	defer database.Close()
+	ctx := context.Background()
+	if _, err := database.Exec(`INSERT INTO major(id,name) VALUES(1,'专业一')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO course(id, course_code, source, name, line, major_id, status, teacher_id) VALUES(1,'C1','platform','课程一','main',1,'published',1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO entitlement(student_id, course_id, source, granted_at) VALUES(1,1,'free','2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	// 学员 2 退订广播，不应接收。
+	if _, err := database.Exec(`INSERT INTO notification_pref(student_id, broadcast_opt_out) VALUES(2,1)`); err != nil {
+		t.Fatal(err)
+	}
+	// 学员 2 也购课，但已退订。
+	if _, err := database.Exec(`INSERT INTO entitlement(student_id, course_id, source, granted_at) VALUES(2,1,'free','2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, in := range []BroadcastInput{
+		{},
+		{OperatorID: 1, Target: "bad", Title: "t", Body: "b", IdempotencyKey: "k"},
+		{OperatorID: 1, Target: "all", Title: "", Body: "b", IdempotencyKey: "k"},
+		{OperatorID: 1, Target: "all", Title: "t", Body: "", IdempotencyKey: "k"},
+		{OperatorID: 1, Target: "all", Title: "t", Body: "b", IdempotencyKey: ""},
+	} {
+		if _, err := CreateBroadcast(ctx, database, in); !errors.Is(err, ErrBroadcastInput) {
+			t.Fatalf("非法广播应拒绝: %+v -> %v", in, err)
+		}
+	}
+	if _, err := CreateBroadcast(ctx, nil, BroadcastInput{OperatorID: 1, Target: "all", Title: "t", Body: "b", IdempotencyKey: "k"}); !errors.Is(err, ErrBroadcastInput) {
+		t.Fatalf("空库应拒绝: %v", err)
+	}
+	if _, err := ConfirmBroadcast(ctx, database, 999, 1); !errors.Is(err, ErrBroadcastNotFound) {
+		t.Fatalf("不存在广播应 404: %v", err)
+	}
+	if _, err := ConfirmBroadcast(ctx, database, 0, 1); !errors.Is(err, ErrBroadcastInput) {
+		t.Fatalf("非法广播号应拒绝: %v", err)
+	}
+
+	courseID, err := CreateBroadcast(ctx, database, BroadcastInput{
+		OperatorID: 1, Target: "course", TargetValue: "C1", Title: "课程广播", Body: "正文", IdempotencyKey: "kc",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := ConfirmBroadcast(ctx, database, courseID, 1)
+	if err != nil || n != 1 {
+		t.Fatalf("按课程广播应只触达未退订学员: n=%d err=%v", n, err)
+	}
+	majorID, err := CreateBroadcast(ctx, database, BroadcastInput{
+		OperatorID: 1, Target: "major", TargetValue: "1", Title: "专业广播", Body: "正文", IdempotencyKey: "km",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := ConfirmBroadcast(ctx, database, majorID, 1); err != nil || n != 1 {
+		t.Fatalf("按专业广播应只触达未退订学员: n=%d err=%v", n, err)
+	}
+}
+
+func TestMarkReadOwnershipAndMissing(t *testing.T) {
+	database := notifyDB(t)
+	defer database.Close()
+	ctx := context.Background()
+	if _, err := database.Exec(`INSERT INTO notification(student_id, type, title, body) VALUES(1,'system','标题','正文')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := MarkRead(ctx, database, 1, 2); !errors.Is(err, ErrNotificationNotFound) {
+		t.Fatalf("他人通知不可标记: %v", err)
+	}
+	if err := MarkRead(ctx, database, 999, 1); !errors.Is(err, ErrNotificationNotFound) {
+		t.Fatalf("不存在通知应 404: %v", err)
+	}
+	if _, err := ListNotifications(ctx, database, 1, false, 0, 0); err != nil {
+		t.Fatalf("limit 越界应回退默认值: %v", err)
 	}
 }

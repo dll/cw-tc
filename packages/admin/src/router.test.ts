@@ -7,6 +7,8 @@ import { router } from './router'
  * 这条测试的作用是：站点地图改了而路由没跟上（或反之）时立刻暴露。
  */
 const EXPECTED_PATHS = [
+  '/admin/login',
+  '/admin/change-password',
   // 管理端（PRD v2 §7.10）
   '/admin/courses',
   '/admin/majors',
@@ -17,9 +19,9 @@ const EXPECTED_PATHS = [
   '/admin/users',
   '/admin/audit',
   // 教师工作台（PRD v2 §7.9）
-  '/teacher/courses',
-  '/teacher/courses/new',
-  '/teacher/review',
+  '/admin/teacher/courses',
+  '/admin/teacher/courses/new',
+  '/admin/teacher/review',
 ]
 
 describe('路由表与 PRD v2 §8.1 站点地图一致', () => {
