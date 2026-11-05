@@ -83,6 +83,36 @@ func Authenticate(ctx context.Context, db *sql.DB, token string, now time.Time) 
 	return st, nil
 }
 
+// Profile 返回内部人员的最新身份信息（个人中心展示用）。
+func Profile(ctx context.Context, db *sql.DB, staffID int64) (Staff, error) {
+	if db == nil || staffID <= 0 {
+		return Staff{}, ErrUnauthenticated
+	}
+	var st Staff
+	var roleStr string
+	var changedAt sql.NullString
+	if err := db.QueryRowContext(ctx,
+		`SELECT id, account, name, role, password_changed_at FROM staff WHERE id = $1 AND status = 'active'`, staffID).
+		Scan(&st.ID, &st.Account, &st.Name, &roleStr, &changedAt); err != nil {
+		return Staff{}, ErrUnauthenticated
+	}
+	st.Role = Role(roleStr)
+	st.MustChangePassword = !changedAt.Valid || changedAt.String == ""
+	return st, nil
+}
+
+// Logout 撤销当前会话：退出登录后同一 token 立即失效。
+func Logout(ctx context.Context, db *sql.DB, token string, now time.Time) error {
+	if db == nil || token == "" {
+		return ErrUnauthenticated
+	}
+	digest := sha256.Sum256([]byte(token))
+	_, err := db.ExecContext(ctx,
+		`UPDATE staff_session SET revoked_at = $1 WHERE token_hash = $2 AND revoked_at IS NULL`,
+		now.UTC().Format(time.RFC3339), digest[:])
+	return err
+}
+
 func createSession(ctx context.Context, db *sql.DB, staffID int64, now time.Time) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {

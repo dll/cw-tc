@@ -212,6 +212,8 @@ func (s *Server) Router() *gin.Engine {
 	v1.POST("/admin/login", s.adminLogin)
 	admin := v1.Group("/admin", s.staffRequired)
 	// 改密 / 登录对所有内部人员开放；其余后台接口一律要求 ops / super。
+	admin.GET("/me", s.adminMe)
+	admin.POST("/logout", s.adminLogout)
 	admin.POST("/change-password", s.adminChangePassword)
 	adminOnly := admin.Group("", s.requireAdmin)
 	adminOnly.GET("/courses", s.adminCourses)

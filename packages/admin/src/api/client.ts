@@ -16,6 +16,7 @@ export const http: AxiosInstance = axios.create({
 
 const TOKEN_KEY = 'cw_tc_admin_token'
 const ROLE_KEY = 'cw_tc_admin_role'
+const NAME_KEY = 'cw_tc_admin_name'
 
 export function saveToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token)
@@ -26,9 +27,16 @@ export function saveRole(role: string) {
 export function getRole(): string {
   return localStorage.getItem(ROLE_KEY) ?? ''
 }
+export function saveName(name: string) {
+  localStorage.setItem(NAME_KEY, name)
+}
+export function getName(): string {
+  return localStorage.getItem(NAME_KEY) ?? ''
+}
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(ROLE_KEY)
+  localStorage.removeItem(NAME_KEY)
 }
 export function hasToken(): boolean {
   return !!localStorage.getItem(TOKEN_KEY)
@@ -74,7 +82,28 @@ export async function login(account: string, password: string): Promise<AdminLog
   const res = await unwrap<AdminLoginResult>(http.post('/admin/login', { account, password }))
   saveToken(res.token)
   saveRole(res.role)
+  saveName(res.name)
   return res
+}
+export interface StaffProfile {
+  id: number
+  account: string
+  name: string
+  role: string
+  must_change_password: boolean
+}
+export async function getProfile(): Promise<StaffProfile> {
+  const res = await unwrap<StaffProfile>(http.get('/admin/me'))
+  saveRole(res.role)
+  saveName(res.name)
+  return res
+}
+export async function logout(): Promise<void> {
+  try {
+    await unwrap<unknown>(http.post('/admin/logout', {}))
+  } finally {
+    clearToken()
+  }
 }
 export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
   await unwrap<unknown>(http.post('/admin/change-password', { old_password: oldPassword, new_password: newPassword }))

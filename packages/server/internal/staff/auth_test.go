@@ -47,6 +47,37 @@ func TestStaffLoginAndAuthenticate(t *testing.T) {
 	}
 }
 
+func TestStaffProfileAndLogout(t *testing.T) {
+	database := staffDB(t)
+	defer database.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	id, err := Create(ctx, database, "admin3", "运营管理员", RoleAdminOps, "Temp@123", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, token, err := Login(ctx, database, "admin3", "Temp@123", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := Profile(ctx, database, id)
+	if err != nil || st.Account != "admin3" || st.Name != "运营管理员" || st.Role != RoleAdminOps {
+		t.Fatalf("个人资料 = %+v %v", st, err)
+	}
+	// 退出登录后会话立即失效
+	if err := Logout(ctx, database, token, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Authenticate(ctx, database, token, now); err != ErrUnauthenticated {
+		t.Fatalf("退出后应报 ErrUnauthenticated，实际 %v", err)
+	}
+	// token 为空 / 重复退出不报错
+	if err := Logout(ctx, database, "", now); err != ErrUnauthenticated {
+		t.Fatalf("空 token 应报 ErrUnauthenticated，实际 %v", err)
+	}
+}
+
 func TestStaffAuthenticateExpiredToken(t *testing.T) {
 	database := staffDB(t)
 	defer database.Close()

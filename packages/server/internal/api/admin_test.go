@@ -83,4 +83,17 @@ func TestAdminLoginAndLedgerRoutes(t *testing.T) {
 	if got := performJSON(t, r, http.MethodPost, "/api/v1/admin/login", `{"account":"admin","password":"wrong"}`); got.Code != http.StatusUnauthorized {
 		t.Fatalf("错密码应 401，实际 %d", got.Code)
 	}
+
+	// 个人中心：当前登录身份
+	me := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/me", "", token)
+	if me.Code != http.StatusOK || !containsAll(me.Body.String(), `"account":"admin"`, `"name":"管理员"`, `"role":"admin_ops"`) {
+		t.Fatalf("个人中心 = %d %s", me.Code, me.Body.String())
+	}
+	// 退出登录：同一 token 立刻失效
+	if got := performJSONWithBearer(t, r, http.MethodPost, "/api/v1/admin/logout", `{}`, token); got.Code != http.StatusOK {
+		t.Fatalf("退出登录 = %d %s", got.Code, got.Body.String())
+	}
+	if got := performJSONWithBearer(t, r, http.MethodGet, "/api/v1/admin/me", "", token); got.Code != http.StatusUnauthorized {
+		t.Fatalf("退出后访问应 401，实际 %d", got.Code)
+	}
 }

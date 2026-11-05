@@ -42,6 +42,27 @@ func (s *Server) adminLogin(c *gin.Context) {
 	}})
 }
 
+// adminMe GET /admin/me —— 当前登录内部人员的身份信息（个人中心）。
+func (s *Server) adminMe(c *gin.Context) {
+	st := c.MustGet(staffContextKey).(staff.Staff)
+	if latest, err := staff.Profile(c.Request.Context(), s.dbConn, st.ID); err == nil {
+		st = latest
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+		"id": st.ID, "account": st.Account, "name": st.Name, "role": string(st.Role),
+		"must_change_password": st.MustChangePassword,
+	}})
+}
+
+// adminLogout POST /admin/logout —— 退出登录，撤销当前 Bearer 会话。
+func (s *Server) adminLogout(c *gin.Context) {
+	if err := staff.Logout(c.Request.Context(), s.dbConn, bearerToken(c), time.Now().UTC()); err != nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "退出失败"})
+		return
+	}
+	c.JSON(http.StatusOK, envelope{Code: 0})
+}
+
 // adminChangePassword POST /admin/change-password —— 内部人员改密（首登强制改密闭环）。
 func (s *Server) adminChangePassword(c *gin.Context) {
 	st := c.MustGet(staffContextKey).(staff.Staff)

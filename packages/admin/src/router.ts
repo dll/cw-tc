@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 import Login from '@/pages/Login.vue'
 import ChangePassword from '@/pages/ChangePassword.vue'
+import Profile from '@/pages/Profile.vue'
 import Orders from '@/pages/Orders.vue'
 import Refunds from '@/pages/Refunds.vue'
 import Certs from '@/pages/Certs.vue'
@@ -43,6 +44,7 @@ import { hasToken } from '@/api/client'
 const routes: RouteRecordRaw[] = [
   { path: '/admin/login', component: Login },
   { path: '/admin/change-password', component: ChangePassword },
+  { path: '/admin/profile', component: Profile },
   { path: '/', redirect: '/admin/courses' },
   { path: '/admin', redirect: '/admin/courses' },
   { path: '/admin/', redirect: '/admin/courses' },

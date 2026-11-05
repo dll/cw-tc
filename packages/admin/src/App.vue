@@ -1,23 +1,71 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { ChatDotRound, EditPen, Money, Reading, School, Setting, TrendCharts, User } from '@element-plus/icons-vue'
-import { getRole, pendingRegistrationCount } from '@/api/client'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowDown, ChatDotRound, EditPen, Money, Reading, School, Setting, TrendCharts, User } from '@element-plus/icons-vue'
+import { getName, getProfile, getRole, logout, pendingRegistrationCount, type StaffProfile } from '@/api/client'
 
 // 左侧菜单按业务域分组（级联菜单）；进入页面时自动展开当前分组、收起其它分组。
 type MenuItem = { path: string; label: string; badge?: 'pending' }
 type MenuGroup = { key: string; label: string; icon: unknown; items: MenuItem[] }
 
 const route = useRoute()
+const router = useRouter()
 const title = computed(() => (route.path.startsWith('/admin/teacher') ? '教师工作台' : '管理后台'))
 const isLogin = computed(() => route.path === '/admin/login' || route.path === '/admin/change-password')
 const pendingCount = ref(0)
+const profile = ref<StaffProfile | null>(null)
+const displayName = computed(() => profile.value?.name || getName() || '未登录')
+const roleLabel = computed(() => {
+  switch (profile.value?.role || getRole()) {
+    case 'teacher':
+      return '教师'
+    case 'admin_super':
+      return '超级管理员'
+    case 'admin_ops':
+      return '管理员'
+    default:
+      return ''
+  }
+})
+
+async function loadProfile() {
+  if (isLogin.value) return
+  try {
+    profile.value = await getProfile()
+  } catch {
+    profile.value = null
+  }
+}
+
+async function onUserCommand(command: string) {
+  if (command === 'profile') {
+    void router.push('/admin/profile')
+  } else if (command === 'password') {
+    void router.push('/admin/change-password')
+  } else if (command === 'logout') {
+    try {
+      await ElMessageBox.confirm('确定退出登录吗？', '退出登录', { type: 'warning' })
+    } catch {
+      return
+    }
+    try {
+      await logout()
+    } catch {
+      // 会话可能已失效，本地凭证已在 logout 中清除
+    }
+    ElMessage.success('已退出登录')
+    void router.replace('/admin/login')
+  }
+}
+
 let pendingTimer: ReturnType<typeof setInterval> | undefined
 async function refreshPending() {
   if (isLogin.value) return
   try { pendingCount.value = await pendingRegistrationCount() } catch { pendingCount.value = 0 }
 }
 onMounted(() => {
+  void loadProfile()
   void refreshPending()
   pendingTimer = setInterval(() => { void refreshPending() }, 30000)
 })
@@ -150,6 +198,10 @@ watch(
     if (nextKey) menuRef.value?.open(nextKey)
   },
 )
+
+watch(isLogin, (login) => {
+  if (!login) void loadProfile()
+})
 </script>
 
 <template>
@@ -182,9 +234,28 @@ watch(
         </el-sub-menu>
       </el-menu>
     </el-aside>
-    <el-main>
-      <router-view />
-    </el-main>
+    <el-container direction="vertical">
+      <el-header class="topbar">
+        <div class="topbar-title">{{ title }}</div>
+        <el-dropdown trigger="click" @command="onUserCommand">
+          <span class="user-entry">
+            <span class="user-name">{{ displayName }}</span>
+            <el-tag v-if="roleLabel" size="small" effect="plain">{{ roleLabel }}</el-tag>
+            <el-icon><ArrowDown /></el-icon>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="profile">个人中心</el-dropdown-item>
+              <el-dropdown-item command="password">修改密码</el-dropdown-item>
+              <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </el-header>
+      <el-main>
+        <router-view />
+      </el-main>
+    </el-container>
   </el-container>
 </template>
 
@@ -196,4 +267,21 @@ watch(
 .menu { border-right: none; flex: 1; overflow-y: auto; }
 .menu-badge { margin-left: auto; }
 :deep(.el-menu-item) { display: flex; align-items: center; }
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--el-border-color-light);
+  background: var(--el-bg-color);
+}
+.topbar-title { font-size: 14px; font-weight: 600; }
+.user-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--el-text-color-regular);
+  outline: none;
+}
+.user-name { font-size: 14px; font-weight: 500; }
 </style>
