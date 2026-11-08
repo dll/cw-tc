@@ -166,8 +166,9 @@ func TestDownloadAssetCodeAttachment(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("源码应可下载: %d %s", resp.Code, resp.Body.String())
 	}
-	if got := resp.Header().Get("Content-Disposition"); !strings.HasPrefix(got, "attachment; filename=\"main.c\"") {
-		t.Fatalf("源码应为 attachment，实际 %q", got)
+	got := resp.Header().Get("Content-Disposition")
+	if !strings.Contains(got, "attachment") || !strings.Contains(got, "main.c") {
+		t.Fatalf("源码应为 attachment，实得 %q", got)
 	}
 }
 

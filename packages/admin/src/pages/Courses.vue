@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
 import {
   listAdminCourses,
   reviewCourse,
@@ -15,7 +16,9 @@ import {
   setCourseQuality,
   bulkPublishCourses,
   bulkUnpublishCourses,
-  importCourse,
+  importCoursePackage,
+  deleteAdminCourse,
+  listUsers,
   getAdminReviewDetail,
   getCourseCheckup,
   type AdminReviewDetail,
@@ -24,6 +27,7 @@ import {
   type CourseRevision,
   type CourseQuality,
   type MajorItem,
+  type UserItem,
 } from '@/api/client'
 
 const rows = ref<AdminCourse[]>([])
@@ -66,57 +70,94 @@ async function openReviewDetail(row: AdminCourse) {
 }
 const importVisible = ref(false)
 const importing = ref(false)
-const importManifest = ref('')
+const importProgress = ref(0)
+const importFile = ref<File | null>(null)
+const packageFiles = ref<UploadFile[]>([])
+const importTeacherId = ref<number | null>(null)
+const teachers = ref<UserItem[]>([])
 
-const importExample = `{
-  "course_code": "PY-101",
-  "name": "Python 入门",
-  "intro": "课程简介",
-  "line": "main",
-  "price_cents": 9900,
-  "teacher_id": 2,
-  "source_root": "PY-101",
-  "lectures": [
-    {
-      "no": 1,
-      "title": "第一讲",
-      "is_preview": true,
-      "assets": [
-        { "title": "讲义", "path": "01/notes.md" },
-        { "kind": "video", "title": "视频", "path": "01/video.mp4" },
-        { "kind": "html", "title": "课件", "path": "01/slides" }
-      ]
-    }
-  ]
-}`
+async function loadTeachers() {
+  try {
+    const result = await listUsers('teacher', 200, 0)
+    teachers.value = result.items
+  } catch {
+    teachers.value = []
+  }
+}
 
 function openImport() {
-  importManifest.value = importExample
+  importFile.value = null
+  packageFiles.value = []
+  importTeacherId.value = null
+  importProgress.value = 0
   importVisible.value = true
+  void loadTeachers()
+}
+
+function onPackageChange(file: UploadFile) {
+  // 只保留最后一次选择，避免一次上传多个包。
+  packageFiles.value = [file]
+  importFile.value = (file.raw as File | undefined) ?? null
+}
+
+function onPackageRemove() {
+  packageFiles.value = []
+  importFile.value = null
 }
 
 async function submitImport() {
-  let manifest: Record<string, unknown>
-  try {
-    manifest = JSON.parse(importManifest.value)
-  } catch {
-    ElMessage.error('清单不是合法 JSON')
+  if (!importFile.value) {
+    ElMessage.warning('请选择 ZIP 课程资源包')
     return
   }
   try {
-    await ElMessageBox.confirm('将从服务器内容目录导入资源并创建平台课程草稿（不自动上架），确认继续？', '导入课程', { type: 'warning' })
+    await ElMessageBox.confirm(
+      '上传后会校验清单与资源，并创建平台课程草稿（不会自动上架）。确认开始导入？',
+      '导入新课程',
+      { type: 'warning' },
+    )
     importing.value = true
-    const result = await importCourse(manifest)
+    importProgress.value = 0
+    const result = await importCoursePackage(
+      importFile.value,
+      importTeacherId.value,
+      (percent) => { importProgress.value = percent },
+    )
     importVisible.value = false
-    ElMessageBox.alert(
-      `已导入 ${result.course_code}：${result.lectures} 讲 / ${result.assets} 个资源，状态为草稿。请核对后走审核上架。`,
-      '导入完成',
+    await ElMessageBox.alert(
+      `已导入「${result.name ?? result.course_code}」（${result.course_code}）：` +
+        `${result.lectures} 讲 / ${result.assets} 个资源，状态为草稿（building）。` +
+        '请核对内容后走审核上架。',
+      '导入成功',
+      { confirmButtonText: '知道了' },
     )
     await load()
   } catch (e) {
     if (e instanceof Error && e.message !== 'cancel') ElMessage.error(e.message)
   } finally {
     importing.value = false
+  }
+}
+
+async function onDelete(row: AdminCourse) {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '删除后课程会从列表移除并写审计；已有订单 / 权益 / 测评 / 证书的课程不可删除。请填写删除事由。',
+      `删除「${row.name}」`,
+      {
+        confirmButtonText: '下一步',
+        cancelButtonText: '取消',
+        inputValidator: (v: string) => (v && v.trim() ? true : '事由必填'),
+      },
+    )
+    await ElMessageBox.confirm('确认删除该课程？此操作不可在界面恢复。', '二次确认', {
+      type: 'warning',
+    })
+    await deleteAdminCourse(row.course_code, value.trim())
+    ElMessage.success('课程已删除')
+    await load()
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessage.error(e.message)
   }
 }
 
@@ -569,6 +610,13 @@ async function submitReview() {
           <el-button size="small" @click="openMajor(row)">专业</el-button>
           <el-button size="small" @click="openFree(row)">免费讲次</el-button>
           <el-button size="small" type="info" plain @click="openQuality(row)">质量/AI</el-button>
+          <el-button
+            v-if="row.source === 'platform' && row.status !== 'published'"
+            size="small"
+            type="danger"
+            plain
+            @click="onDelete(row)"
+          >删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -747,21 +795,43 @@ async function submitReview() {
         </template>
       </div>
     </el-drawer>
-    <el-dialog v-model="importVisible" title="导入新课程（资源包）" width="760px">
+    <el-dialog v-model="importVisible" title="导入新课程（上传资源包）" width="680px" :close-on-click-modal="!importing">
       <el-alert
         type="info"
         :closable="false"
         show-icon
-        title="先把资源放到服务器内容目录的 imports/<source_root>/ 下；清单里只写相对路径。HTML 目录会整目录复制（含 assets/），MP4 / 音频配置 COS 时上传 COS，否则落本地。"
+        title="上传 ZIP 资源包：根目录（或唯一一层顶层目录）需包含 manifest.json，资源路径相对清单所在目录。导入前会校验清单与资源；成功后生成平台课程草稿，不会自动上架。"
         style="margin-bottom: 12px"
       />
       <el-form label-position="top">
-        <el-form-item label="导入清单（JSON）">
-          <el-input v-model="importManifest" type="textarea" :rows="18" spellcheck="false" />
+        <el-form-item label="课程资源包（.zip）" required>
+          <el-upload
+            drag
+            :auto-upload="false"
+            :file-list="packageFiles"
+            accept=".zip"
+            :on-change="onPackageChange"
+            :on-remove="onPackageRemove"
+            style="width: 100%"
+          >
+            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+            <div class="el-upload__text">将课程资源包拖到此处，或<em>点击选择</em></div>
+            <template #tip>
+              <div class="el-upload__tip">
+                仅支持 .zip；单文件不超过 1 GB。推荐结构：manifest.json + 01/notes.md + 01/video.mp4 + 01/slides/index.html
+              </div>
+            </template>
+          </el-upload>
         </el-form-item>
+        <el-form-item label="归属教师（可选，覆盖清单里的 teacher_id）">
+          <el-select v-model="importTeacherId" clearable filterable placeholder="按清单 teacher_id；也可在此选择" style="width: 100%">
+            <el-option v-for="teacher in teachers" :key="teacher.id" :label="`${teacher.name}（${teacher.account}）`" :value="teacher.id" />
+          </el-select>
+        </el-form-item>
+        <el-progress v-if="importing" :percentage="importProgress" :stroke-width="14" />
       </el-form>
       <template #footer>
-        <el-button @click="importVisible = false">取消</el-button>
+        <el-button :disabled="importing" @click="importVisible = false">取消</el-button>
         <el-button type="primary" :loading="importing" @click="submitImport">开始导入</el-button>
       </template>
     </el-dialog>

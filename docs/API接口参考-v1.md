@@ -319,7 +319,9 @@
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
 | GET | `/admin/courses` | 管理员 | 全部课程（含草稿 / 待审 / 已下架）；支持 `status` / `source` / `q` 筛选；每项带 `intro` / `lecture_count` / `content_version` / `published_version` / `published_at` / `has_unpublished_changes`；响应含 `stats` 与 `total_lectures`。**管理端展示格式**：`v{content_version}.0.0` + `YYYY-MM-DD HH:mm:ss`（内容取 `updated_at`，线上取 `published_at`） |
-| POST | `/admin/courses/import` | 管理员 | **资源包导入平台课程**：`confirm=true` + `manifest`（课程 / 讲次 / 多类型资源）；资源放在 `ContentDir/imports/<source_root>/`；**创建 `building` 草稿，不自动上架**；HTML 目录整包复制，MP4/音频配置 COS 时上传、否则本地；写审计。详见 `docs/课程导入-v1.md` |
+| POST | `/admin/courses/import-package` | 管理员 | **上传 ZIP 课程资源包导入平台课程**（推荐）：`multipart/form-data`，`file` 为 `.zip`，可选 `teacher_id` 覆盖清单归属；包内根目录需有 `manifest.json`；服务端安全解压并校验格式 / 资源后导入；**创建 `building` 草稿，不自动上架**；写审计。详见 `docs/课程导入-v1.md` |
+| POST | `/admin/courses/import` | 管理员 | **旧版清单导入（兼容 / 脚本）**：`confirm=true` + `manifest`；资源需预先放在 `ContentDir/imports/<source_root>/`；仍创建 `building` 草稿并写审计 |
+| DELETE | `/admin/courses/{code}` | 管理员 | **删除平台课程**：须带 `reason` + `confirm:true`；仅 `source=platform` 且无订单 / 权益 / 测评 / 证书；已上架须先下架；软删除 + `course_delete_log` + 审计，运营位同步 `removed` |
 | GET | `/admin/courses/{code}/revisions` | 管理员 | **课程版本历史**：`revision_no` / `content_version` / 变更摘要 / 发布时间（每次上架或重新上架追加一条） |
 | PATCH | `/admin/courses/{code}` | 管理员 | **课程设置面板**（价格、专业、上架状态、试学讲次、AI 开关与额度…） |
 | GET | `/admin/reviews` | 管理员 | **审核待办队列**（含等待天数，**超 SLA 高亮**，§J-2.2） |

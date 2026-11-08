@@ -103,18 +103,26 @@ func (im *Importer) Import(ctx context.Context, m Manifest) (Result, error) {
 	m.CourseCode = strings.TrimSpace(m.CourseCode)
 	m.Name = strings.TrimSpace(m.Name)
 	m.Line = strings.TrimSpace(m.Line)
-	if !courseCodeRE.MatchString(m.CourseCode) || m.Name == "" || m.PriceCents < 0 ||
-		m.TeacherID == nil || *m.TeacherID <= 0 { // platform 课程必须有归属教师（DB CHECK）
-		return Result{}, ErrInput
+	if !courseCodeRE.MatchString(m.CourseCode) {
+		return Result{}, fmt.Errorf("%w：课程码需为 2~32 位字母 / 数字 / _ / -", ErrInput)
+	}
+	if m.Name == "" {
+		return Result{}, fmt.Errorf("%w：课程名称必填", ErrInput)
+	}
+	if m.PriceCents < 0 {
+		return Result{}, fmt.Errorf("%w：价格不能为负数", ErrInput)
+	}
+	if m.TeacherID == nil || *m.TeacherID <= 0 { // platform 课程必须有归属教师（DB CHECK）
+		return Result{}, fmt.Errorf("%w：请选择归属教师", ErrInput)
 	}
 	if m.Line == "" {
 		m.Line = "main"
 	}
 	if m.Line != "main" && m.Line != "aux" {
-		return Result{}, ErrInput
+		return Result{}, fmt.Errorf("%w：line 只能是 main 或 aux", ErrInput)
 	}
 	if len(m.Lectures) == 0 || len(m.Lectures) > 200 {
-		return Result{}, ErrInput
+		return Result{}, fmt.Errorf("%w：讲次数量需为 1~200", ErrInput)
 	}
 	var exists int
 	if err := im.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM course WHERE course_code = $1`, m.CourseCode).Scan(&exists); err != nil {
@@ -125,7 +133,13 @@ func (im *Importer) Import(ctx context.Context, m Manifest) (Result, error) {
 	}
 	var teacherRole string
 	if err := im.DB.QueryRowContext(ctx, `SELECT role FROM staff WHERE id = $1`, *m.TeacherID).Scan(&teacherRole); err != nil || teacherRole != "teacher" {
-		return Result{}, ErrInput
+		return Result{}, fmt.Errorf("%w：归属教师不存在或角色不是教师", ErrInput)
+	}
+	if m.MajorID != nil {
+		var majorCount int
+		if err := im.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM major WHERE id = $1`, *m.MajorID).Scan(&majorCount); err != nil || majorCount == 0 {
+			return Result{}, fmt.Errorf("%w：专业分类不存在", ErrInput)
+		}
 	}
 	courseRoot, err := im.resolveSource(m.SourceRoot, m.CourseCode)
 	if err != nil {
@@ -240,26 +254,26 @@ func (im *Importer) resolveSource(sourceRoot, fallback string) (string, error) {
 	}
 	rootResolved, err := filepath.EvalSymlinks(root)
 	if err != nil {
-		return "", ErrSourceNotFound
+		return "", fmt.Errorf("%w：资源包目录不可用", ErrSourceNotFound)
 	}
 	relative := strings.TrimSpace(sourceRoot)
 	if relative == "" {
 		relative = fallback
 	}
 	if filepath.IsAbs(relative) {
-		return "", ErrSourceNotFound
+		return "", fmt.Errorf("%w：source_root 必须是相对路径", ErrSourceNotFound)
 	}
 	candidate := filepath.Join(rootResolved, filepath.FromSlash(relative))
 	resolved, err := filepath.EvalSymlinks(candidate)
 	if err != nil {
-		return "", ErrSourceNotFound
+		return "", fmt.Errorf("%w：%s", ErrSourceNotFound, relative)
 	}
 	if resolved != rootResolved && !strings.HasPrefix(resolved, rootResolved+string(os.PathSeparator)) {
-		return "", ErrSourceNotFound
+		return "", fmt.Errorf("%w：%s 超出资源包目录", ErrSourceNotFound, relative)
 	}
 	info, err := os.Stat(resolved)
 	if err != nil || !info.IsDir() {
-		return "", ErrSourceNotFound
+		return "", fmt.Errorf("%w：%s 不是目录", ErrSourceNotFound, relative)
 	}
 	return resolved, nil
 }
@@ -270,26 +284,26 @@ func (im *Importer) planAssets(courseRoot string, m Manifest) ([]plannedAsset, e
 	seenKey := map[string]bool{}
 	for _, lecture := range m.Lectures {
 		if lecture.No < 1 || strings.TrimSpace(lecture.Title) == "" || seenLecture[lecture.No] {
-			return nil, ErrInput
+			return nil, fmt.Errorf("%w：第 %d 讲的讲次号或标题非法（讲次号必须为正且不重复）", ErrInput, lecture.No)
 		}
 		seenLecture[lecture.No] = true
 		for _, asset := range lecture.Assets {
 			rel := strings.TrimSpace(asset.Path)
 			if rel == "" || filepath.IsAbs(rel) {
-				return nil, ErrInput
+				return nil, fmt.Errorf("%w：第 %d 讲的资源路径非法 %q", ErrInput, lecture.No, asset.Path)
 			}
 			source := filepath.Join(courseRoot, filepath.FromSlash(rel))
 			resolved, err := filepath.EvalSymlinks(source)
 			if err != nil || (resolved != courseRoot && !strings.HasPrefix(resolved, courseRoot+string(os.PathSeparator))) {
-				return nil, ErrSourceNotFound
+				return nil, fmt.Errorf("%w：资源不存在或越界 %s", ErrSourceNotFound, rel)
 			}
 			info, err := os.Stat(resolved)
 			if err != nil {
-				return nil, ErrSourceNotFound
+				return nil, fmt.Errorf("%w：资源不存在 %s", ErrSourceNotFound, rel)
 			}
 			kind, primary, isDir, err := resolveKind(asset.Kind, resolved, info)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("%w：%s", err, rel)
 			}
 			title := strings.TrimSpace(asset.Title)
 			if title == "" {

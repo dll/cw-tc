@@ -72,7 +72,8 @@ func (s *Server) listLectureResources(c *gin.Context) {
 			c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "课程数据不可用"})
 			return
 		}
-		expires := time.Now().Add(10 * time.Minute)
+		// 文本/课件等走 /assets/raw（Bearer+签名）；给足停留时间，客户端仍会在 401/403 时自动续签重试。
+		expires := time.Now().Add(30 * time.Minute)
 		sig := resource.Sign(secret, storageKey, expires)
 		item := gin.H{"kind": kind, "title": title, "storage_key": storageKey, "size_bytes": sizeBytes.Int64, "expires_at": expires.Unix(), "signature": sig, "content_reviewing": reviewing}
 		if kind == "html" {
@@ -284,13 +285,16 @@ func (s *Server) streamInlineAsset(c *gin.Context) {
 
 // serveAsset 下发已完成签名与权限校验的资源。
 func (s *Server) serveAsset(c *gin.Context, key, kind string) {
+	// 签名资源/媒体直链不应被共享缓存；浏览器可短暂使用但重试由客户端续签控制。
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
 	if s.cfg.ContentDir == "" && (!isCosBackedKey(key) || !s.cosAvailable(c.Request.Context(), key)) {
 		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源文件不可用"})
 		return
 	}
 	// 源码可下载，其余仅查看/播放（防盗：非源码不给 attachment 下载头）。
 	if kind == "code" {
-		c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(key)+"\"")
+		c.Header("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filepath.Base(key)))
 	} else {
 		c.Header("Content-Disposition", "inline")
 	}
@@ -309,6 +313,11 @@ func (s *Server) serveAsset(c *gin.Context, key, kind string) {
 		c.JSON(http.StatusForbidden, envelope{Code: 10703, Msg: "非法路径"})
 		return
 	}
+	if _, err := os.Stat(filePath); err != nil {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "资源文件不可用"})
+		return
+	}
+	// 本地文件服务由 Gin/http 自动处理 Range/Accept-Ranges，满足浏览器拖动与分段加载。
 	c.File(filePath)
 }
 

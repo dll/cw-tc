@@ -251,12 +251,15 @@ class _LearnPageState extends State<LearnPage> {
   }
 
   void _open(BuildContext context, LectureResource r) {
-    // 视频：有 COS 预签名直链就端内播放。
+    // 视频：有 COS 预签名直链就端内播放；失败/过期时可在播放器内重取资源清单刷新 URL。
     if (r.kind == 'video' && r.url != null) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) =>
-              VideoPlayerPage(title: r.title, url: _api.mediaUrl(r.url!)),
+          builder: (_) => VideoPlayerPage(
+            title: r.title,
+            url: _api.mediaUrl(r.url!),
+            urlLoader: () => _refreshMediaUrl(r, 'video'),
+          ),
         ),
       );
       return;
@@ -265,8 +268,11 @@ class _LearnPageState extends State<LearnPage> {
     if (r.kind == 'audio' && r.url != null) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) =>
-              AudioPlayerPage(title: r.title, url: _api.mediaUrl(r.url!)),
+          builder: (_) => AudioPlayerPage(
+            title: r.title,
+            url: _api.mediaUrl(r.url!),
+            urlLoader: () => _refreshMediaUrl(r, 'audio'),
+          ),
         ),
       );
       return;
@@ -274,7 +280,12 @@ class _LearnPageState extends State<LearnPage> {
     if (r.isTextKind) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => ResourceViewerPage(resource: r, api: _api),
+          builder: (_) => ResourceViewerPage(
+            resource: r,
+            api: _api,
+            courseCode: widget.courseCode,
+            lectureNo: widget.no,
+          ),
         ),
       );
       return;
@@ -283,7 +294,12 @@ class _LearnPageState extends State<LearnPage> {
     if (r.kind == 'slide') {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => SlideViewerPage(resource: r, api: _api),
+          builder: (_) => SlideViewerPage(
+            resource: r,
+            api: _api,
+            courseCode: widget.courseCode,
+            lectureNo: widget.no,
+          ),
         ),
       );
       return;
@@ -292,6 +308,16 @@ class _LearnPageState extends State<LearnPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('该资源暂不支持端内播放')),
     );
+  }
+
+  Future<String> _refreshMediaUrl(LectureResource r, String kind) async {
+    final fresh = await _api.refreshLectureResource(
+        widget.courseCode, widget.no, r.storageKey);
+    final url = fresh?.url;
+    if (fresh == null || fresh.kind != kind || url == null || url.isEmpty) {
+      throw StateError('未获取到可用的媒体地址，请返回重试');
+    }
+    return _api.mediaUrl(url);
   }
 
   IconData _iconFor(String kind) {

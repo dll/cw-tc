@@ -812,7 +812,23 @@ class ApiClient {
   String mediaUrl(String url) => Uri.parse(_baseUrl).resolve(url).toString();
 
   /// 拉取文本类资源（讲义 Markdown / 代码 / HTML）原文，供端内阅读。
-  Future<String> fetchResourceText(LectureResource r) async {
+  /// [refresher] 在签名过期/权限响应导致 401/403 时，重取同一讲资源清单并返回最新条目重试一次。
+  Future<String> fetchResourceText(
+    LectureResource r, {
+    Future<LectureResource?> Function()? refresher,
+  }) async {
+    try {
+      return await _fetchResourceTextOnce(r);
+    } on DioException catch (e) {
+      if (_shouldRefreshResource(e) && refresher != null) {
+        final fresh = await refresher();
+        if (fresh != null) return _fetchResourceTextOnce(fresh);
+      }
+      rethrow;
+    }
+  }
+
+  Future<String> _fetchResourceTextOnce(LectureResource r) async {
     final res = await _dio.get<String>(
       '/api/v1/assets/raw',
       queryParameters: <String, dynamic>{
@@ -820,12 +836,28 @@ class ApiClient {
         'expires': r.expiresAt,
         'sig': r.signature,
       },
+      options: Options(responseType: ResponseType.plain),
     );
     return res.data ?? '';
   }
 
   /// 拉取二进制资源（课件 PPTX）为 base64，供端内渲染。
-  Future<String> fetchResourceBase64(LectureResource r) async {
+  Future<String> fetchResourceBase64(
+    LectureResource r, {
+    Future<LectureResource?> Function()? refresher,
+  }) async {
+    try {
+      return await _fetchResourceBase64Once(r);
+    } on DioException catch (e) {
+      if (_shouldRefreshResource(e) && refresher != null) {
+        final fresh = await refresher();
+        if (fresh != null) return _fetchResourceBase64Once(fresh);
+      }
+      rethrow;
+    }
+  }
+
+  Future<String> _fetchResourceBase64Once(LectureResource r) async {
     final res = await _dio.get<List<int>>(
       '/api/v1/assets/raw',
       queryParameters: <String, dynamic>{
@@ -836,6 +868,21 @@ class ApiClient {
       options: Options(responseType: ResponseType.bytes),
     );
     return base64Encode(res.data ?? const <int>[]);
+  }
+
+  bool _shouldRefreshResource(DioException e) {
+    final code = e.response?.statusCode ?? 0;
+    return code == 401 || code == 403;
+  }
+
+  /// 从最新资源清单中按 storage_key 匹配同一资源（签名过期后用于重试）。
+  Future<LectureResource?> refreshLectureResource(
+      String courseCode, int no, String storageKey) async {
+    final items = await lectureResources(courseCode, no);
+    for (final item in items) {
+      if (item.storageKey == storageKey) return item;
+    }
+    return items.isEmpty ? null : null;
   }
 
   /// 禁止把疑似身份证号 / 手机号放进 URL。

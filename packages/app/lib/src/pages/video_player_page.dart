@@ -8,24 +8,34 @@ import 'package:video_player/video_player.dart';
 /// 默认**有声播放**。浏览器若拦截带声音的自动播放，会停在首帧并提示用户点击播放；
 /// 用户点击后以音量 1 播放（不再强制静音）。控件条浮动显示，播放中 3 秒后自动隐藏，
 /// 点击画面可再次唤出。
+///
+/// [urlLoader] 在初始化/播放失败时可重取最新媒体地址（签名过期或直链失效后重试）。
 class VideoPlayerPage extends StatefulWidget {
-  const VideoPlayerPage({super.key, required this.title, required this.url});
+  const VideoPlayerPage({
+    super.key,
+    required this.title,
+    required this.url,
+    this.urlLoader,
+  });
 
   final String title;
   final String url;
+  final Future<String> Function()? urlLoader;
 
   @override
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
 class _VideoPlayerPageState extends State<VideoPlayerPage> {
-  late final VideoPlayerController _controller;
+  VideoPlayerController? _controller;
   bool _ready = false;
   bool _failed = false;
+  bool _retrying = false;
   bool _muted = false;
   bool _controlsVisible = true;
   double _speed = 1.0;
   String _errorDetail = '';
+  String _currentUrl = '';
   String? _playHint;
   Timer? _hideTimer;
 
@@ -41,19 +51,68 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
-    _controller.addListener(_onControllerChanged);
-    _controller.initialize().then((_) async {
-      if (!mounted) return;
-      setState(() => _ready = true);
+    _currentUrl = widget.url;
+    unawaited(_initController(_currentUrl));
+  }
+
+  Future<void> _initController(String url, {bool forceRefresh = false}) async {
+    if (!mounted) return;
+    setState(() {
+      _ready = false;
+      _failed = false;
+      _errorDetail = '';
+      _playHint = null;
+      _retrying = forceRefresh;
+    });
+    var target = url;
+    if (forceRefresh && widget.urlLoader != null) {
+      try {
+        target = await widget.urlLoader!();
+        _currentUrl = target;
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _failed = true;
+          _retrying = false;
+          _errorDetail = e.toString();
+        });
+        return;
+      }
+    }
+    final old = _controller;
+    old?.removeListener(_onControllerChanged);
+    final controller = VideoPlayerController.networkUrl(Uri.parse(target));
+    _controller = controller;
+    controller.addListener(_onControllerChanged);
+    try {
+      await controller.initialize();
+      if (!mounted || _controller != controller) {
+        await controller.dispose();
+        return;
+      }
+      await old?.dispose();
+      setState(() {
+        _ready = true;
+        _failed = false;
+        _retrying = false;
+      });
       await _startPlayback();
-    }).catchError((Object e) {
-      if (!mounted) return;
+    } catch (e) {
+      if (!mounted || _controller != controller) {
+        await controller.dispose();
+        return;
+      }
+      await old?.dispose();
+      if (!forceRefresh && widget.urlLoader != null) {
+        await _initController(target, forceRefresh: true);
+        return;
+      }
       setState(() {
         _failed = true;
+        _retrying = false;
         _errorDetail = e.toString();
       });
-    });
+    }
   }
 
   void _onControllerChanged() {
@@ -61,10 +120,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     setState(() {});
   }
 
+  VideoPlayerController? get _c => _controller;
+
   Future<void> _startPlayback() async {
+    final controller = _c;
+    if (controller == null) return;
     try {
-      await _controller.setVolume(_muted ? 0 : 1);
-      await _controller.play();
+      await controller.setVolume(_muted ? 0 : 1);
+      await controller.play();
       if (!mounted) return;
       setState(() => _playHint = null);
       _showControls();
@@ -80,18 +143,31 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Future<void> _playFromUser() async {
+    final controller = _c;
+    if (controller == null) return;
     setState(() => _playHint = null);
-    await _controller.setVolume(_muted ? 0 : 1);
-    await _controller.play();
-    _showControls();
+    try {
+      await controller.setVolume(_muted ? 0 : 1);
+      await controller.play();
+      _showControls();
+    } catch (e) {
+      if (!mounted) return;
+      if (widget.urlLoader != null) {
+        await _initController(_currentUrl, forceRefresh: true);
+        return;
+      }
+      setState(() => _errorDetail = e.toString());
+    }
   }
 
   void _togglePlay() {
-    if (_controller.value.isPlaying) {
-      _controller.pause();
+    final controller = _c;
+    if (controller == null) return;
+    if (controller.value.isPlaying) {
+      controller.pause();
       _showControls();
     } else {
-      _playFromUser();
+      unawaited(_playFromUser());
     }
   }
 
@@ -99,7 +175,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     setState(() => _controlsVisible = true);
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted || !_controller.value.isPlaying) return;
+      final controller = _c;
+      if (!mounted || controller == null || !controller.value.isPlaying) return;
       setState(() => _controlsVisible = false);
     });
   }
@@ -114,19 +191,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Future<void> _toggleMute() async {
+    final controller = _c;
+    if (controller == null) return;
     final next = !_muted;
-    await _controller.setVolume(next ? 0 : 1);
+    await controller.setVolume(next ? 0 : 1);
     if (!mounted) return;
     setState(() => _muted = next);
     // 解除静音后若已暂停，直接继续有声播放。
-    if (!next && !_controller.value.isPlaying) {
-      await _controller.play();
+    if (!next && !controller.value.isPlaying) {
+      await controller.play();
     }
     _showControls();
   }
 
   Future<void> _setSpeed(double speed) async {
-    await _controller.setPlaybackSpeed(speed);
+    final controller = _c;
+    if (controller == null) return;
+    await controller.setPlaybackSpeed(speed);
     if (!mounted) return;
     setState(() => _speed = speed);
     _showControls();
@@ -135,8 +216,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void dispose() {
     _hideTimer?.cancel();
-    _controller.removeListener(_onControllerChanged);
-    _controller.dispose();
+    _controller?.removeListener(_onControllerChanged);
+    unawaited(_controller?.dispose());
     super.dispose();
   }
 
@@ -148,6 +229,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final controller = _controller;
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
       backgroundColor: Colors.black,
@@ -168,33 +250,55 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                         _errorDetail,
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                         textAlign: TextAlign.center,
+                        maxLines: 6,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _retrying
+                          ? null
+                          : () => unawaited(
+                              _initController(_currentUrl, forceRefresh: true)),
+                      child: Text(_retrying ? '重试中…' : '重试'),
+                    ),
                   ],
                 ),
               ),
             )
-          : !_ready
-              ? const Center(child: CircularProgressIndicator())
+          : (!_ready || controller == null)
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const CircularProgressIndicator(),
+                      if (_retrying) ...<Widget>[
+                        const SizedBox(height: 12),
+                        const Text('正在刷新播放地址…',
+                            style: TextStyle(color: Colors.white70)),
+                      ],
+                    ],
+                  ),
+                )
               : Column(
                   children: <Widget>[
                     Expanded(
                       child: Center(
                         child: AspectRatio(
                           // 部分流式/Web 源在首帧前 aspectRatio 为 0，回退 16:9。
-                          aspectRatio: _controller.value.aspectRatio > 0
-                              ? _controller.value.aspectRatio
+                          aspectRatio: controller.value.aspectRatio > 0
+                              ? controller.value.aspectRatio
                               : 16 / 9,
                           child: Stack(
                             fit: StackFit.expand,
                             children: <Widget>[
-                              VideoPlayer(_controller),
+                              VideoPlayer(controller),
                               // 点击画面：显示/隐藏浮动控件。
                               GestureDetector(
                                 behavior: HitTestBehavior.opaque,
                                 onTap: _toggleControls,
                               ),
-                              if (!_controller.value.isPlaying)
+                              if (!controller.value.isPlaying)
                                 Center(
                                   child: IconButton(
                                     iconSize: 72,
@@ -210,7 +314,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                                   ignoring: !_controlsVisible,
                                   child: Align(
                                     alignment: Alignment.bottomCenter,
-                                    child: _controlsBar(context),
+                                    child: _controlsBar(context, controller),
                                   ),
                                 ),
                               ),
@@ -233,8 +337,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     );
   }
 
-  Widget _controlsBar(BuildContext context) {
-    final value = _controller.value;
+  Widget _controlsBar(BuildContext context, VideoPlayerController controller) {
+    final value = controller.value;
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 32, 8, 8),
       decoration: const BoxDecoration(
@@ -248,7 +352,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           VideoProgressIndicator(
-            _controller,
+            controller,
             allowScrubbing: true,
             padding: const EdgeInsets.symmetric(vertical: 4),
           ),

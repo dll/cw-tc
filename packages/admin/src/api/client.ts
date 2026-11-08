@@ -856,14 +856,38 @@ export async function resolveBlacklistAppeal(id: number, accept: boolean, note: 
 }
 export interface CourseImportResult {
   course_code: string
+  name?: string
   lectures: number
   assets: number
   storage_keys: string[]
   status: string
+  package?: string
+  package_sha256?: string
   note: string
+}
+export async function importCoursePackage(
+  file: File,
+  teacherId?: number | null,
+  onProgress?: (percent: number) => void,
+): Promise<CourseImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  if (teacherId) form.append('teacher_id', String(teacherId))
+  return unwrap<CourseImportResult>(http.post('/admin/courses/import-package', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
+    onUploadProgress: (event) => {
+      if (onProgress && event.total) onProgress(Math.round((event.loaded / event.total) * 100))
+    },
+  }))
 }
 export async function importCourse(manifest: Record<string, unknown>): Promise<CourseImportResult> {
   return unwrap<CourseImportResult>(http.post('/admin/courses/import', { confirm: true, manifest }))
+}
+export async function deleteAdminCourse(code: string, reason: string): Promise<void> {
+  await unwrap<unknown>(http.delete(`/admin/courses/${encodeURIComponent(code)}`, {
+    data: { reason, confirm: true },
+  }))
 }
 // ── 管理员账号（仅 super） ──
 export interface AdminAccountItem {
