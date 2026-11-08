@@ -234,19 +234,18 @@ class ApiClient {
     required String phone,
     required String newCode,
   }) async {
-    final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/phone',
-        data: <String, dynamic>{
-          'old_code': oldCode,
-          'phone': phone,
-          'new_code': newCode,
-        });
+    final res = await _dio
+        .post<Map<String, dynamic>>('/api/v1/me/phone', data: <String, dynamic>{
+      'old_code': oldCode,
+      'phone': phone,
+      'new_code': newCode,
+    });
     _ensureSuccess(res.data);
   }
 
   /// 登录设备列表。
   Future<List<Map<String, dynamic>>> devices() async {
-    final res =
-        await _dio.get<Map<String, dynamic>>('/api/v1/me/devices');
+    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/devices');
     _ensureSuccess(res.data);
     return ((res.data?['data'] as Map<String, dynamic>?)?['items']
                 as List<dynamic>? ??
@@ -256,8 +255,8 @@ class ApiClient {
 
   /// 踢出指定设备。
   Future<void> revokeDevice(int id) async {
-    final res = await _dio
-        .post<Map<String, dynamic>>('/api/v1/me/devices/$id/revoke');
+    final res =
+        await _dio.post<Map<String, dynamic>>('/api/v1/me/devices/$id/revoke');
     _ensureSuccess(res.data);
   }
 
@@ -315,7 +314,8 @@ class ApiClient {
         });
     _ensureSuccess(res.data);
     final items = ((res.data?['data'] as Map<String, dynamic>?)?['items']
-            as List<dynamic>?) ?? const <dynamic>[];
+            as List<dynamic>?) ??
+        const <dynamic>[];
     return items.map((e) => Note.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -325,13 +325,13 @@ class ApiClient {
     String title = '',
     required String body,
   }) async {
-    final res = await _dio.post<Map<String, dynamic>>('/api/v1/notes',
-        data: <String, dynamic>{
-          'course_code': courseCode,
-          if (lectureNo != null) 'lecture_no': lectureNo,
-          'title': title,
-          'body': body,
-        });
+    final res = await _dio
+        .post<Map<String, dynamic>>('/api/v1/notes', data: <String, dynamic>{
+      'course_code': courseCode,
+      if (lectureNo != null) 'lecture_no': lectureNo,
+      'title': title,
+      'body': body,
+    });
     _ensureSuccess(res.data);
   }
 
@@ -344,7 +344,8 @@ class ApiClient {
     final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/suggestions');
     _ensureSuccess(res.data);
     final items = ((res.data?['data'] as Map<String, dynamic>?)?['items']
-            as List<dynamic>?) ?? const <dynamic>[];
+            as List<dynamic>?) ??
+        const <dynamic>[];
     return items
         .map((e) => Suggestion.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -365,6 +366,7 @@ class ApiClient {
     _ensureSuccess(res.data);
     return (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{};
   }
+
   Future<List<FavoriteCourse>> myFavorites() async {
     final res = await _dio.get<Map<String, dynamic>>('/api/v1/me/favorites');
     _ensureSuccess(res.data);
@@ -406,10 +408,11 @@ class ApiClient {
 
   /// 申请离线下载授权（已解锁且权益有效才签发）。
   Future<void> requestDownload(String courseCode, int lectureNo) async {
-    final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/downloads', data: <String, dynamic>{
-      'course_code': courseCode,
-      'lecture_no': lectureNo,
-    });
+    final res = await _dio.post<Map<String, dynamic>>('/api/v1/me/downloads',
+        data: <String, dynamic>{
+          'course_code': courseCode,
+          'lecture_no': lectureNo,
+        });
     _ensureSuccess(res.data);
   }
 
@@ -418,9 +421,11 @@ class ApiClient {
     final query = courseCode == null || courseCode.isEmpty
         ? ''
         : '?course_code=${Uri.encodeQueryComponent(courseCode)}';
-    final res = await _dio.delete<Map<String, dynamic>>('/api/v1/me/downloads/$lectureNo$query');
+    final res = await _dio
+        .delete<Map<String, dynamic>>('/api/v1/me/downloads/$lectureNo$query');
     _ensureSuccess(res.data);
   }
+
   /// 记录一次讲次访问或显式完成；打开页面不应被当作完成。
   Future<void> reportCourseProgress(
     String courseCode, {
@@ -439,7 +444,8 @@ class ApiClient {
 
   /// 运营位（`GET /api/v1/public/operations`，公开只读）。
   Future<List<OperationSlot>> operations(String position) async {
-    final res = await _dio.get<Map<String, dynamic>>('/api/v1/public/operations',
+    final res = await _dio.get<Map<String, dynamic>>(
+        '/api/v1/public/operations',
         queryParameters: <String, dynamic>{'position': position});
     _ensureSuccess(res.data);
     final items = (res.data?['data'] as Map<String, dynamic>?)?['items']
@@ -524,8 +530,8 @@ class ApiClient {
 
   /// 单个订单（`GET /me/orders/:orderNo`，前端轮询 / 详情）。
   Future<MyOrder> myOrder(String orderNo) async {
-    final res = await _dio
-        .get<Map<String, dynamic>>('/api/v1/me/orders/$orderNo');
+    final res =
+        await _dio.get<Map<String, dynamic>>('/api/v1/me/orders/$orderNo');
     _ensureSuccess(res.data);
     return MyOrder.fromJson(
         (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{});
@@ -533,8 +539,8 @@ class ApiClient {
 
   /// 同一订单继续支付（`POST /me/orders/:orderNo/pay`，不新建订单）。
   Future<OrderPaymentIntent> continueOrderPayment(String orderNo) async {
-    final res = await _dio
-        .post<Map<String, dynamic>>('/api/v1/me/orders/$orderNo/pay');
+    final res =
+        await _dio.post<Map<String, dynamic>>('/api/v1/me/orders/$orderNo/pay');
     _ensureSuccess(res.data);
     return OrderPaymentIntent.fromJson(
         (res.data?['data'] as Map<String, dynamic>?) ?? <String, dynamic>{});
@@ -841,23 +847,23 @@ class ApiClient {
     return res.data ?? '';
   }
 
-  /// 拉取二进制资源（课件 PPTX）为 base64，供端内渲染。
-  Future<String> fetchResourceBase64(
+  /// 拉取二进制资源原始字节（图片/PPTX 等），供端内渲染；401/403 时可刷新签名重试。
+  Future<List<int>> fetchResourceBytes(
     LectureResource r, {
     Future<LectureResource?> Function()? refresher,
   }) async {
     try {
-      return await _fetchResourceBase64Once(r);
+      return await _fetchResourceBytesOnce(r);
     } on DioException catch (e) {
       if (_shouldRefreshResource(e) && refresher != null) {
         final fresh = await refresher();
-        if (fresh != null) return _fetchResourceBase64Once(fresh);
+        if (fresh != null) return _fetchResourceBytesOnce(fresh);
       }
       rethrow;
     }
   }
 
-  Future<String> _fetchResourceBase64Once(LectureResource r) async {
+  Future<List<int>> _fetchResourceBytesOnce(LectureResource r) async {
     final res = await _dio.get<List<int>>(
       '/api/v1/assets/raw',
       queryParameters: <String, dynamic>{
@@ -867,7 +873,16 @@ class ApiClient {
       },
       options: Options(responseType: ResponseType.bytes),
     );
-    return base64Encode(res.data ?? const <int>[]);
+    return res.data ?? const <int>[];
+  }
+
+  /// 拉取二进制资源（课件 PPTX）为 base64，供端内渲染。
+  Future<String> fetchResourceBase64(
+    LectureResource r, {
+    Future<LectureResource?> Function()? refresher,
+  }) async {
+    final bytes = await fetchResourceBytes(r, refresher: refresher);
+    return base64Encode(bytes);
   }
 
   bool _shouldRefreshResource(DioException e) {
@@ -903,4 +918,3 @@ class ApiClient {
   static final RegExp _sensitiveInQuery =
       RegExp(r'(\b\d{17}[\dXx]\b)|(\b1[3-9]\d{9}\b)');
 }
-

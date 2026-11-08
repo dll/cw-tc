@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -45,6 +47,14 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
 
   Future<_LoadedText> _load() async {
     var current = widget.resource;
+    // 二进制预览资源（图片/PDF）不按 UTF-8 文本加载，避免乱码/无意义重试。
+    if (_isBinaryPreview(current)) {
+      if (_canRefresh) {
+        final fresh = await _refresh(current);
+        if (fresh != null) current = fresh;
+      }
+      return _LoadedText(current, '');
+    }
     final text = await _api.fetchResourceText(
       current,
       refresher: _canRefresh ? () => _refresh(current) : null,
@@ -57,8 +67,9 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
     return _LoadedText(current, text);
   }
 
-  bool get _canRefresh =>
-      widget.courseCode != null && widget.lectureNo != null;
+  bool _isBinaryPreview(LectureResource r) => r.isImageKind || r.isPdfKind;
+
+  bool get _canRefresh => widget.courseCode != null && widget.lectureNo != null;
 
   Future<LectureResource?> _refresh(LectureResource current) =>
       _api.refreshLectureResource(
@@ -117,6 +128,20 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
           }
           final content = loaded.text;
           final resource = loaded.resource;
+          if (resource.isImageKind) {
+            return _SignedImage(
+              resource: resource,
+              api: _api,
+              courseCode: widget.courseCode,
+              lectureNo: widget.lectureNo,
+            );
+          }
+          if (resource.isPdfKind) {
+            return _UnsupportedInline(
+              message: '当前版本暂不支持端内直接预览 PDF，请联系管理员或在支持的环境中查看。',
+              detail: resource.fileName,
+            );
+          }
           switch (resource.kind) {
             case 'markdown':
               return Markdown(data: content, selectable: true);
@@ -128,12 +153,21 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
                       _api.mediaUrl(resource.inlineBaseUrl!),
                     );
               return HtmlViewer(html: htmlWithMediaUnlock(html));
+            case 'code':
+            case 'frozen_output':
             default:
+              if (content.trim().isEmpty && !_isBinaryPreview(resource)) {
+                return _UnsupportedInline(
+                  message: '该资源内容为空或暂不支持端内展示。',
+                  detail: '${resource.kind} · ${resource.fileName}',
+                );
+              }
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: SelectableText(
-                  content,
-                  style: const TextStyle(fontSize: 15, height: 1.6),
+                  content.isEmpty ? '（无可显示文本内容）' : content,
+                  style: const TextStyle(
+                      fontFamily: 'monospace', fontSize: 14, height: 1.5),
                 ),
               );
           }
@@ -147,6 +181,130 @@ class _LoadedText {
   const _LoadedText(this.resource, this.text);
   final LectureResource resource;
   final String text;
+}
+
+class _SignedImage extends StatefulWidget {
+  const _SignedImage({
+    required this.resource,
+    required this.api,
+    this.courseCode,
+    this.lectureNo,
+  });
+
+  final LectureResource resource;
+  final ApiClient api;
+  final String? courseCode;
+  final int? lectureNo;
+
+  @override
+  State<_SignedImage> createState() => _SignedImageState();
+}
+
+class _SignedImageState extends State<_SignedImage> {
+  late Future<List<int>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<int>> _load() {
+    final canRefresh = widget.courseCode != null && widget.lectureNo != null;
+    var current = widget.resource;
+    return widget.api.fetchResourceBytes(
+      current,
+      refresher: canRefresh
+          ? () => widget.api.refreshLectureResource(
+              widget.courseCode!, widget.lectureNo!, current.storageKey)
+          : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lower = widget.resource.fileName.toLowerCase();
+    if (lower.endsWith('.svg')) {
+      return const _UnsupportedInline(
+        message: '当前版本暂不支持端内直接预览 SVG 图片。',
+      );
+    }
+    return FutureBuilder<List<int>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || (snapshot.data?.isEmpty ?? true)) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text('图片加载失败，请重试。\n${widget.resource.fileName}',
+                      textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () => setState(() => _future = _load()),
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 5,
+          child: Center(
+            child: Image.memory(
+              Uint8List.fromList(snapshot.data!),
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stack) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('图片无法显示，请返回重试。\n${widget.resource.fileName}',
+                      textAlign: TextAlign.center),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _UnsupportedInline extends StatelessWidget {
+  const _UnsupportedInline({required this.message, this.detail});
+
+  final String message;
+  final String? detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(Icons.insert_drive_file_outlined, size: 40),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center),
+            if (detail != null) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(detail!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// 把受控的同讲资源地址放在原页面第一个 base 位置，供相对音频路径解析。

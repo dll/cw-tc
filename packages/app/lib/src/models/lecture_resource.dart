@@ -60,4 +60,30 @@ class LectureResource {
 
   /// 文本类资源（讲义 Markdown / 代码 / HTML）可端内阅读。
   bool get isTextKind => kind == 'markdown' || kind == 'code' || kind == 'html';
+
+  /// 可端内预览的图片资源（通常来自 HTML 讲义内联资源或独立图片资产）。
+  bool get isImageKind => kind == 'image' || _imageExts.contains(_ext);
+
+  /// 可端内预览的 PDF（以扩展名识别；kind 可能尚未单独建模）。
+  bool get isPdfKind => _ext == '.pdf' || kind == 'pdf';
+
+  /// 可通过浏览器/播放器 URL 播放的媒体（视频/音频且已拿到直链或签名媒体地址）。
+  bool get isPlayableMedia =>
+      (kind == 'video' || kind == 'audio') && (url != null && url!.isNotEmpty);
+
+  String get _ext {
+    final lower = fileName.toLowerCase();
+    final idx = lower.lastIndexOf('.');
+    return idx >= 0 ? lower.substring(idx) : '';
+  }
+
+  static const Set<String> _imageExts = <String>{
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.webp',
+    '.bmp',
+    '.svg',
+  };
 }

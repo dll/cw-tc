@@ -138,20 +138,18 @@ class _LearnPageState extends State<LearnPage> {
               Card(
                 color: Colors.orange.shade50,
                 child: ListTile(
-                  leading: Icon(Icons.info_outline,
-                      color: Colors.orange.shade800),
+                  leading:
+                      Icon(Icons.info_outline, color: Colors.orange.shade800),
                   title: const Text('课程内容核对中'),
                   subtitle: const Text('学习不受影响；新测评与发证暂停，待管理员处理完成。'),
                 ),
               ),
             Card(
                 child: ListTile(
-              leading: Icon(_completed
-                  ? Icons.check_circle
-                  : Icons.check_circle_outline),
+              leading: Icon(
+                  _completed ? Icons.check_circle : Icons.check_circle_outline),
               title: Text(_completed ? '本讲已完成' : '完成本讲'),
-              subtitle:
-                  _completeError == null ? null : Text(_completeError!),
+              subtitle: _completeError == null ? null : Text(_completeError!),
               trailing: _completing
                   ? const SizedBox(
                       width: 20,
@@ -277,7 +275,10 @@ class _LearnPageState extends State<LearnPage> {
       );
       return;
     }
-    if (r.isTextKind) {
+    if (r.isTextKind ||
+        r.isImageKind ||
+        r.isPdfKind ||
+        r.kind == 'frozen_output') {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ResourceViewerPage(
@@ -304,9 +305,23 @@ class _LearnPageState extends State<LearnPage> {
       );
       return;
     }
-    // 其余未知类型兜底提示。
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('该资源暂不支持端内播放')),
+    // 媒体无直链时，仍尝试走资源阅读页（会给出明确错误）而不是静默无响应。
+    if (r.kind == 'video' || r.kind == 'audio') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该媒体资源暂时无法播放，请稍后重试')),
+      );
+      return;
+    }
+    // 其余未知类型：尝试按文本/二进制提示打开，避免“点了没反应”。
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ResourceViewerPage(
+          resource: r,
+          api: _api,
+          courseCode: widget.courseCode,
+          lectureNo: widget.no,
+        ),
+      ),
     );
   }
 
@@ -336,6 +351,10 @@ class _LearnPageState extends State<LearnPage> {
         return Icons.web_outlined;
       case 'frozen_output':
         return Icons.insights_outlined;
+      case 'image':
+        return Icons.image_outlined;
+      case 'pdf':
+        return Icons.picture_as_pdf_outlined;
       default:
         return Icons.insert_drive_file_outlined;
     }
@@ -356,7 +375,11 @@ class _LearnPageState extends State<LearnPage> {
       case 'html':
         return 'HTML 页';
       case 'frozen_output':
-        return '冻结输出';
+        return '输出/附件';
+      case 'image':
+        return '图片';
+      case 'pdf':
+        return 'PDF';
       default:
         return kind;
     }
