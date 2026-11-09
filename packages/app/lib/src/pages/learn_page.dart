@@ -291,7 +291,20 @@ class _LearnPageState extends State<LearnPage> {
       );
       return;
     }
-    // 课件（PPTX）端内渲染（pptxjs 经 WebView）。
+    // 课件：PPTX 走渲染器；PDF 走资源页提示/预览兜底（避免被 PPTX 渲染器误处理）。
+    if (r.kind == 'slide' && r.isPdfKind) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ResourceViewerPage(
+            resource: r,
+            api: _api,
+            courseCode: widget.courseCode,
+            lectureNo: widget.no,
+          ),
+        ),
+      );
+      return;
+    }
     if (r.kind == 'slide') {
       Navigator.of(context).push(
         MaterialPageRoute<void>(

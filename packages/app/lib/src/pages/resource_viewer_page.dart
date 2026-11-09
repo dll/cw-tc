@@ -277,6 +277,103 @@ class _SignedImageState extends State<_SignedImage> {
   }
 }
 
+
+class _PdfPreviewFallback extends StatefulWidget {
+  const _PdfPreviewFallback({
+    required this.resource,
+    required this.api,
+    this.courseCode,
+    this.lectureNo,
+  });
+
+  final LectureResource resource;
+  final ApiClient api;
+  final String? courseCode;
+  final int? lectureNo;
+
+  @override
+  State<_PdfPreviewFallback> createState() => _PdfPreviewFallbackState();
+}
+
+class _PdfPreviewFallbackState extends State<_PdfPreviewFallback> {
+  late Future<List<int>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<int>> _load() {
+    final canRefresh = widget.courseCode != null && widget.lectureNo != null;
+    var current = widget.resource;
+    return widget.api.fetchResourceBytes(
+      current,
+      refresher: canRefresh
+          ? () => widget.api.refreshLectureResource(
+              widget.courseCode!, widget.lectureNo!, current.storageKey)
+          : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<int>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || (snapshot.data?.isEmpty ?? true)) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Icon(Icons.picture_as_pdf_outlined, size: 40),
+                  const SizedBox(height: 12),
+                  Text('PDF 加载失败，请重试。\n${widget.resource.fileName}',
+                      textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () => setState(() => _future = _load()),
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const Icon(Icons.picture_as_pdf_outlined, size: 40),
+                const SizedBox(height: 12),
+                Text(widget.resource.fileName, textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                Text(
+                  'PDF 文件可正常获取（${(snapshot.data!.length / 1024).toStringAsFixed(0)} KB），当前 Flutter Web 端暂未集成 PDF 内嵌预览组件；请在移动端/桌面端或后续版本查看。',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: () => setState(() => _future = _load()),
+                  child: const Text('重新检测'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _UnsupportedInline extends StatelessWidget {
   const _UnsupportedInline({required this.message, this.detail});
 

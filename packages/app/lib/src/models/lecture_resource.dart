@@ -58,8 +58,14 @@ class LectureResource {
     return idx >= 0 ? storageKey.substring(idx + 1) : storageKey;
   }
 
-  /// 文本类资源（讲义 Markdown / 代码 / HTML）可端内阅读。
-  bool get isTextKind => kind == 'markdown' || kind == 'code' || kind == 'html';
+  /// 文本类资源（讲义 Markdown / 代码 / HTML / 纯文本 / 冻结输出）可端内阅读。
+  bool get isTextKind =>
+      kind == 'markdown' ||
+      kind == 'code' ||
+      kind == 'html' ||
+      kind == 'text' ||
+      kind == 'frozen_output' ||
+      _textExts.contains(_ext);
 
   /// 可端内预览的图片资源（通常来自 HTML 讲义内联资源或独立图片资产）。
   bool get isImageKind => kind == 'image' || _imageExts.contains(_ext);
@@ -85,5 +91,46 @@ class LectureResource {
     '.webp',
     '.bmp',
     '.svg',
+  };
+
+  static const Set<String> _textExts = <String>{
+    '.txt',
+    '.md',
+    '.markdown',
+    '.json',
+    '.yaml',
+    '.yml',
+    '.xml',
+    '.csv',
+    '.log',
+    '.ini',
+    '.conf',
+    '.properties',
+    '.c',
+    '.h',
+    '.hpp',
+    '.hh',
+    '.cpp',
+    '.cc',
+    '.cxx',
+    '.java',
+    '.kt',
+    '.py',
+    '.js',
+    '.ts',
+    '.tsx',
+    '.jsx',
+    '.vue',
+    '.go',
+    '.rs',
+    '.cs',
+    '.swift',
+    '.sql',
+    '.sh',
+    '.bat',
+    '.ps1',
+    '.rb',
+    '.php',
+    '.dart',
   };
 }
