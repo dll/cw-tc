@@ -254,3 +254,128 @@ func TestDetectKindAndStorageKey(t *testing.T) {
 		t.Fatalf("存储键异常: %s", got)
 	}
 }
+
+func TestImportRejectsInvalidManifest(t *testing.T) {
+	database, contentDir := setup(t)
+	defer database.Close()
+	root := t.TempDir()
+	importer := &Importer{DB: database, ContentDir: contentDir, ImportRoot: root}
+	writeFile(t, filepath.Join(root, "01", "notes.md"), []byte("# x"))
+	writeFile(t, filepath.Join(root, "01", "notes.xyz"), []byte("x"))
+	if err := os.MkdirAll(filepath.Join(root, "01", "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := (&Importer{}).Import(context.Background(), sampleManifest()); !errors.Is(err, ErrInput) {
+		t.Fatalf("空导入器应拒绝: %v", err)
+	}
+
+	absSource, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name   string
+		mutate func(*Manifest)
+		want   error
+	}{
+		{name: "课程码非法", mutate: func(m *Manifest) { m.CourseCode = "!" }, want: ErrInput},
+		{name: "课程名称为空", mutate: func(m *Manifest) { m.Name = " " }, want: ErrInput},
+		{name: "价格为负", mutate: func(m *Manifest) { m.PriceCents = -1 }, want: ErrInput},
+		{name: "缺少教师", mutate: func(m *Manifest) { m.TeacherID = nil }, want: ErrInput},
+		{name: "line 非法", mutate: func(m *Manifest) { m.Line = "x" }, want: ErrInput},
+		{name: "line 为空取默认值", mutate: func(m *Manifest) { m.Line = "" }, want: ErrSourceNotFound},
+		{name: "没有讲次", mutate: func(m *Manifest) { m.Lectures = nil }, want: ErrInput},
+		{name: "讲次过多", mutate: func(m *Manifest) { m.Lectures = make([]Lecture, 201) }, want: ErrInput},
+		{name: "专业不存在", mutate: func(m *Manifest) { m.MajorID = int64Ptr(999) }, want: ErrInput},
+		{name: "讲次编号非法", mutate: func(m *Manifest) { m.SourceRoot = "."; m.Lectures[0].No = 0 }, want: ErrInput},
+		{name: "来源目录不存在", mutate: func(m *Manifest) { m.SourceRoot = "missing" }, want: ErrSourceNotFound},
+		{name: "来源目录是绝对路径", mutate: func(m *Manifest) { m.SourceRoot = absSource }, want: ErrSourceNotFound},
+		{name: "资源路径为空", mutate: func(m *Manifest) { m.SourceRoot = "."; m.Lectures[0].Assets[0].Path = "" }, want: ErrInput},
+		{name: "资源不存在", mutate: func(m *Manifest) { m.SourceRoot = "."; m.Lectures[0].Assets[0].Path = "01/missing.md" }, want: ErrSourceNotFound},
+		{name: "资源类型不支持", mutate: func(m *Manifest) { m.SourceRoot = "."; m.Lectures[0].Assets[0] = Asset{Path: "01/notes.xyz"} }, want: ErrUnsupported},
+		{name: "HTML 目录缺少 index", mutate: func(m *Manifest) { m.SourceRoot = "."; m.Lectures[0].Assets[0] = Asset{Kind: "html", Path: "01/empty"} }, want: ErrInput},
+		{name: "资源重复", mutate: func(m *Manifest) {
+			m.SourceRoot = "."
+			m.Lectures[0].Assets = []Asset{{Path: "01/notes.md"}, {Path: "01/notes.md"}}
+		}, want: ErrInput},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := sampleManifest()
+			tc.mutate(&m)
+			if _, err := importer.Import(context.Background(), m); !errors.Is(err, tc.want) {
+				t.Fatalf("应返回 %v，实际 %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestResolveKind(t *testing.T) {
+	dir := t.TempDir()
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kind, primary, isDir, err := resolveKind("", dir, dirInfo); err != nil || kind != "html" || !isDir || primary != dir {
+		t.Fatalf("目录应识别为 HTML: %s %s %v %v", kind, primary, isDir, err)
+	}
+	if _, _, _, err := resolveKind("video", dir, dirInfo); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("目录只允许 HTML: %v", err)
+	}
+
+	file := filepath.Join(dir, "sample.md")
+	if err := os.WriteFile(file, []byte("# x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fileInfo, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kind, _, isDir, err := resolveKind("slide", file, fileInfo); err != nil || kind != "slide" || isDir {
+		t.Fatalf("显式类型应优先: %s %v %v", kind, isDir, err)
+	}
+	if _, _, _, err := resolveKind("bad", file, fileInfo); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("非法显式类型应拒绝: %v", err)
+	}
+
+	kinds := map[string]string{
+		".html": "html", ".htm": "html",
+		".md": "markdown", ".markdown": "markdown",
+		".mp4": "video", ".mov": "video", ".m4v": "video",
+		".mp3": "audio", ".wav": "audio", ".m4a": "audio", ".flac": "audio", ".aac": "audio",
+		".pdf": "slide", ".ppt": "slide", ".pptx": "slide", ".key": "slide",
+		".py": "code", ".js": "code", ".ts": "code", ".go": "code", ".java": "code",
+		".c": "code", ".cpp": "code", ".rs": "code", ".sh": "code", ".sql": "code",
+		".json": "frozen_output",
+	}
+	for ext, want := range kinds {
+		kind, _, isDir, err := resolveKind("", filepath.Join(dir, "x"+ext), fileInfo)
+		if err != nil || kind != want || isDir {
+			t.Fatalf("%s 应识别为 %s，实际 %s %v", ext, want, kind, err)
+		}
+	}
+	if _, _, _, err := resolveKind("", filepath.Join(dir, "x.bin"), fileInfo); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("未知扩展名应拒绝: %v", err)
+	}
+}
+
+func TestImportCopiesSiblingAssetsForSingleHTML(t *testing.T) {
+	database, contentDir := setup(t)
+	defer database.Close()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "PY-300", "01", "page.html"), []byte(`<html><link href="assets/app.css"></html>`))
+	writeFile(t, filepath.Join(root, "PY-300", "01", "assets", "app.css"), []byte("body{color:red}"))
+	importer := &Importer{DB: database, ContentDir: contentDir, ImportRoot: root}
+	manifest := Manifest{
+		CourseCode: "PY-300", Name: "单页课程", Line: "main", PriceCents: 100, TeacherID: int64Ptr(1),
+		Lectures: []Lecture{{No: 1, Title: "第一讲", Assets: []Asset{{Kind: "html", Title: "课件", Path: "01/page.html"}}}},
+	}
+	if _, err := importer.Import(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(contentDir, "courses", "PY-300", "lectures", "1", "html", "assets", "app.css")
+	if !fileExists(target) {
+		t.Fatal("单文件 HTML 的同级 assets 未复制")
+	}
+}
