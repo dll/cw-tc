@@ -32,7 +32,18 @@ if [ -x /opt/flutter/bin/flutter ]; then
   export PATH=/opt/flutter/bin:$PATH
   # 清理旧的 Flutter Web 构建缓存，强制重生成 federated plugin registrant。
   # 否则增量构建可能漏注册 video_player_web/audioplayers_web，导致学生端资源页播放器初始化失败。
-  ( cd "$REPO/packages/app" && flutter pub get >/dev/null && rm -rf .dart_tool/flutter_build build/web && flutter build web --release --base-href=/student/ )
+  # 必须固定 --web-renderer html：CanvasKit 会从 fonts.gstatic.com 下载中文字体回退，
+  # 国内网络访问不到时中文会乱码/白屏；HTML 渲染器直接用系统字体，不依赖境外 CDN。
+  ( cd "$REPO/packages/app" && flutter pub get >/dev/null && rm -rf .dart_tool/flutter_build build/web && flutter build web --release --base-href=/student/ --web-renderer html )
+
+  # 门禁：必须是 HTML 渲染器，且产物不得再依赖 fonts.gstatic.com（否则国内乱码/白屏）。
+  if ! grep -q '"renderer":"html"' "$REPO/packages/app/build/web/flutter_bootstrap.js"; then
+    echo "学员端构建产物不是 HTML 渲染器（检查 --web-renderer html）" >&2; exit 1
+  fi
+  if grep -q 'fonts.gstatic.com' "$REPO/packages/app/build/web/main.dart.js"; then
+    echo "学员端产物仍依赖 fonts.gstatic.com，国内网络会乱码" >&2; exit 1
+  fi
+
   sudo mkdir -p /var/www/cw-tc/student && sudo rm -rf /var/www/cw-tc/student/*
   tar -C "$REPO/packages/app/build/web" -cf - . | sudo tar -C /var/www/cw-tc/student -xf -
   sudo chown -R ubuntu:ubuntu /var/www/cw-tc/student

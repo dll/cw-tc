@@ -43,11 +43,25 @@ mkdir -p "$RELEASE_DIR/web/admin"
 cp -R "$ROOT/packages/admin/dist/." "$RELEASE_DIR/web/admin/"
 
 # 学员端（Flutter Web）：必须固定 base-href=/student/。
+# 必须固定 --web-renderer html：CanvasKit 会从 fonts.gstatic.com 下载中文字体回退，
+# 国内网络访问不到时中文会乱码/白屏；HTML 渲染器直接用系统字体，不依赖境外 CDN。
 if ! command -v flutter >/dev/null 2>&1; then
   echo "缺少 flutter，无法构建学员端；发布包必须包含前端资产" >&2
   exit 1
 fi
-(cd "$ROOT/packages/app" && flutter pub get && MSYS_NO_PATHCONV=1 flutter build web --release --no-pub --base-href=/student/)
+(cd "$ROOT/packages/app" && flutter pub get && MSYS_NO_PATHCONV=1 flutter build web --release --no-pub --base-href=/student/ --web-renderer html)
+
+# 门禁：学员端必须是 HTML 渲染器，且产物不得再依赖 fonts.gstatic.com。
+# 否则国内网络下会重现“中文乱码 / 整页白屏”。
+if ! grep -q '"renderer":"html"' "$ROOT/packages/app/build/web/flutter_bootstrap.js"; then
+  echo "学员端构建产物不是 HTML 渲染器（检查 --web-renderer html）" >&2
+  exit 1
+fi
+if grep -q 'fonts.gstatic.com' "$ROOT/packages/app/build/web/main.dart.js"; then
+  echo "学员端产物仍依赖 fonts.gstatic.com，国内网络会乱码" >&2
+  exit 1
+fi
+
 mkdir -p "$RELEASE_DIR/web/student"
 cp -R "$ROOT/packages/app/build/web/." "$RELEASE_DIR/web/student/"
 

@@ -36,6 +36,20 @@
 > `/admin/`、`/student/`、`/` 直接读上述静态目录。只更新后端而不更新 nginx 配置，
 > 会出现“后端已发布、页面仍 404/仍走旧代理”的假发布。发布包已包含三套前端资产。
 
+### 学员端 Flutter Web 必须固定 HTML 渲染器
+
+> 2026-11-20 线上“学生端中文乱码 / 整页空白”的根因：CanvasKit 默认从
+> `www.gstatic.com` 加载，中文字体回退又走 `fonts.gstatic.com`；国内网络不可达，
+> 于是整页空白或中文方块/乱码。管理端、教师端是 Vue（DOM 渲染），所以不受影响；
+> 白屏发生在登录前的首屏，与“同一账号多处登录”无关。
+
+- 构建命令**必须**带 `--web-renderer html`：HTML 渲染器直接使用浏览器系统字体，
+  不下载 CanvasKit，也不访问境外字体 CDN；
+- `build-release-bundle.sh` / `deploy-server.sh` 已内置门禁：
+  产物不是 HTML 渲染器，或 `main.dart.js` 仍含 `fonts.gstatic.com`，构建直接失败；
+- 若将来改回 CanvasKit，必须同时自托管 `canvaskit/` 与中文字体回退
+  （`fontFallbackBaseUrl`），否则会重现本次故障。
+
 ## 三、环境变量与密钥（**照同系列项目一样处理**）
 
 仓库内**只放模板** `deploy/.env.example`（`.gitignore` 已放行 `!deploy/**/*.example`）：

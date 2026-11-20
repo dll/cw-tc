@@ -47,7 +47,11 @@ class _FakeApiClient extends ApiClient {
   }
 
   @override
-  Future<String> fetchResourceText(LectureResource r) async => '# 讲义内容';
+  Future<String> fetchResourceText(
+    LectureResource r, {
+    Future<LectureResource?> Function()? refresher,
+  }) async =>
+      '# 讲义内容';
 
   @override
   Future<void> reportCourseProgress(String courseCode,
