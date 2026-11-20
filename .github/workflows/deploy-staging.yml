@@ -38,4 +38,40 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            'bash /opt/cw-tc-build/deploy-staging.sh'
+            'set -euo pipefail
+             SCRIPT=$(readlink -f /opt/cw-tc-build/deploy-staging.sh)
+             test -f "$SCRIPT"
+             OWNER=$(stat -c "%U:%G" "$SCRIPT")
+             sudo cp -a "$SCRIPT" "$SCRIPT.bak.$(date +%Y%m%d%H%M%S)"
+             if ! grep -q -- "--web-renderer html" "$SCRIPT"; then
+               sudo sed -i "s#flutter build web --release --no-pub --base-href=/student/#flutter build web --release --no-pub --base-href=/student/ --web-renderer html#" "$SCRIPT"
+             fi
+             if ! grep -q -- "--web-renderer html" "$SCRIPT"; then
+               sudo sed -i -E "s#(flutter build web[^;&|]*)#\1 --web-renderer html#" "$SCRIPT"
+             fi
+             sudo chown "$OWNER" "$SCRIPT"
+             echo "--- flutter build web ---"
+             grep -n "flutter build web" "$SCRIPT" || true
+             grep -q -- "--web-renderer html" "$SCRIPT"
+             bash /opt/cw-tc-build/deploy-staging.sh'
+
+      - name: 验证学员端为 HTML 渲染器
+        run: |
+          for i in $(seq 1 24); do
+            BODY=$(curl -fsS --max-time 10 "https://cw-tc.ccit-agent.cn/student/flutter_bootstrap.js?ts=$(date +%s)" || true)
+            if printf '%s' "$BODY" | grep -q '"renderer":"html"'; then
+              echo "学员端已切换为 HTML 渲染器"
+              break
+            fi
+            sleep 5
+          done
+          if ! printf '%s' "$BODY" | grep -q '"renderer":"html"'; then
+            echo "学员端仍不是 HTML 渲染器" >&2
+            printf '%s\n' "$BODY" | grep -o '"renderer":"[a-z]*"' || true
+            exit 1
+          fi
+          if curl -fsS --max-time 30 "https://cw-tc.ccit-agent.cn/student/main.dart.js" | grep -q 'fonts.gstatic.com'; then
+            echo "main.dart.js 仍引用 fonts.gstatic.com" >&2
+            exit 1
+          fi
+          echo "学员端资源校验通过"
