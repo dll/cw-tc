@@ -34,7 +34,7 @@ install_web "$TARGET/web/portal" /var/www/cw-tc/portal
 
 ln -sfn "$TARGET" "$ROOT/next"
 ln -sfn "$ROOT/next" "$ROOT/current"
-systemctl restart cw-tc-server
+$SUDO systemctl restart cw-tc-server
 
 ok=0
 for _ in $(seq 1 30); do
@@ -50,7 +50,7 @@ if [ "$ok" -ne 1 ]; then
     install_web "$PREVIOUS/web/admin" /var/www/cw-tc/admin
     install_web "$PREVIOUS/web/student" /var/www/cw-tc/student
     install_web "$PREVIOUS/web/portal" /var/www/cw-tc/portal
-    systemctl restart cw-tc-server || true
+    $SUDO systemctl restart cw-tc-server || true
   fi
   exit 1
 fi
