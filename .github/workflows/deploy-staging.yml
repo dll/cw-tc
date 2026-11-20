@@ -43,16 +43,16 @@ jobs:
              test -f "$SCRIPT"
              OWNER=$(stat -c "%U:%G" "$SCRIPT")
              sudo cp -a "$SCRIPT" "$SCRIPT.bak.$(date +%Y%m%d%H%M%S)"
-             if ! grep -q -- "--web-renderer html" "$SCRIPT"; then
-               sudo sed -i "s#flutter build web --release --no-pub --base-href=/student/#flutter build web --release --no-pub --base-href=/student/ --web-renderer html#" "$SCRIPT"
+             if grep -q -- ") --web-renderer html" "$SCRIPT"; then
+               sudo sed -i "s#) --web-renderer html#--web-renderer html )#" "$SCRIPT"
              fi
-             if ! grep -q -- "--web-renderer html" "$SCRIPT"; then
-               sudo sed -i -E "s#(flutter build web[^;&|]*)#\1 --web-renderer html#" "$SCRIPT"
+             if ! grep -q -- "flutter build web --release --base-href=/student/ --web-renderer html" "$SCRIPT"; then
+               sudo sed -i "s#flutter build web --release --base-href=/student/#flutter build web --release --base-href=/student/ --web-renderer html#" "$SCRIPT"
              fi
              sudo chown "$OWNER" "$SCRIPT"
              echo "--- flutter build web ---"
              grep -n "flutter build web" "$SCRIPT" || true
-             grep -q -- "--web-renderer html" "$SCRIPT"
+             grep -q -- "flutter build web --release --base-href=/student/ --web-renderer html" "$SCRIPT"
              bash /opt/cw-tc-build/deploy-staging.sh'
 
       - name: 验证学员端为 HTML 渲染器
