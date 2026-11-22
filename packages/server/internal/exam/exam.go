@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -76,8 +77,13 @@ const DefaultExamDuration = 60 * time.Minute
 // DefaultRetakeCooldown 重考冷却默认值（24 小时）。上线前迁入 system_config（exam.retake_cooldown_hours，铁律 15 不写死）。
 const DefaultRetakeCooldown = 24 * time.Hour
 
-// StartSession 开考：校验权益 + 重考冷却 + 单档单会话，再创建 ongoing 会话（含服务端截止时间与重考序号），返回 session id。
+// StartSession 开考（兼容旧调用方，不绑定设备）。
 func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, level, paper string) (int64, error) {
+	return StartSessionWithDevice(ctx, db, studentID, courseID, level, paper, "")
+}
+
+// StartSessionWithDevice 开考：校验权益 + 重考冷却 + 单档单会话，创建 ongoing 会话并绑定当前答题设备。
+func StartSessionWithDevice(ctx context.Context, db *sql.DB, studentID, courseID int64, level, paper, deviceKey string) (int64, error) {
 	if level != "L1" && level != "L2" && level != "L3" {
 		return 0, ErrInvalidLevel
 	}
@@ -136,10 +142,15 @@ func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, le
 	_ = db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM exam_session WHERE student_id = $1 AND course_id = $2 AND level = $3`,
 		studentID, courseID, level).Scan(&history)
+	answersJSON := "{}"
+	if key := strings.TrimSpace(deviceKey); key != "" {
+		body, _ := json.Marshal(map[string]string{deviceAnswerKey: key})
+		answersJSON = string(body)
+	}
 	var sessionID int64
 	if err := db.QueryRowContext(ctx,
-		`INSERT INTO exam_session(student_id, course_id, level, paper, status, started_at, server_deadline_at, retake_seq) VALUES($1,$2,$3,$4,'ongoing',$5,$6,$7) RETURNING id`,
-		studentID, courseID, level, paper, now.Format(time.RFC3339), now.Add(DefaultExamDuration).Format(time.RFC3339), history+1).Scan(&sessionID); err != nil {
+		`INSERT INTO exam_session(student_id, course_id, level, paper, answers, status, started_at, server_deadline_at, retake_seq) VALUES($1,$2,$3,$4,$5,'ongoing',$6,$7,$8) RETURNING id`,
+		studentID, courseID, level, paper, answersJSON, now.Format(time.RFC3339), now.Add(DefaultExamDuration).Format(time.RFC3339), history+1).Scan(&sessionID); err != nil {
 		return 0, err
 	}
 	return sessionID, nil

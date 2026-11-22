@@ -59,11 +59,54 @@ class _ExamPageState extends State<ExamPage> {
         _remaining = 60 * 60;
       });
       _startTimer();
+    } on TakeoverRequiredException catch (e) {
+      await _handleTakeover(e.sessionId);
     } catch (e) {
       final msg = e.toString().replaceFirst('Exception: ', '');
       if (mounted) {
         setState(() => _error =
             msg.isEmpty ? '开考失败：请确认已解锁课程或等待冷却' : msg);
+      }
+    }
+  }
+
+  Future<void> _handleTakeover(int sessionId) async {
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('检测到其他设备正在答题'),
+        content: const Text('同一档测评同时只允许一个答题设备。接管后原设备将不能再答题，并会记录一次异常。'),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('确认接管')),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      if (mounted) setState(() => _error = '已取消接管，请回到原设备继续答题');
+      return;
+    }
+    try {
+      final resumed = await _api.takeoverExam(sessionId);
+      if (!mounted) return;
+      setState(() {
+        _session = ExamSession(
+            sessionId: resumed.sessionId, paper: resumed.paper);
+        _answers
+          ..clear()
+          ..addAll(resumed.answers);
+        _remaining = resumed.remainingSecs;
+      });
+      _startTimer();
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      if (mounted) {
+        setState(() => _error = msg.isEmpty ? '接管失败，请稍后重试' : msg);
       }
     }
   }

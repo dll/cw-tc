@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 var (
@@ -15,6 +16,7 @@ var (
 	ErrDatabaseNotConfigured = errors.New("账号数据库未配置")
 	ErrPhoneRegistered       = errors.New("手机号已注册")
 	ErrIDCardRegistered      = errors.New("身份证号已注册")
+	ErrIdentityAlreadySet    = errors.New("已完成实名，请勿重复提交")
 )
 
 type RegisterInput struct {
@@ -98,6 +100,43 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (Student, e
 		return Student{}, fmt.Errorf("注册写入失败: %w", err)
 	}
 	return Student{ID: id, StudentNo: studentNo, Name: input.Name, Phone: input.Phone}, nil
+}
+
+// CompleteIdentity 补充实名：仅未实名学员可设置；身份证号 AES-GCM 加密 + HMAC 去重，明文不落库。
+func (s *Service) CompleteIdentity(ctx context.Context, studentID int64, idCard string) error {
+	idCard = strings.ToUpper(strings.TrimSpace(idCard))
+	if s == nil || s.db == nil {
+		return ErrDatabaseNotConfigured
+	}
+	if studentID <= 0 || ValidateIDCard(idCard) != nil {
+		return ErrInvalidInput
+	}
+	var existing []byte
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT id_card_hash FROM student WHERE id = $1`, studentID).Scan(&existing); err != nil {
+		return err
+	}
+	if len(existing) > 0 {
+		return ErrIdentityAlreadySet
+	}
+	ciphertext, digest, err := ProtectIDCard(idCard, s.encKey, s.hmacKey)
+	if err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE student SET id_card_hash = $1, id_card_cipher = $2, updated_at = $3
+		 WHERE id = $4 AND id_card_hash IS NULL`,
+		digest, ciphertext, time.Now().UTC().Format(time.RFC3339), studentID)
+	if err != nil {
+		if stringsContains(err.Error(), "id_card_hash") || stringsContains(err.Error(), "uq_student_id_card_hash") {
+			return ErrIDCardRegistered
+		}
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return ErrIdentityAlreadySet
+	}
+	return nil
 }
 
 func hashPassword(password string) string {

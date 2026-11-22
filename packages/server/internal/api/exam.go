@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cw-tc/server/internal/course"
@@ -60,7 +61,7 @@ func (s *Server) startExam(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: err.Error()})
 		return
 	}
-	sessionID, err := exam.StartSession(ctx, s.dbConn, student.ID, req.CourseID, req.Level, paper)
+	sessionID, err := exam.StartSessionWithDevice(ctx, s.dbConn, student.ID, req.CourseID, req.Level, paper, deviceKeyFromRequest(c))
 	if err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: err.Error()})
 		return
@@ -89,6 +90,13 @@ func (s *Server) submitExam(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
+	if matched, devErr := exam.DeviceMatches(ctx, s.dbConn, sessionID, deviceKeyFromRequest(c)); devErr != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: devErr.Error()})
+		return
+	} else if !matched {
+		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: exam.ErrDeviceMismatch.Error()})
+		return
+	}
 	res, err := exam.SubmitExam(ctx, s.dbConn, sessionID, req.Answers)
 	if err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: err.Error()})
@@ -178,11 +186,20 @@ func (s *Server) resumeExam(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "测评服务不可用"})
 		return
 	}
-	state, err := exam.Resume(c.Request.Context(), s.dbConn, sessionID, time.Now().UTC())
+	ctx := c.Request.Context()
+	if matched, devErr := exam.DeviceMatches(ctx, s.dbConn, sessionID, deviceKeyFromRequest(c)); devErr != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: devErr.Error()})
+		return
+	} else if !matched {
+		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: exam.ErrDeviceMismatch.Error()})
+		return
+	}
+	state, err := exam.Resume(ctx, s.dbConn, sessionID, time.Now().UTC())
 	if err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: err.Error()})
 		return
 	}
+	state.Answers = exam.WithoutDeviceKey(state.Answers)
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: state})
 }
 
@@ -205,9 +222,73 @@ func (s *Server) saveExamAnswer(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "测评服务不可用"})
 		return
 	}
-	if err := exam.SaveAnswer(c.Request.Context(), s.dbConn, sessionID, req.QNo, req.Answer); err != nil {
+	ctx := c.Request.Context()
+	if matched, devErr := exam.DeviceMatches(ctx, s.dbConn, sessionID, deviceKeyFromRequest(c)); devErr != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: devErr.Error()})
+		return
+	} else if !matched {
+		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: exam.ErrDeviceMismatch.Error()})
+		return
+	}
+	if err := exam.SaveAnswer(ctx, s.dbConn, sessionID, req.QNo, req.Answer); err != nil {
 		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, envelope{Code: 0})
+}
+
+const deviceKeyHeader = "X-Device-Key"
+
+func deviceKeyFromRequest(c *gin.Context) string {
+	key := strings.TrimSpace(c.GetHeader(deviceKeyHeader))
+	if len(key) > 128 {
+		key = key[:128]
+	}
+	return key
+}
+
+// takeoverExam POST /exams/:sessionID/takeover —— 显式换设备接管，留痕并标记异常。
+func (s *Server) takeoverExam(c *gin.Context) {
+	sessionID, err := strconv.ParseInt(c.Param("sessionID"), 10, 64)
+	if err != nil || sessionID <= 0 {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "参数错误"})
+		return
+	}
+	var req struct {
+		Confirm bool `json:"confirm"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || !req.Confirm {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: "请确认换设备接管"})
+		return
+	}
+	if s.dbConn == nil {
+		c.JSON(http.StatusServiceUnavailable, envelope{Code: 10902, Msg: "测评服务不可用"})
+		return
+	}
+	student := c.MustGet(studentContextKey).(identity.Student)
+	deviceKey := deviceKeyFromRequest(c)
+	if deviceKey == "" {
+		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: exam.ErrDeviceKeyRequired.Error()})
+		return
+	}
+	ctx := c.Request.Context()
+	var ownerID int64
+	var level, paper string
+	if err := s.dbConn.QueryRowContext(ctx,
+		`SELECT student_id, level, paper FROM exam_session WHERE id = $1`, sessionID).
+		Scan(&ownerID, &level, &paper); err != nil || ownerID != student.ID {
+		c.JSON(http.StatusNotFound, envelope{Code: 10404, Msg: "测评会话不存在"})
+		return
+	}
+	state, err := exam.Takeover(ctx, s.dbConn, sessionID, deviceKey, time.Now().UTC())
+	if err != nil {
+		c.JSON(http.StatusConflict, envelope{Code: 10801, Msg: err.Error()})
+		return
+	}
+	var paperItems []json.RawMessage
+	_ = json.Unmarshal([]byte(paper), &paperItems)
+	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+		"session_id": sessionID, "level": level, "paper": paperItems,
+		"answers": state.Answers, "remaining_secs": state.RemainingSecs, "expired": false,
+	}})
 }

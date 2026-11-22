@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -20,6 +21,16 @@ import '../models/operation_slot.dart';
 import '../models/score.dart';
 import '../models/order.dart';
 import '../models/verify_result.dart';
+
+/// 同一档测评在另一台设备答题时抛出；UI 需让学员显式确认接管。
+class TakeoverRequiredException implements Exception {
+  TakeoverRequiredException(this.sessionId);
+
+  final int sessionId;
+
+  @override
+  String toString() => '检测到其他设备正在答题，请确认接管';
+}
 
 /// 后端 API 客户端（M0 骨架）。
 ///
@@ -46,6 +57,7 @@ class ApiClient {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          options.headers['X-Device-Key'] = await _deviceKey();
           handler.next(options);
         },
       ),
@@ -57,6 +69,7 @@ class ApiClient {
 
   static const String _tokenKey = 'cw_tc_session';
   static const String _phoneKey = 'cw_tc_phone';
+  static const String _deviceKeyKey = 'cw_tc_device_key';
 
   final String _baseUrl;
   final Dio _dio;
@@ -147,11 +160,41 @@ class ApiClient {
     return (phone == null || phone.isEmpty) ? null : phone;
   }
 
+  /// 稳定的答题设备标识：首次生成 32 位随机十六进制并写入安全存储。
+  Future<String> _deviceKey() async {
+    var key = await _storage.read(key: _deviceKeyKey);
+    if (key == null || key.isEmpty) {
+      final random = Random.secure();
+      key = List<int>.generate(16, (_) => random.nextInt(256))
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
+      await _storage.write(key: _deviceKeyKey, value: key);
+    }
+    return key;
+  }
+
   /// 当前学员资料（`GET /api/v1/me`，手机号已脱敏）。
   Future<Map<String, dynamic>> me() async {
-    final res = await _dio.get<Map<String, dynamic>>('/api/v1/me');
-    _ensureSuccess(res.data);
-    return res.data?['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    try {
+      final res = await _dio.get<Map<String, dynamic>>('/api/v1/me');
+      _ensureSuccess(res.data);
+      return res.data?['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    } on DioException catch (e) {
+      _apiError(e);
+    }
+  }
+
+  /// 补充实名（`POST /me/identity`）：仅未实名时设置，服务端只回脱敏结果。
+  Future<void> completeIdentity({required String idCard}) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/me/identity',
+        data: <String, dynamic>{'id_card': idCard},
+      );
+      _ensureSuccess(res.data);
+    } on DioException catch (e) {
+      _apiError(e);
+    }
   }
 
   /// 修改密码（需旧密码；成功后服务端会撤销全部会话）。
@@ -685,11 +728,30 @@ class ApiClient {
       );
       _ensureSuccess(res.data);
       final data = res.data?['data'] as Map<String, dynamic>?;
+      if (data?['needs_takeover'] == true) {
+        final sessionId = (data?['session_id'] as num?)?.toInt() ?? 0;
+        throw TakeoverRequiredException(sessionId);
+      }
       final raw = data?['session'] ?? data;
       if (raw is! Map<String, dynamic> || raw['session_id'] == null) {
         return null;
       }
       return OngoingExam.fromJson(raw);
+    } on DioException catch (e) {
+      _apiError(e);
+    }
+  }
+
+  /// 换设备接管（`POST /exams/:id/takeover`）：显式确认后返回当前试卷与已答内容。
+  Future<OngoingExam> takeoverExam(int sessionId) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/exams/$sessionId/takeover',
+        data: <String, dynamic>{'confirm': true},
+      );
+      _ensureSuccess(res.data);
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      return OngoingExam.fromJson(data ?? const <String, dynamic>{});
     } on DioException catch (e) {
       _apiError(e);
     }

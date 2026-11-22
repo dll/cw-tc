@@ -45,9 +45,12 @@ func (s *Server) me(c *gin.Context) {
 		return
 	}
 	student := value.(identity.Student)
+	masked, _ := s.identity.MaskedIDCard(c.Request.Context(), student.ID)
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
-		"student_no": student.StudentNo,
-		"name":       student.Name,
-		"phone":      redact.Phone(student.Phone),
+		"student_no":        student.StudentNo,
+		"name":              student.Name,
+		"phone":             redact.Phone(student.Phone),
+		"identity_masked":   masked,
+		"identity_verified": masked != "",
 	}})
 }

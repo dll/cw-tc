@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cw-tc/server/internal/exam"
 	"github.com/cw-tc/server/internal/identity"
 	"github.com/gin-gonic/gin"
 )
@@ -52,8 +53,20 @@ func (s *Server) ongoingExam(c *gin.Context) {
 	if answersRaw.Valid {
 		_ = json.Unmarshal([]byte(answersRaw.String), &answers)
 	}
+	deviceKey := deviceKeyFromRequest(c)
+	activeKey := exam.DeviceKeyFromAnswers(answers)
+	if remaining > 0 && activeKey != "" && deviceKey != "" && activeKey != deviceKey {
+		c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
+			"session": nil, "needs_takeover": true, "session_id": sessionID,
+		}})
+		return
+	}
+	if remaining > 0 && activeKey == "" && deviceKey != "" {
+		// 历史会话没有设备标识：首个带设备标识的请求认领为当前设备。
+		_ = exam.SetDeviceKey(c.Request.Context(), s.dbConn, sessionID, deviceKey)
+	}
 	c.JSON(http.StatusOK, envelope{Code: 0, Data: gin.H{
 		"session_id": sessionID, "level": sessionLevel, "paper": paperItems,
-		"answers": answers, "remaining_secs": remaining, "expired": remaining <= 0,
+		"answers": exam.WithoutDeviceKey(answers), "remaining_secs": remaining, "expired": remaining <= 0,
 	}})
 }

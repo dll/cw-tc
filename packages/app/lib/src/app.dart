@@ -19,6 +19,7 @@ import 'pages/suggestions_page.dart';
 import 'pages/my_orders_page.dart';
 import 'pages/my_scores_page.dart';
 import 'pages/notifications_page.dart';
+import 'pages/real_name_page.dart';
 import 'pages/verify_page.dart';
 import 'shell.dart';
 
@@ -110,6 +111,10 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/me/scores',
       builder: (_, __) => const MyScoresPage(),
+    ),
+    GoRoute(
+      path: '/me/identity',
+      builder: (_, __) => const RealNamePage(),
     ),
     GoRoute(
       path: '/certs',

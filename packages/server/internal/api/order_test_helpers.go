@@ -17,6 +17,17 @@ func performJSONWithCookie(t *testing.T, r http.Handler, method, path, body, tok
 	return response
 }
 
+func performJSONWithCookieAndDevice(t *testing.T, r http.Handler, method, path, body, token, device string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Device-Key", device)
+	request.AddCookie(&http.Cookie{Name: "cw_tc_sid", Value: token})
+	response := httptest.NewRecorder()
+	r.ServeHTTP(response, request)
+	return response
+}
+
 func containsAll(value string, parts ...string) bool {
 	for _, part := range parts {
 		if !strings.Contains(value, part) {
