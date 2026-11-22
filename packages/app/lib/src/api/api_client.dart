@@ -121,6 +121,14 @@ class ApiClient {
     }
   }
 
+  Never _apiError(DioException error) {
+    final data = error.response?.data;
+    if (data is Map<String, dynamic>) {
+      _ensureSuccess(data);
+    }
+    throw error;
+  }
+
   /// 登出：清除本地会话凭据。
   Future<void> logout() async {
     await _storage.delete(key: _tokenKey);
@@ -645,35 +653,46 @@ class ApiClient {
   /// 开考（`POST /exams`）：返回 session_id + 试卷（不含答案）。
   Future<ExamSession> startExam(
       {required String courseCode, required String level}) async {
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/api/v1/exams',
-      data: <String, dynamic>{'course_code': courseCode, 'level': level},
-    );
-    final data = res.data?['data'] as Map<String, dynamic>?;
-    final sessionId = (data?['session_id'] as num).toInt();
-    final rawPaper = (data?['paper'] as List<dynamic>?) ?? const <dynamic>[];
-    final paper = rawPaper
-        .map((e) => ExamQuestion.fromJson(e as Map<String, dynamic>))
-        .toList();
-    return ExamSession(sessionId: sessionId, paper: paper);
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/exams',
+        data: <String, dynamic>{'course_code': courseCode, 'level': level},
+      );
+      _ensureSuccess(res.data);
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      final sessionId = (data?['session_id'] as num).toInt();
+      final rawPaper = (data?['paper'] as List<dynamic>?) ?? const <dynamic>[];
+      final paper = rawPaper
+          .map((e) => ExamQuestion.fromJson(e as Map<String, dynamic>))
+          .toList();
+      return ExamSession(sessionId: sessionId, paper: paper);
+    } on DioException catch (e) {
+      _apiError(e);
+    }
   }
 
   /// 交卷判分（`POST /exams/:sessionID/submit`）：通过自动发证。
   /// 未完成测评（断线 / 换设备恢复）。
   Future<OngoingExam?> ongoingExam(
       {required String courseCode, required String level}) async {
-    final res = await _dio.get<Map<String, dynamic>>(
-      '/api/v1/me/exams/ongoing',
-      queryParameters: <String, dynamic>{
-        'course_code': courseCode,
-        'level': level,
-      },
-    );
-    _ensureSuccess(res.data);
-    final data = res.data?['data'] as Map<String, dynamic>?;
-    final raw = data?['session'] ?? data;
-    if (raw is! Map<String, dynamic> || raw['session_id'] == null) return null;
-    return OngoingExam.fromJson(raw);
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/api/v1/me/exams/ongoing',
+        queryParameters: <String, dynamic>{
+          'course_code': courseCode,
+          'level': level,
+        },
+      );
+      _ensureSuccess(res.data);
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      final raw = data?['session'] ?? data;
+      if (raw is! Map<String, dynamic> || raw['session_id'] == null) {
+        return null;
+      }
+      return OngoingExam.fromJson(raw);
+    } on DioException catch (e) {
+      _apiError(e);
+    }
   }
 
   /// 答题即时持久化（断线续考）。
@@ -687,12 +706,17 @@ class ApiClient {
 
   Future<ExamResult> submitExam(
       int sessionId, Map<String, String> answers) async {
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/api/v1/exams/$sessionId/submit',
-      data: <String, dynamic>{'answers': answers},
-    );
-    final data = res.data?['data'] as Map<String, dynamic>?;
-    return ExamResult.fromJson(data ?? const <String, dynamic>{});
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/exams/$sessionId/submit',
+        data: <String, dynamic>{'answers': answers},
+      );
+      _ensureSuccess(res.data);
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      return ExamResult.fromJson(data ?? const <String, dynamic>{});
+    } on DioException catch (e) {
+      _apiError(e);
+    }
   }
 
   /// 我的成绩（`GET /me/scores`，历次不覆盖）。

@@ -39,11 +39,7 @@ class _ExamPageState extends State<ExamPage> {
     try {
       final ongoing = await _api.ongoingExam(
           courseCode: widget.courseCode, level: widget.level);
-      if (ongoing != null) {
-        if (ongoing.expired) {
-          if (mounted) setState(() => _error = '上次测评已超时，请联系客服处理');
-          return;
-        }
+      if (ongoing != null && !ongoing.expired) {
         if (!mounted) return;
         setState(() {
           _session = ExamSession(
@@ -54,6 +50,7 @@ class _ExamPageState extends State<ExamPage> {
         _startTimer();
         return;
       }
+      // 过期会话由服务端自动交卷，这里直接开新会话。
       final session = await _api.startExam(
           courseCode: widget.courseCode, level: widget.level);
       if (!mounted) return;
@@ -62,8 +59,12 @@ class _ExamPageState extends State<ExamPage> {
         _remaining = 60 * 60;
       });
       _startTimer();
-    } catch (_) {
-      if (mounted) setState(() => _error = '开考失败：请确认已解锁课程或等待冷却');
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      if (mounted) {
+        setState(() => _error =
+            msg.isEmpty ? '开考失败：请确认已解锁课程或等待冷却' : msg);
+      }
     }
   }
 
@@ -94,8 +95,9 @@ class _ExamPageState extends State<ExamPage> {
       _timer?.cancel();
       final result = await _api.submitExam(_session!.sessionId, _answers);
       if (mounted) setState(() => _result = result);
-    } catch (_) {
-      if (mounted) setState(() => _error = '交卷失败');
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      if (mounted) setState(() => _error = msg.isEmpty ? '交卷失败' : msg);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

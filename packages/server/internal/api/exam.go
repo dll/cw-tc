@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -53,6 +54,7 @@ func (s *Server) startExam(c *gin.Context) {
 		return
 	}
 	student := c.MustGet(studentContextKey).(identity.Student)
+	s.expireStaleExams(ctx, student.ID, req.CourseID, req.Level)
 	paper, err := exam.BuildPaper(ctx, s.dbConn, req.CourseID, req.Level, 0)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, envelope{Code: 10001, Msg: err.Error()})
@@ -116,6 +118,28 @@ func (s *Server) submitExam(c *gin.Context) {
 		"band":        res.Band,
 		"cert_no":     certNo,
 	}})
+}
+
+// expireStaleExams 自动结束已到时的测评会话；通过时补发证书与通知。
+// 失败只记录日志，不阻断学员重新开考。
+func (s *Server) expireStaleExams(ctx context.Context, studentID, courseID int64, level string) {
+	results, err := exam.ExpireStale(ctx, s.dbConn, studentID, courseID, level, time.Now().UTC())
+	if err != nil {
+		slog.Warn("自动结束过期测评失败", "err", err, "student_id", studentID, "course_id", courseID, "level", level)
+		return
+	}
+	for _, res := range results {
+		certNo := ""
+		if res.IsPass {
+			cn, issueErr := issueCertForSession(ctx, s.dbConn, res.SessionID, res, []byte(s.cfg.IDCardEncKey))
+			if issueErr != nil {
+				slog.Warn("过期测评自动交卷后发证失败", "err", issueErr, "session_id", res.SessionID)
+			} else {
+				certNo = cn
+			}
+		}
+		s.notifyExamResult(ctx, studentID, res.IsPass, certNo)
+	}
 }
 
 // issueCertForSession 通过后发证：从会话取 student/course/level，再取 course_code。

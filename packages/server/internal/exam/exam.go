@@ -18,6 +18,7 @@ var (
 	ErrRetakeCooldown = errors.New("重考冷却期内，暂不可重复开考")
 	ErrInvalidLevel   = errors.New("档位非法")
 	ErrEmptyPaper     = errors.New("该档位无题可组")
+	ErrSessionExpired = errors.New("测评已到时，不能再修改答案")
 )
 
 // PaperItem 是组卷后下发给学员的一道题（不含答案/解析/评分要点，铁律：答案绝不下发）。
@@ -91,16 +92,33 @@ func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, le
 		return 0, ErrNoEntitlement
 	}
 	now := time.Now().UTC()
+	// 先自动结束已到时的 ongoing 会话：否则它会被永久当成“进行中”，
+	// 学员再进来只能看到“上次测评已超时”，唯一索引也开不了新会话。
+	if _, err := ExpireStale(ctx, db, studentID, courseID, level, now); err != nil {
+		return 0, err
+	}
 	// 重考冷却（PRD §7.7 C-7 · M3-05）：最近一次已交卷会话在冷却期内 → 拒绝。
-	var lastSubmitted sql.NullString
+	// 到时自动交卷的会话跳过冷却：它已经占满整个测评时长，不应再被 24h 冷却二次惩罚。
+	var lastSubmitted, lastDeadline sql.NullString
 	if err := db.QueryRowContext(ctx,
-		`SELECT MAX(submitted_at) FROM exam_session WHERE student_id = $1 AND course_id = $2 AND level = $3 AND status IN ('submitted','graded')`,
-		studentID, courseID, level).Scan(&lastSubmitted); err != nil {
+		`SELECT submitted_at, server_deadline_at FROM exam_session
+		 WHERE student_id = $1 AND course_id = $2 AND level = $3
+		   AND status IN ('submitted','graded') AND submitted_at IS NOT NULL
+		 ORDER BY submitted_at DESC LIMIT 1`,
+		studentID, courseID, level).Scan(&lastSubmitted, &lastDeadline); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
 	if lastSubmitted.Valid {
 		if last, err := time.Parse(time.RFC3339, lastSubmitted.String); err == nil && now.Sub(last) < DefaultRetakeCooldown {
-			return 0, ErrRetakeCooldown
+			timedOut := false
+			if lastDeadline.Valid {
+				if deadline, derr := time.Parse(time.RFC3339, lastDeadline.String); derr == nil && !last.Before(deadline) {
+					timedOut = true
+				}
+			}
+			if !timedOut {
+				return 0, ErrRetakeCooldown
+			}
 		}
 	}
 	// 单档单会话（应用层；DB 部分唯一索引由迁移 0019 兜底）。
@@ -125,4 +143,56 @@ func StartSession(ctx context.Context, db *sql.DB, studentID, courseID int64, le
 		return 0, err
 	}
 	return sessionID, nil
+}
+
+// ExpireStale 把已到服务端截止时间的 ongoing 会话自动交卷（按已保存答案判分）。
+// 判分失败时退化为标记 submitted，确保单会话槽位被释放，学员不会被永久卡住。
+func ExpireStale(ctx context.Context, db *sql.DB, studentID, courseID int64, level string, now time.Time) ([]Result, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT id FROM exam_session
+		 WHERE student_id = $1 AND course_id = $2 AND level = $3
+		   AND status = 'ongoing' AND server_deadline_at IS NOT NULL AND server_deadline_at <= $4
+		 ORDER BY id`,
+		studentID, courseID, level, now.Format(time.RFC3339))
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	results := make([]Result, 0, len(ids))
+	for _, id := range ids {
+		var raw sql.NullString
+		if err := db.QueryRowContext(ctx, `SELECT answers FROM exam_session WHERE id = $1`, id).Scan(&raw); err != nil {
+			continue
+		}
+		answers := map[string]string{}
+		if raw.Valid {
+			_ = json.Unmarshal([]byte(raw.String), &answers)
+		}
+		res, err := SubmitExam(ctx, db, id, answers)
+		if err != nil {
+			if errors.Is(err, ErrSessionNotOngoing) {
+				continue
+			}
+			// 判分失败（如历史 paper 损坏）也要释放槽位，避免学员被永久卡住。
+			_, _ = db.ExecContext(ctx,
+				`UPDATE exam_session SET status = 'submitted', submitted_at = server_deadline_at
+				 WHERE id = $1 AND status = 'ongoing'`, id)
+			continue
+		}
+		results = append(results, res)
+	}
+	return results, nil
 }

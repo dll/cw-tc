@@ -27,12 +27,24 @@ type Result struct {
 func SubmitExam(ctx context.Context, db *sql.DB, sessionID int64, answers map[string]string) (Result, error) {
 	var studentID, courseID int64
 	var level, paper, status string
-	if err := db.QueryRowContext(ctx, `SELECT student_id, course_id, level, paper, status FROM exam_session WHERE id = $1`, sessionID).
-		Scan(&studentID, &courseID, &level, &paper, &status); err != nil {
+	var savedAnswers, deadlineRaw sql.NullString
+	if err := db.QueryRowContext(ctx,
+		`SELECT student_id, course_id, level, paper, status, answers, server_deadline_at FROM exam_session WHERE id = $1`, sessionID).
+		Scan(&studentID, &courseID, &level, &paper, &status, &savedAnswers, &deadlineRaw); err != nil {
 		return Result{}, ErrSessionNotFound
 	}
 	if status != "ongoing" {
 		return Result{}, ErrSessionNotOngoing
+	}
+	now := time.Now().UTC()
+	if deadlineRaw.Valid {
+		if deadline, err := time.Parse(time.RFC3339, deadlineRaw.String); err == nil && now.After(deadline) {
+			// 已到时：忽略客户端迟到答案，按服务端已保存答案自动交卷（PRD §7.7 C-7）。
+			answers = map[string]string{}
+			if savedAnswers.Valid {
+				_ = json.Unmarshal([]byte(savedAnswers.String), &answers)
+			}
+		}
 	}
 	var items []PaperItem
 	if err := json.Unmarshal([]byte(paper), &items); err != nil {
@@ -93,7 +105,7 @@ func SubmitExam(ctx context.Context, db *sql.DB, sessionID int64, answers map[st
 		band = "pass"
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	submittedAt := time.Now().UTC().Format(time.RFC3339)
 	ansJSON, _ := json.Marshal(answers)
 	detailJSON, _ := json.Marshal(detail)
 
@@ -102,15 +114,19 @@ func SubmitExam(ctx context.Context, db *sql.DB, sessionID int64, answers map[st
 		return Result{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE exam_session SET answers = $1, status = 'graded', submitted_at = $2 WHERE id = $3`,
-		string(ansJSON), now, sessionID); err != nil {
+	updated, err := tx.ExecContext(ctx,
+		`UPDATE exam_session SET answers = $1, status = 'graded', submitted_at = $2 WHERE id = $3 AND status = 'ongoing'`,
+		string(ansJSON), submittedAt, sessionID)
+	if err != nil {
 		return Result{}, err
+	}
+	if affected, _ := updated.RowsAffected(); affected == 0 {
+		return Result{}, ErrSessionNotOngoing
 	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO exam_result(exam_session_id, student_id, course_id, level, auto_score, manual_score, total_score, band, is_pass, graded_at, detail)
 		 VALUES($1,$2,$3,$4,$5,0,$6,$7,$8,$9,$10)`,
-		sessionID, studentID, courseID, level, autoScore, autoScore, band, isPass, now, string(detailJSON)); err != nil {
+		sessionID, studentID, courseID, level, autoScore, autoScore, band, isPass, submittedAt, string(detailJSON)); err != nil {
 		return Result{}, err
 	}
 	if err := tx.Commit(); err != nil {

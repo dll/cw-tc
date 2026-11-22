@@ -10,12 +10,17 @@ import (
 // SaveAnswer 按题即时持久化答案（断线不丢，PRD §7.7 C-7 第 3 条）。仅 ongoing 会话可写。
 func SaveAnswer(ctx context.Context, db *sql.DB, sessionID int64, qno, answer string) error {
 	var status string
-	var raw sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT status, answers FROM exam_session WHERE id = $1`, sessionID).Scan(&status, &raw); err != nil {
+	var raw, deadlineRaw sql.NullString
+	if err := db.QueryRowContext(ctx, `SELECT status, answers, server_deadline_at FROM exam_session WHERE id = $1`, sessionID).Scan(&status, &raw, &deadlineRaw); err != nil {
 		return ErrSessionNotFound
 	}
 	if status != "ongoing" {
 		return ErrSessionNotOngoing
+	}
+	if deadlineRaw.Valid {
+		if deadline, err := time.Parse(time.RFC3339, deadlineRaw.String); err == nil && time.Now().UTC().After(deadline) {
+			return ErrSessionExpired
+		}
 	}
 	answers := map[string]string{}
 	if raw.Valid {

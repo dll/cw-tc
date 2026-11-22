@@ -15,6 +15,13 @@ func (s *Server) ongoingExam(c *gin.Context) {
 	student := c.MustGet(studentContextKey).(identity.Student)
 	courseCode := c.Query("course_code")
 	level := c.Query("level")
+	if courseCode != "" && level != "" {
+		var courseID int64
+		if err := s.dbConn.QueryRowContext(c.Request.Context(),
+			`SELECT id FROM course WHERE course_code = $1`, courseCode).Scan(&courseID); err == nil {
+			s.expireStaleExams(c.Request.Context(), student.ID, courseID, level)
+		}
+	}
 	var sessionID int64
 	var sessionLevel, paper, deadlineRaw string
 	var answersRaw sql.NullString
